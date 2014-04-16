@@ -57,9 +57,6 @@ var DoYouEvenLift = {
 
     for (i = 1; i < rows.length; i++) {
       percent = parseInt(rows[i].getElementsByTagName('td')[0].innerText, 10);
-
-      console.log("weight", weight, "percent", percent);
-
       contents = document.createTextNode(weight * percent / 100);
 
       cell = rows[i].getElementsByTagName('td')[columnIndex];
