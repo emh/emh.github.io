@@ -4,18 +4,34 @@ var DoYouEvenLift = {
     this.button = document.getElementById('add-column');
 
     this.button.addEventListener('click', this.addColumn.bind(this));
+
+    this.renderStaticColumns();
   },
 
-  renderPercentagesColumn : function() {
+  renderStaticColumns : function() {
     var row,
         cell,
+        button,
         contents,
-        i;
+        i,
+        percent;
 
-    for (i = 100; i > 0; i -= 5) {
+    for (i = 0; i < 20; i++) {
       row = document.createElement('tr');
       cell = document.createElement('td');
-      contents = document.createTextNode(i + '%');
+      percent = (100 - (5 * i));
+
+      if (i > 0) {
+        button = document.createElement('button');
+        button.appendChild(document.createTextNode('-'));
+        button.setAttribute('class', 'remove-row');
+        button.addEventListener('click', this.removeRow.bind(this, percent));
+        cell.appendChild(button);
+      }
+
+      row.appendChild(cell);
+      cell = document.createElement('td');
+      contents = document.createTextNode(percent+ '%');
       cell.appendChild(contents);
       row.appendChild(cell);
 
@@ -46,6 +62,21 @@ var DoYouEvenLift = {
     input.focus();
   },
 
+  removeRow: function(percent) {
+    var rows = this.table.getElementsByTagName('tr'),
+        rowPercent,
+        i;
+
+    for (i = 0; i < rows.length; i++) {
+      rowPercent = parseInt(rows[i].getElementsByTagName('td')[1].innerText, 10);
+
+      if (percent == rowPercent) {
+        this.table.removeChild(rows[i]);
+        break;
+      }
+    }
+  },
+
   calculateColumn: function(columnIndex, event) {
     var input = event.target,
         rows = this.table.getElementsByTagName('tr'),
@@ -56,7 +87,7 @@ var DoYouEvenLift = {
         cell;
 
     for (i = 1; i < rows.length; i++) {
-      percent = parseInt(rows[i].getElementsByTagName('td')[0].innerText, 10);
+      percent = parseInt(rows[i].getElementsByTagName('td')[1].innerText, 10);
       contents = document.createTextNode(weight * percent / 100);
 
       cell = rows[i].getElementsByTagName('td')[columnIndex];
@@ -72,5 +103,4 @@ var DoYouEvenLift = {
 
 window.onload = function() {
   DoYouEvenLift.init();
-  DoYouEvenLift.renderPercentagesColumn();
 };
