@@ -1,0 +1,8 @@
+body, input, td {
+  font-family: 'helvetica';
+  font-size: 10pt;
+}
+
+input {
+  width: 25px;
+}
