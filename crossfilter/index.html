@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=utf-8/>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+        <script type="text/javascript" src="crossfilter.js"></script>
+        <script type="text/javascript" src="https://code.jquery.com/jquery-2.2.0.js"></script>
+        <script type="text/javascript" src="main.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <div class="row">
+                <div class="col-md-12">
+                    <h1>Demo:</h1>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-12">
+                    <ol>
+                        <li>load large dataset into crossfilter</li>
+                        <li>setup dimensions for the set of columns we want to filter on</li>
+                        <li>define multiple filter sets</li>
+                        <li>toggle from one filter set to another</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                        <button id="filter1">Filter Set 1</button>
+                        <ul>
+                            <li>quarter = 1, 2</li>
+                            <li>salesperson = Evan</li>
+                            <li>aggregated on amount per region</li>
+                            <li>aggregated on amount per company</li>
+                        </ul>
+                </div>
+                <div class="col-md-4">
+                        <button id="filter2">Filter Set 2</button>
+                        <ul>
+                            <li>date between march 29 and april 2</li>
+                            <li>aggregated on bonus per salesperson and quarter</li>
+                        </ul>
+                </div>
+                <div class="col-md-4">
+                        <button id="filter3">No Filter</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div id="table-container" class="col-md-12">
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
