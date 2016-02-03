@@ -6,7 +6,7 @@ var httpRequest = new XMLHttpRequest(),
     groups = [],
     N = 100;
 
-$.get('/sales.50k.csv', function (response) {
+$.get('sales.50k.csv', function (response) {
     names = response.split('\n')[0].split(',');
     data = csvToJson(response);
 
