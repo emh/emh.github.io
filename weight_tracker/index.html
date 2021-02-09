@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Weight Tracker</title>
+
+        <script src="https://cdn.jsdelivr.net/npm/vega@5.17.0"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vega-lite@4.17.0"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.12.2"></script>
+
+        <style>
+            #chart {
+                width: 100%;
+                height: 1000px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="chart"></div>
+
+        <script>
+            const data = {
+                records: [
+                    { date: '2021/01/17', weight: 271.6 },
+                    { date: '2021/01/18', weight: 271.5, fasted: true },
+                    { date: '2021/01/19', weight: 263.7 },
+                    { date: '2021/01/20', weight: 264.7 },
+                    { date: '2021/01/21', weight: 262.8 },
+                    { date: '2021/01/22', weight: 264.0 },
+                    { date: '2021/01/23', weight: 265.0 },
+                    { date: '2021/01/24', weight: 269.1 },
+                    { date: '2021/01/25', weight: 270.7, fasted: true },
+                    { date: '2021/01/26', weight: 265.7 },
+                    { date: '2021/01/27', weight: 266.9, fasted: true },
+                    { date: '2021/01/28', weight: 262.1 },
+                    { date: '2021/01/29', weight: 261.2 },
+                    { date: '2021/01/30', weight: 265.5 },
+                    { date: '2021/01/31', weight: 265.0 },
+                    { date: '2021/02/01', weight: 266.8, fasted: true },
+                    { date: '2021/02/02', weight: 264.9 },
+                    { date: '2021/02/03', weight: 264.3, fasted: true },
+                    { date: '2021/02/04', weight: 262.5 },
+                    { date: '2021/02/05', weight: 260.4 },
+                    { date: '2021/02/06', weight: 264.0, fasted: true },
+                    { date: '2021/02/07', weight: 261.0 },
+                    { date: '2021/02/08', weight: 262.6, fasted: true }
+                ],
+                target: {
+                    date: '2021/05/17',
+                    weight: 220.0
+                }
+            };
+
+            const chart = {
+                $schema: 'https://vega.github.io/schema/vega-lite/v4.json',
+                width: "container",
+                height: "container",
+                layer: [
+                    // first layer shows the weight recordings for each day
+                    // along with a rolling 5 day average
+                    {
+                        data: {
+                            values: data.records
+                        },
+                        transform: [{
+                            window: [
+                                {
+                                    field: "weight",
+                                    op: "mean",
+                                    as: "rolling_mean"
+                                }
+                            ],
+                            frame: [-5, 0]
+                        }],
+                        encoding: {
+                            x: { field: "date", type: "temporal" },
+                            y: { field: "weight", type: "quantitative", scale: { zero: false}, axis: { title: "weight (lb)" } }
+                        },
+                        layer: [
+                            {
+                                mark: { type: "line", point: "true", opacity: 0.5 }
+                            }, {
+                                mark: { type: "line" },
+                                encoding: {
+                                    y: { field: "rolling_mean", type: "quantitative" }
+                                }
+                            }
+
+                        ]
+                    },
+                    // this layer renders the target or goal line
+                    // aim is to keep the daily measurements below this line
+                    {
+                        data: {
+                            values: [
+                                data.records[0],
+                                data.target
+                            ]
+                        },
+                        mark: { type: "line", strokeDash: [4,4], opacity: 0.5 },
+                        encoding: {
+                            x: { field: "date", type: "temporal" },
+                            y: { field: "weight", type: "quantitative" }
+                        }
+                    },
+                    // final layer renders a bar for each day that was fasted
+                    // premise: any morning i weight myself and it's above the target line, i fast until the next weigh in
+                    // may not actually happen some days but for those it does, i record it.
+                    {
+                        data: {
+                            values: data.records
+                        },
+                        transform: [
+                            { filter: { field: "fasted", equal: "true" } },
+                            { calculate: "timeOffset('day', datum.date, 1)", as: "date2" }
+                        ],
+                        mark: { type: "rect", color: "red", opacity: 0.25 },
+                        encoding: {
+                            x: { field: "date", type: "temporal" },
+                            x2: { field: "date2", type: "temporal" }
+                        }
+                    }
+                ]
+            };
+
+            console.log(data);
+
+            vegaEmbed('#chart', chart);
+        </script>
+    </body>
+</html>
