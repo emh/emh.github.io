@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>Infinite Canvas with Zoom (0.5–2.0), Draggable Nodes, and More Curvy S‑Cuted SVG Connections</title>
+    <title>Infinite Canvas with Zoom, Draggable Nodes, S‑Curved Connections & Instructions</title>
     <style>
         /* Remove default margins and prevent scrollbars */
         html,
@@ -11,6 +11,19 @@
             margin: 0;
             height: 100%;
             overflow: hidden;
+        }
+
+        /* The dialog styling (optional) */
+        dialog {
+            padding: 20px;
+            border: none;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+            font-family: sans-serif;
+        }
+
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.3);
         }
 
         /* The viewport fills the browser window */
@@ -23,7 +36,7 @@
         }
 
         /* The canvas is our world. Its transform includes translation (panning) and scaling (zooming).
-       We set the transform-origin to the top‑left corner (0 0) so that pan/zoom math behaves as expected. */
+       We set transform-origin to the top‑left corner (0 0) so that pan/zoom math behaves as expected. */
         #canvas {
             position: absolute;
             left: 0;
@@ -62,6 +75,20 @@
 </head>
 
 <body>
+    <!-- Instructions Dialog -->
+    <dialog id="instructions-dialog">
+        <h2>Welcome to the Infinite Canvas!</h2>
+        <p><strong>Controls:</strong></p>
+        <ul>
+            <li>Double‑click anywhere to create a node.</li>
+            <li>Drag nodes to move them.</li>
+            <li>Hold Ctrl and click on a node, then drag to another node to create a connection.</li>
+            <li>Drag on the background to pan the canvas.</li>
+            <li>Use the mouse scroll wheel to zoom (scale range: 0.5–2.0, step: 0.01).</li>
+        </ul>
+        <button id="dialog-ok">OK</button>
+    </dialog>
+
     <!-- The viewport holds the canvas -->
     <div id="viewport">
         <div id="canvas">
@@ -71,6 +98,19 @@
     </div>
 
     <script>
+        /***** Show the instructions dialog on page load *****/
+        window.addEventListener('load', () => {
+            const dialog = document.getElementById('instructions-dialog');
+            if (typeof dialog.showModal === "function") {
+                dialog.showModal();
+            } else {
+                alert("Your browser does not support the <dialog> element. Please update your browser.");
+            }
+        });
+        document.getElementById('dialog-ok').addEventListener('click', () => {
+            document.getElementById('instructions-dialog').close();
+        });
+
         /***** Global Variables *****/
         const canvas = document.getElementById('canvas');
         const viewport = document.getElementById('viewport');
@@ -130,8 +170,8 @@
         }
 
         // Update a permanent connection's path using a cubic Bézier S‑curve.
-        // We adjust the control point positions to achieve a curve that is relatively straight near the endpoints
-        // and becomes curvy near the middle.
+        // This version positions the control points so that the line starts out straight,
+        // curves near the middle, and then finishes straight.
         function updateConnectionPath(conn) {
             const sourceCenter = getNodeCenter(conn.source);
             const targetCenter = getNodeCenter(conn.target);
@@ -146,9 +186,9 @@
                 perpY = dx / len;
             }
 
-            // Base offset value; you can adjust this to increase/decrease overall curvature.
+            // Base offset value; adjust to increase/decrease overall curvature.
             const baseOffset = 50;
-            // Multiply the offset to make the curve more pronounced.
+            // Increase the offset to make the curve more pronounced in the middle.
             const effectiveOffset = baseOffset * 1.5;  // e.g. 75
 
             // Choose control point fractions closer to the middle.
