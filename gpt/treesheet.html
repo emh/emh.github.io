@@ -74,7 +74,7 @@
     <p>
         In the first column, type your category names. Use <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> to indent or outdent.
         When a row has sub‐categories, click the triangle to collapse/expand.
-        Only leaf rows let you edit numbers (columns 2–10); non‑leaf rows are computed.
+        Only leaf rows let you edit numbers (columns 2–10); non‐leaf rows are computed.
         The top row (below the header) shows grand totals when it has children.
     </p>
     <p>
@@ -90,7 +90,7 @@
         - Press <kbd>Esc</kbd> to return to navigation mode.
         <br>
         <strong>Mouse:</strong> Clicking on a cell updates it as the current cell.
-        In navigation mode a click will not auto‑enter editing mode.
+        In navigation mode a click will not auto‐enter editing mode.
         In editing mode clicking a new cell maintains editing mode.
     </p>
     <table id="dataGrid"></table>
@@ -122,7 +122,7 @@
                 header.appendChild(th);
             }
 
-            // Data rows (all user-entered rows; the first data row is the "grand total" row if it has children).
+            // Data rows (all user-entered rows).
             for (let i = 0; i < NUM_USER_ROWS; i++) {
                 const row = grid.insertRow();
                 row.classList.add("data-row");
@@ -134,12 +134,15 @@
                 catCell.contentEditable = "true";
                 catCell.style.paddingLeft = "5px"; // base padding to match header
 
-                // When starting to edit a category cell (column one), match the indentation from the row above.
+                // --- Feature: Auto-indentation for new rows ---
+                // When starting to edit a category cell, update its indentation from the row above
+                // only if we are NOT already in editing mode (to prevent unintended changes when clicking).
                 catCell.addEventListener("focus", function (e) {
+                    // Only auto-update if not already in editing mode.
+                    if (currentMode === "editing") return;
                     const grid = document.getElementById("dataGrid");
                     const currentRow = this.parentElement;
-                    // Only do this if there's a row above (i.e. not the first data row)
-                    if (currentRow.rowIndex > 1) {
+                    if (currentRow.rowIndex > 1) { // ensure there's a row above
                         const prevRow = grid.rows[currentRow.rowIndex - 1];
                         if (prevRow && prevRow.classList.contains("data-row")) {
                             const parentLevel = prevRow.getAttribute("data-level") || "0";
@@ -154,21 +157,18 @@
                     if (e.key === "Tab") {
                         e.preventDefault();
                         const oldLevel = parseInt(row.getAttribute("data-level")) || 0;
-                        // For indenting, ensure there is a parent row.
                         if (!row.previousElementSibling || !row.previousElementSibling.classList.contains("data-row")) {
                             return; // first data row cannot be indented
                         }
                         const prevRow = row.previousElementSibling;
                         const parentLevel = parseInt(prevRow.getAttribute("data-level")) || 0;
-                        const allowedMax = parentLevel + 1; // can indent only one level deeper than the parent
+                        const allowedMax = parentLevel + 1;
                         if (!e.shiftKey) {
-                            // Indent
                             if (oldLevel < allowedMax) {
                                 const newLevel = oldLevel + 1;
                                 const delta = newLevel - oldLevel;
                                 row.setAttribute("data-level", newLevel);
                                 updateIndentVisual(row);
-                                // Propagate the change to all descendant rows.
                                 let sibling = row.nextElementSibling;
                                 while (sibling && parseInt(sibling.getAttribute("data-level")) > oldLevel) {
                                     const childLevel = parseInt(sibling.getAttribute("data-level"));
@@ -181,13 +181,11 @@
                                 updateRowVisibility();
                             }
                         } else {
-                            // Outdent (Shift+Tab)
                             if (oldLevel > 0) {
                                 const newLevel = oldLevel - 1;
-                                const delta = newLevel - oldLevel; // negative delta
+                                const delta = newLevel - oldLevel;
                                 row.setAttribute("data-level", newLevel);
                                 updateIndentVisual(row);
-                                // Propagate the change to all descendant rows.
                                 let sibling = row.nextElementSibling;
                                 while (sibling && parseInt(sibling.getAttribute("data-level")) > oldLevel) {
                                     const childLevel = parseInt(sibling.getAttribute("data-level"));
@@ -226,7 +224,7 @@
             catCell.style.paddingLeft = (5 + 20 * level) + "px";
         }
 
-        // --- Roll-up totals: sum immediate children's values (or, for leaves, parse numeric values) ---
+        // --- Roll-up totals ---
         function recalcTree() {
             const rows = Array.from(document.querySelectorAll("#dataGrid tr.data-row"));
             if (rows.length === 0) return;
@@ -336,10 +334,8 @@
         }
 
         // --- Keyboard Navigation and Mode Switching ---
-        // Updates the visual "selected" cell.
         function selectCell(rowIndex, colIndex) {
             const grid = document.getElementById("dataGrid");
-            // Remove any existing selection and editing styles.
             grid.querySelectorAll("th.selected, td.selected").forEach(el => el.classList.remove("selected"));
             grid.querySelectorAll("th.editing, td.editing").forEach(el => el.classList.remove("editing"));
             const row = grid.rows[rowIndex];
@@ -355,9 +351,6 @@
         }
 
         // --- Mouse Event Handling ---
-        // Clicking on a cell makes it the current cell.
-        // In navigation mode, prevent automatic focusing so that the user still must hit Enter.
-        // In editing mode, clicking a new cell also focuses it.
         window.addEventListener("load", function () {
             const grid = document.getElementById("dataGrid");
             grid.addEventListener("mousedown", function (e) {
@@ -389,7 +382,7 @@
                     let newRow = currentRowIndex;
                     let newCol = currentColIndex;
                     if (e.key === "ArrowUp") {
-                        newRow = Math.max(1, currentRowIndex - 1); // stay within data rows (row index 1+)
+                        newRow = Math.max(1, currentRowIndex - 1);
                     } else if (e.key === "ArrowDown") {
                         newRow = Math.min(totalRows - 1, currentRowIndex + 1);
                     } else if (e.key === "ArrowLeft") {
@@ -400,10 +393,8 @@
                     selectCell(newRow, newCol);
                 }
                 else if (e.key === "Tab") {
-                    // New branch: In navigation mode, Tab and Shift+Tab update the current cell.
                     e.preventDefault();
                     if (e.shiftKey) {
-                        // Shift+Tab: move to previous cell.
                         let newRow = currentRowIndex;
                         let newCol = currentColIndex - 1;
                         if (newCol < 0) {
@@ -412,7 +403,6 @@
                         }
                         selectCell(newRow, newCol);
                     } else {
-                        // Tab: move to next cell.
                         let newRow = currentRowIndex;
                         let newCol = currentColIndex + 1;
                         if (newCol >= grid.rows[currentRowIndex].cells.length) {
@@ -423,7 +413,6 @@
                     }
                 }
                 else if (e.key === "Enter") {
-                    // Switch to editing mode.
                     e.preventDefault();
                     currentMode = "editing";
                     const cell = grid.rows[currentRowIndex].cells[currentColIndex];
@@ -435,7 +424,6 @@
             }
             else if (currentMode === "editing") {
                 if (e.key === "Escape") {
-                    // Exit editing mode.
                     e.preventDefault();
                     const cell = grid.rows[currentRowIndex].cells[currentColIndex];
                     if (cell) cell.classList.remove("editing");
@@ -444,11 +432,22 @@
                 } else if (e.key === "Enter") {
                     e.preventDefault();
                     if (e.metaKey || e.ctrlKey) {
-                        // Cmd/⌘-Enter or Ctrl-Enter: move to first column of next row.
+                        // For Cmd/⌘-Enter or Ctrl-Enter, move to first column of the next row.
                         let newRow = currentRowIndex + 1;
                         if (newRow < totalRows) {
+                            const newRowObj = grid.rows[newRow];
+                            const newCell = newRowObj.cells[0];
+                            // If this is a new row (empty category cell), inherit the indentation from the row above.
+                            if (newCell.textContent.trim() === "") {
+                                const prevRow = grid.rows[newRow - 1];
+                                if (prevRow && prevRow.classList.contains("data-row")) {
+                                    const parentLevel = prevRow.getAttribute("data-level") || "0";
+                                    newRowObj.setAttribute("data-level", parentLevel);
+                                    updateIndentVisual(newRowObj);
+                                }
+                            }
                             selectCell(newRow, 0);
-                            grid.rows[newRow].cells[0].focus();
+                            newCell.focus();
                         }
                     } else {
                         // Enter moves to next column in the same row.
@@ -469,7 +468,6 @@
             recalcTree();
             updateToggleButtons();
             updateRowVisibility();
-            // Start by selecting the first cell of the first data row (row index 1, col index 0)
             selectCell(1, 0);
         };
     </script>
