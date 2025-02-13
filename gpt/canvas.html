@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Infinite Canvas with Zoom (0.5–2.0), Draggable Nodes, and More Curvy S‑Cuted SVG Connections</title>
+    <style>
+        /* Remove default margins and prevent scrollbars */
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* The viewport fills the browser window */
+        #viewport {
+            width: 100vw;
+            height: 100vh;
+            background: #f0f0f0;
+            cursor: grab;
+            position: relative;
+        }
+
+        /* The canvas is our world. Its transform includes translation (panning) and scaling (zooming).
+       We set the transform-origin to the top‑left corner (0 0) so that pan/zoom math behaves as expected. */
+        #canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+            transform: translate(0px, 0px) scale(1);
+        }
+
+        /* The SVG element holds our connection lines. It covers the entire canvas and pointer-events are disabled
+       so that mouse events “fall through” to the nodes. */
+        #connections-svg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 5000px;
+            height: 5000px;
+            pointer-events: none;
+        }
+
+        /* Style for the draggable nodes */
+        .draggable {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: white;
+            border: 1px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: move;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- The viewport holds the canvas -->
+    <div id="viewport">
+        <div id="canvas">
+            <!-- SVG element for connection paths -->
+            <svg id="connections-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+    </div>
+
+    <script>
+        /***** Global Variables *****/
+        const canvas = document.getElementById('canvas');
+        const viewport = document.getElementById('viewport');
+        const connectionsSvg = document.getElementById('connections-svg');
+
+        // Canvas panning and zooming variables.
+        let panX = 0;
+        let panY = 0;
+        let scale = 1;  // initial scale (100%)
+        const minScale = 0.5;
+        const maxScale = 2.0;
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+
+        // Unique ID counter for nodes.
+        let uniqueId = 1;
+
+        // Variables for dragging nodes.
+        let draggedElement = null;
+        // dragOffset is stored in canvas coordinate space.
+        let dragOffset = { x: 0, y: 0 };
+
+        // Variables for drawing connections.
+        let isDrawingConnection = false;
+        let connectionSource = null;   // The node where connection drawing begins
+        let tempConnectionLine = null;   // Temporary SVG path element for the connection line
+        // Array to store permanent connections (each as an object: { source, target, path }).
+        let connections = [];
+
+        /***** Prevent Ctrl+Click from triggering the context menu *****/
+        document.addEventListener('contextmenu', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+            }
+        });
+
+        /***** Helper Functions *****/
+
+        // Update the canvas transform using the current pan and zoom.
+        function updateCanvasTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        }
+
+        // Convert a viewport (screen) coordinate to a canvas coordinate.
+        function toCanvasCoord(clientX, clientY) {
+            return {
+                x: (clientX - panX) / scale,
+                y: (clientY - panY) / scale
+            };
+        }
+
+        // Given a node element, compute its center in canvas coordinate space.
+        function getNodeCenter(node) {
+            const left = parseFloat(node.style.left);
+            const top = parseFloat(node.style.top);
+            return { x: left + 25, y: top + 25 };
+        }
+
+        // Update a permanent connection's path using a cubic Bézier S‑curve.
+        // We adjust the control point positions to achieve a curve that is relatively straight near the endpoints
+        // and becomes curvy near the middle.
+        function updateConnectionPath(conn) {
+            const sourceCenter = getNodeCenter(conn.source);
+            const targetCenter = getNodeCenter(conn.target);
+            const dx = targetCenter.x - sourceCenter.x;
+            const dy = targetCenter.y - sourceCenter.y;
+
+            // Compute the unit perpendicular vector.
+            const len = Math.sqrt(dx * dx + dy * dy);
+            let perpX = 0, perpY = 0;
+            if (len !== 0) {
+                perpX = -dy / len;
+                perpY = dx / len;
+            }
+
+            // Base offset value; you can adjust this to increase/decrease overall curvature.
+            const baseOffset = 50;
+            // Multiply the offset to make the curve more pronounced.
+            const effectiveOffset = baseOffset * 1.5;  // e.g. 75
+
+            // Choose control point fractions closer to the middle.
+            const t1 = 0.35;
+            const t2 = 0.65;
+
+            const cp1 = {
+                x: sourceCenter.x + dx * t1 + effectiveOffset * perpX,
+                y: sourceCenter.y + dy * t1 + effectiveOffset * perpY
+            };
+            const cp2 = {
+                x: sourceCenter.x + dx * t2 - effectiveOffset * perpX,
+                y: sourceCenter.y + dy * t2 - effectiveOffset * perpY
+            };
+
+            const d = `M ${sourceCenter.x} ${sourceCenter.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${targetCenter.x} ${targetCenter.y}`;
+            conn.path.setAttribute('d', d);
+        }
+
+        // Update the temporary connection line (while dragging) using the same S‑curve parameters.
+        function updateTempConnectionLine(e) {
+            if (!connectionSource || !tempConnectionLine) return;
+            const sourceCenter = getNodeCenter(connectionSource);
+            const target = toCanvasCoord(e.clientX, e.clientY);
+            const dx = target.x - sourceCenter.x;
+            const dy = target.y - sourceCenter.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            let perpX = 0, perpY = 0;
+            if (len !== 0) {
+                perpX = -dy / len;
+                perpY = dx / len;
+            }
+            const baseOffset = 50;
+            const effectiveOffset = baseOffset * 1.5;
+            const t1 = 0.35;
+            const t2 = 0.65;
+            const cp1 = {
+                x: sourceCenter.x + dx * t1 + effectiveOffset * perpX,
+                y: sourceCenter.y + dy * t1 + effectiveOffset * perpY
+            };
+            const cp2 = {
+                x: sourceCenter.x + dx * t2 - effectiveOffset * perpX,
+                y: sourceCenter.y + dy * t2 - effectiveOffset * perpY
+            };
+
+            const d = `M ${sourceCenter.x} ${sourceCenter.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${target.x} ${target.y}`;
+            tempConnectionLine.setAttribute('d', d);
+        }
+
+        /***** Creating New Nodes *****/
+        viewport.addEventListener('dblclick', (e) => {
+            // Convert click coordinates to canvas coordinates.
+            const canvasCoord = toCanvasCoord(e.clientX, e.clientY);
+            const newDiv = document.createElement('div');
+            newDiv.className = 'draggable';
+            // Center the 50×50 node at the canvas coordinate.
+            newDiv.style.left = (canvasCoord.x - 25) + 'px';
+            newDiv.style.top = (canvasCoord.y - 25) + 'px';
+            newDiv.textContent = uniqueId;
+            newDiv.dataset.id = uniqueId;
+            uniqueId++;
+
+            newDiv.addEventListener('mousedown', (ev) => {
+                ev.stopPropagation();
+                if (ev.ctrlKey) {
+                    ev.preventDefault();
+                    isDrawingConnection = true;
+                    connectionSource = newDiv;
+                    tempConnectionLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    tempConnectionLine.setAttribute("stroke", "black");
+                    tempConnectionLine.setAttribute("fill", "none");
+                    tempConnectionLine.setAttribute("stroke-width", "2");
+                    connectionsSvg.appendChild(tempConnectionLine);
+                    return;
+                }
+                draggedElement = newDiv;
+                const canvasPos = toCanvasCoord(ev.clientX, ev.clientY);
+                dragOffset.x = canvasPos.x - parseFloat(newDiv.style.left);
+                dragOffset.y = canvasPos.y - parseFloat(newDiv.style.top);
+            });
+
+            // Append the new node (nodes appended later appear on top of the SVG).
+            canvas.appendChild(newDiv);
+        });
+
+        /***** Panning the Canvas *****/
+        viewport.addEventListener('mousedown', (e) => {
+            if (e.ctrlKey) return; // Do not pan when starting a connection.
+            if (e.target === viewport || e.target === canvas) {
+                isPanning = true;
+                panStart.x = e.clientX;
+                panStart.y = e.clientY;
+                viewport.style.cursor = 'grabbing';
+            }
+        });
+
+        /***** Global Mouse Move *****/
+        viewport.addEventListener('mousemove', (e) => {
+            if (isDrawingConnection) {
+                updateTempConnectionLine(e);
+            } else if (draggedElement) {
+                const canvasPos = toCanvasCoord(e.clientX, e.clientY);
+                const newX = canvasPos.x - dragOffset.x;
+                const newY = canvasPos.y - dragOffset.y;
+                draggedElement.style.left = newX + 'px';
+                draggedElement.style.top = newY + 'px';
+
+                // Update any connections that involve this node.
+                connections.forEach(conn => {
+                    if (conn.source === draggedElement || conn.target === draggedElement) {
+                        updateConnectionPath(conn);
+                    }
+                });
+            } else if (isPanning) {
+                const dx = e.clientX - panStart.x;
+                const dy = e.clientY - panStart.y;
+                panX += dx;
+                panY += dy;
+                panStart.x = e.clientX;
+                panStart.y = e.clientY;
+                updateCanvasTransform();
+            }
+        });
+
+        /***** Global Mouse Up *****/
+        function handleMouseUp(e) {
+            if (isDrawingConnection) {
+                if (
+                    e.target.classList &&
+                    e.target.classList.contains('draggable') &&
+                    e.target !== connectionSource
+                ) {
+                    const newPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    newPath.setAttribute("stroke", "black");
+                    newPath.setAttribute("fill", "none");
+                    newPath.setAttribute("stroke-width", "2");
+                    connectionsSvg.appendChild(newPath);
+                    const connection = {
+                        source: connectionSource,
+                        target: e.target,
+                        path: newPath
+                    };
+                    updateConnectionPath(connection);
+                    connections.push(connection);
+                }
+                if (tempConnectionLine) {
+                    tempConnectionLine.remove();
+                    tempConnectionLine = null;
+                }
+                isDrawingConnection = false;
+                connectionSource = null;
+            } else {
+                isPanning = false;
+                draggedElement = null;
+                viewport.style.cursor = 'grab';
+            }
+        }
+        viewport.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('mouseup', handleMouseUp);
+
+        /***** Zooming with the Mouse Wheel (Linear Zoom, 0.5–2.0, 0.01 Steps) *****/
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            // Use a fixed linear step of 0.01.
+            const delta = e.deltaY < 0 ? 0.01 : -0.01;
+            const newScale = scale + delta;
+
+            // If the new scale would be outside the allowed range, do nothing.
+            if (newScale < minScale || newScale > maxScale) {
+                return;
+            }
+
+            // Compute the center of the viewport.
+            const centerX = viewport.clientWidth / 2;
+            const centerY = viewport.clientHeight / 2;
+            // Adjust pan so that the canvas coordinate under the viewport center remains fixed.
+            panX = panX - (delta / scale) * (centerX - panX);
+            panY = panY - (delta / scale) * (centerY - panY);
+
+            scale = newScale;
+            updateCanvasTransform();
+        });
+    </script>
+</body>
+
+</html>
