@@ -80,7 +80,7 @@
     <p>
         <strong>Keyboard Navigation:</strong>
         <br>
-        - <em>Navigation mode</em> (default): use arrow keys to move between cells.
+        - <em>Navigation mode</em> (default): use arrow keys (and Tab/Shift+Tab) to move between cells.
         <br>
         - Press <kbd>Enter</kbd> to switch to editing mode.
         <br>
@@ -149,7 +149,7 @@
                     }
                 });
 
-                // Listen for Tab/Shift+Tab to indent/outdent.
+                // Listen for Tab/Shift+Tab to indent/outdent on category cells.
                 catCell.addEventListener("keydown", function (e) {
                     if (e.key === "Tab") {
                         e.preventDefault();
@@ -378,7 +378,7 @@
             });
         });
 
-        // Global keydown listener for navigation and editing.
+        // --- Global Keydown Handler ---
         document.addEventListener("keydown", function (e) {
             const grid = document.getElementById("dataGrid");
             if (!grid) return;
@@ -398,7 +398,31 @@
                         newCol = Math.min(grid.rows[currentRowIndex].cells.length - 1, currentColIndex + 1);
                     }
                     selectCell(newRow, newCol);
-                } else if (e.key === "Enter") {
+                }
+                else if (e.key === "Tab") {
+                    // New branch: In navigation mode, Tab and Shift+Tab update the current cell.
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                        // Shift+Tab: move to previous cell.
+                        let newRow = currentRowIndex;
+                        let newCol = currentColIndex - 1;
+                        if (newCol < 0) {
+                            newRow = Math.max(1, currentRowIndex - 1);
+                            newCol = grid.rows[newRow].cells.length - 1;
+                        }
+                        selectCell(newRow, newCol);
+                    } else {
+                        // Tab: move to next cell.
+                        let newRow = currentRowIndex;
+                        let newCol = currentColIndex + 1;
+                        if (newCol >= grid.rows[currentRowIndex].cells.length) {
+                            newRow = Math.min(totalRows - 1, currentRowIndex + 1);
+                            newCol = 0;
+                        }
+                        selectCell(newRow, newCol);
+                    }
+                }
+                else if (e.key === "Enter") {
                     // Switch to editing mode.
                     e.preventDefault();
                     currentMode = "editing";
@@ -408,7 +432,8 @@
                         cell.focus();
                     }
                 }
-            } else if (currentMode === "editing") {
+            }
+            else if (currentMode === "editing") {
                 if (e.key === "Escape") {
                     // Exit editing mode.
                     e.preventDefault();
