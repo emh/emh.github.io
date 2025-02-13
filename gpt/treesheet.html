@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Data Tracker Grid with Keyboard Navigation</title>
+    <title>Data Tracker Grid with Keyboard & Mouse Navigation</title>
     <style>
         body {
             font-family: sans-serif;
@@ -70,7 +70,7 @@
 </head>
 
 <body>
-    <h2>Data Tracker Grid with Keyboard Navigation</h2>
+    <h2>Data Tracker Grid with Keyboard & Mouse Navigation</h2>
     <p>
         In the first column, type your category names. Use <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> to indent or outdent.
         When a row has sub‐categories, click the triangle to collapse/expand.
@@ -88,6 +88,10 @@
         <kbd>Ctrl-Enter</kbd>) to move to the first column of the next row.
         <br>
         - Press <kbd>Esc</kbd> to return to navigation mode.
+        <br>
+        <strong>Mouse:</strong> Clicking on a cell updates it as the current cell.
+        In navigation mode a click will not auto‑enter editing mode.
+        In editing mode clicking a new cell maintains editing mode.
     </p>
     <table id="dataGrid"></table>
 
@@ -332,7 +336,7 @@
         }
 
         // --- Keyboard Navigation and Mode Switching ---
-        // This function updates the visual "selected" cell.
+        // Updates the visual "selected" cell.
         function selectCell(rowIndex, colIndex) {
             const grid = document.getElementById("dataGrid");
             // Remove any existing selection and editing styles.
@@ -349,6 +353,30 @@
             currentRowIndex = rowIndex;
             currentColIndex = colIndex;
         }
+
+        // --- Mouse Event Handling ---
+        // Clicking on a cell makes it the current cell.
+        // In navigation mode, prevent automatic focusing so that the user still must hit Enter.
+        // In editing mode, clicking a new cell also focuses it.
+        window.addEventListener("load", function () {
+            const grid = document.getElementById("dataGrid");
+            grid.addEventListener("mousedown", function (e) {
+                if (currentMode === "navigation") {
+                    e.preventDefault();
+                }
+            });
+            grid.addEventListener("click", function (e) {
+                const cell = e.target.closest("th, td");
+                if (!cell) return;
+                const row = cell.parentElement;
+                const rowIndex = row.rowIndex;
+                const colIndex = cell.cellIndex;
+                selectCell(rowIndex, colIndex);
+                if (currentMode === "editing") {
+                    cell.focus();
+                }
+            });
+        });
 
         // Global keydown listener for navigation and editing.
         document.addEventListener("keydown", function (e) {
