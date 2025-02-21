@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Flocking Boids with Procedural Textured Sphere</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="glcanvas"></canvas>
+    <script>
+        // --- WebGL Initialization ---
+        const canvas = document.getElementById("glcanvas");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const gl = canvas.getContext("webgl");
+        if (!gl) { alert("WebGL not supported"); }
+
+        // --- Shader Helper Functions ---
+        function compileShader(gl, source, type) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+        function createProgram(gl, vertexSource, fragmentSource) {
+            const vertexShader = compileShader(gl, vertexSource, gl.VERTEX_SHADER);
+            const fragmentShader = compileShader(gl, fragmentSource, gl.FRAGMENT_SHADER);
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error("Program link error:", gl.getProgramInfoLog(program));
+            }
+            return program;
+        }
+
+        // --- Shader Sources ---
+        // Sphere shaders (with diffuse shading and procedural checkerboard texture)
+        const sphereVertexShaderSource = `
+        attribute vec3 a_position;
+        attribute vec3 a_normal;
+        uniform mat4 u_matrix;
+        uniform vec3 u_lightDir;
+        varying float v_light;
+        varying vec2 v_uv;
+        void main() {
+          gl_Position = u_matrix * vec4(a_position, 1.0);
+          vec3 norm = normalize(a_normal);
+          // Compute simple diffuse lighting.
+          v_light = max(dot(norm, normalize(u_lightDir)), 0.0);
+          // Compute UV coordinates from normal (spherical mapping).
+          float u = 0.5 + atan(norm.z, norm.x) / (2.0 * 3.14159265);
+          float v = 0.5 - asin(norm.y) / 3.14159265;
+          v_uv = vec2(u, v);
+        }
+      `;
+        const sphereFragmentShaderSource = `
+        precision mediump float;
+        varying float v_light;
+        varying vec2 v_uv;
+        uniform vec4 u_color;
+        void main() {
+          // Procedural checkerboard texture
+          float scale = 10.0;
+          vec2 coord = v_uv * scale;
+          float checker = mod(floor(coord.x) + floor(coord.y), 2.0);
+          // Blend between a dark color and the base color.
+          vec3 texColor = mix(vec3(0.2, 0.2, 0.2), u_color.rgb, checker);
+          vec3 ambient = 0.3 * texColor;
+          vec3 diffuse = 0.7 * texColor * v_light;
+          gl_FragColor = vec4(ambient + diffuse, u_color.a);
+        }
+      `;
+
+        // Boids shaders (rendered as simple points)
+        const boidsVertexShaderSource = `
+        attribute vec3 a_position;
+        uniform mat4 u_matrix;
+        uniform float u_pointSize;
+        void main() {
+          gl_Position = u_matrix * vec4(a_position, 1.0);
+          gl_PointSize = u_pointSize;
+        }
+      `;
+        const boidsFragmentShaderSource = `
+        precision mediump float;
+        uniform vec4 u_color;
+        void main() {
+          gl_FragColor = u_color;
+        }
+      `;
+
+        // Create shader programs.
+        const sphereProgram = createProgram(gl, sphereVertexShaderSource, sphereFragmentShaderSource);
+        const boidsProgram = createProgram(gl, boidsVertexShaderSource, boidsFragmentShaderSource);
+
+        // --- Matrix Utility Functions ---
+        function perspective(fovy, aspect, near, far) {
+            const f = 1.0 / Math.tan(fovy / 2);
+            const nf = 1 / (near - far);
+            return [
+                f / aspect, 0, 0, 0,
+                0, f, 0, 0,
+                0, 0, (far + near) * nf, -1,
+                0, 0, (2 * far * near) * nf, 0
+            ];
+        }
+        function lookAt(eye, center, up) {
+            const f = vec3_normalize(vec3_sub(center, eye));
+            const s = vec3_normalize(vec3_cross(f, up));
+            const u = vec3_cross(s, f);
+            return [
+                s[0], u[0], -f[0], 0,
+                s[1], u[1], -f[1], 0,
+                s[2], u[2], -f[2], 0,
+                -vec3_dot(s, eye), -vec3_dot(u, eye), vec3_dot(f, eye), 1
+            ];
+        }
+        function multiply(a, b) {
+            const out = new Array(16);
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    out[i + j * 4] = 0;
+                    for (let k = 0; k < 4; k++) {
+                        out[i + j * 4] += a[i + k * 4] * b[k + j * 4];
+                    }
+                }
+            }
+            return out;
+        }
+
+        // --- Vector Utility Functions ---
+        function vec3_add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+        function vec3_sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+        function vec3_scale(v, s) { return [v[0] * s, v[1] * s, v[2] * s]; }
+        function vec3_dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+        function vec3_length(v) { return Math.sqrt(vec3_dot(v, v)); }
+        function vec3_normalize(v) {
+            const len = vec3_length(v);
+            return len > 0 ? vec3_scale(v, 1 / len) : [0, 0, 0];
+        }
+        function vec3_cross(a, b) {
+            return [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+            ];
+        }
+        function rotateVectorAroundAxis(vec, axis, angle) {
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            return vec3_add(
+                vec3_add(
+                    vec3_scale(vec, cosA),
+                    vec3_scale(vec3_cross(axis, vec), sinA)
+                ),
+                vec3_scale(axis, vec3_dot(axis, vec) * (1 - cosA))
+            );
+        }
+
+        // --- Sphere Mesh Generation (with Normals) ---
+        function createSphere(radius, latBands, longBands) {
+            const positions = [];
+            const normals = [];
+            const indices = [];
+            for (let lat = 0; lat <= latBands; lat++) {
+                const theta = lat * Math.PI / latBands;
+                const sinTheta = Math.sin(theta);
+                const cosTheta = Math.cos(theta);
+                for (let lon = 0; lon <= longBands; lon++) {
+                    const phi = lon * 2 * Math.PI / longBands;
+                    const sinPhi = Math.sin(phi);
+                    const cosPhi = Math.cos(phi);
+                    const x = cosPhi * sinTheta;
+                    const y = cosTheta;
+                    const z = sinPhi * sinTheta;
+                    positions.push(radius * x, radius * y, radius * z);
+                    normals.push(x, y, z);
+                }
+            }
+            for (let lat = 0; lat < latBands; lat++) {
+                for (let lon = 0; lon < longBands; lon++) {
+                    const first = (lat * (longBands + 1)) + lon;
+                    const second = first + longBands + 1;
+                    indices.push(first, second, first + 1);
+                    indices.push(second, second + 1, first + 1);
+                }
+            }
+            return { positions, normals, indices };
+        }
+        const sphereRadius = 5;
+        const sphereMesh = createSphere(sphereRadius, 30, 30);
+
+        // Create buffers for the sphere.
+        const spherePositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, spherePositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sphereMesh.positions), gl.STATIC_DRAW);
+
+        const sphereNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sphereMesh.normals), gl.STATIC_DRAW);
+
+        const sphereIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(sphereMesh.indices), gl.STATIC_DRAW);
+
+        // --- Boids Simulation Setup ---
+        const boids = [];
+        const numBoids = 250;
+        const boidSpeed = 2.0;           // Increased speed
+        const neighborDistance = 2.5;    // Increased neighbor radius
+        const separationDistance = 1.0;  // Increased separation distance
+
+        // Updated weights for flocking behavior
+        const cohesionWeight = 0.25;
+        const alignmentWeight = 0.5;
+        const separationWeight = 0.05;
+
+        for (let i = 0; i < numBoids; i++) {
+            // Pick a random point on the sphere.
+            const u = Math.random();
+            const v = Math.random();
+            const theta = 2 * Math.PI * u;
+            const phi = Math.acos(2 * v - 1);
+            const x = sphereRadius * Math.sin(phi) * Math.cos(theta);
+            const y = sphereRadius * Math.sin(phi) * Math.sin(theta);
+            const z = sphereRadius * Math.cos(phi);
+            const pos = [x, y, z];
+
+            // Compute a random tangent velocity.
+            let arbitrary = [0, 1, 0];
+            if (Math.abs(vec3_dot(arbitrary, pos) / vec3_length(pos)) > 0.99) {
+                arbitrary = [1, 0, 0];
+            }
+            let tangent = vec3_cross(pos, arbitrary);
+            tangent = vec3_normalize(tangent);
+            const angle = Math.random() * 2 * Math.PI;
+            const normal = vec3_normalize(pos);
+            let boidVel = rotateVectorAroundAxis(tangent, normal, angle);
+            boidVel = vec3_scale(boidVel, boidSpeed);
+            boids.push({ position: pos, velocity: boidVel });
+        }
+        const boidsBuffer = gl.createBuffer();
+        function updateBoidsBuffer() {
+            const positions = [];
+            for (let i = 0; i < boids.length; i++) {
+                positions.push(boids[i].position[0], boids[i].position[1], boids[i].position[2]);
+            }
+            gl.bindBuffer(gl.ARRAY_BUFFER, boidsBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.DYNAMIC_DRAW);
+        }
+
+        // --- Boids Simulation Update ---
+        function updateBoids(dt) {
+            for (let i = 0; i < boids.length; i++) {
+                const boid = boids[i];
+                let alignment = [0, 0, 0];
+                let cohesion = [0, 0, 0];
+                let separation = [0, 0, 0];
+                let count = 0;
+                for (let j = 0; j < boids.length; j++) {
+                    if (i === j) continue;
+                    const other = boids[j];
+                    const diff = vec3_sub(other.position, boid.position);
+                    const d = vec3_length(diff);
+                    if (d < neighborDistance) {
+                        alignment = vec3_add(alignment, other.velocity);
+                        cohesion = vec3_add(cohesion, other.position);
+                        count++;
+                    }
+                    if (d < separationDistance) {
+                        let away = vec3_sub(boid.position, other.position);
+                        if (vec3_length(away) > 0) {
+                            away = vec3_scale(vec3_normalize(away), 1 / d);
+                            separation = vec3_add(separation, away);
+                        }
+                    }
+                }
+                if (count > 0) {
+                    cohesion = vec3_scale(cohesion, 1 / count);
+                    cohesion = vec3_sub(cohesion, boid.position);
+                    alignment = vec3_scale(alignment, 1 / count);
+                    alignment = vec3_sub(alignment, boid.velocity);
+                }
+                let acceleration = [0, 0, 0];
+                acceleration = vec3_add(acceleration, vec3_scale(cohesion, cohesionWeight));
+                acceleration = vec3_add(acceleration, vec3_scale(alignment, alignmentWeight));
+                acceleration = vec3_add(acceleration, vec3_scale(separation, separationWeight));
+
+                // Project acceleration onto the tangent plane of the sphere.
+                const normal = vec3_normalize(boid.position);
+                const accDot = vec3_dot(acceleration, normal);
+                const tangentAcc = vec3_sub(acceleration, vec3_scale(normal, accDot));
+
+                boid.velocity = vec3_add(boid.velocity, vec3_scale(tangentAcc, dt));
+                const velDot = vec3_dot(boid.velocity, normal);
+                boid.velocity = vec3_sub(boid.velocity, vec3_scale(normal, velDot));
+                boid.velocity = vec3_normalize(boid.velocity);
+                boid.velocity = vec3_scale(boid.velocity, boidSpeed);
+            }
+            // Update positions and re-project onto the sphere.
+            for (let i = 0; i < boids.length; i++) {
+                const boid = boids[i];
+                boid.position = vec3_add(boid.position, vec3_scale(boid.velocity, dt));
+                boid.position = vec3_scale(vec3_normalize(boid.position), sphereRadius);
+            }
+        }
+
+        // --- Animation Loop ---
+        let lastTime = 0;
+        function render(time) {
+            time *= 0.001; // convert to seconds
+            let dt = time - lastTime;
+            lastTime = time;
+            if (dt > 0.1) dt = 0.1;
+
+            updateBoids(dt);
+            updateBoidsBuffer();
+
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.clearColor(0.05, 0.05, 0.1, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.enable(gl.DEPTH_TEST);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+            // --- Compute a Moving (Orbiting) Camera ---
+            const aspect = canvas.width / canvas.height;
+            const projMatrix = perspective(Math.PI / 4, aspect, 0.1, 100);
+            // Orbit parameters:
+            const orbitRadius = 20;
+            const orbitSpeed = 0.2;
+            const cameraAngle = time * orbitSpeed;
+            // Camera orbits around the sphere with a slight elevation.
+            const eye = [
+                orbitRadius * Math.cos(cameraAngle),
+                10,
+                orbitRadius * Math.sin(cameraAngle)
+            ];
+            const center = [0, 0, 0];
+            const up = [0, 1, 0];
+            const viewMatrix = lookAt(eye, center, up);
+            const viewProjMatrix = multiply(projMatrix, viewMatrix);
+
+            // --- Draw the Sphere ---
+            gl.useProgram(sphereProgram);
+            const spherePosLoc = gl.getAttribLocation(sphereProgram, "a_position");
+            const sphereNormLoc = gl.getAttribLocation(sphereProgram, "a_normal");
+            const sphereMatrixLoc = gl.getUniformLocation(sphereProgram, "u_matrix");
+            const sphereColorLoc = gl.getUniformLocation(sphereProgram, "u_color");
+            const sphereLightDirLoc = gl.getUniformLocation(sphereProgram, "u_lightDir");
+
+            // Bind and set sphere position buffer.
+            gl.bindBuffer(gl.ARRAY_BUFFER, spherePositionBuffer);
+            gl.enableVertexAttribArray(spherePosLoc);
+            gl.vertexAttribPointer(spherePosLoc, 3, gl.FLOAT, false, 0, 0);
+
+            // Bind and set sphere normal buffer.
+            gl.bindBuffer(gl.ARRAY_BUFFER, sphereNormalBuffer);
+            gl.enableVertexAttribArray(sphereNormLoc);
+            gl.vertexAttribPointer(sphereNormLoc, 3, gl.FLOAT, false, 0, 0);
+
+            // Bind sphere index buffer.
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIndexBuffer);
+
+            gl.uniformMatrix4fv(sphereMatrixLoc, false, new Float32Array(viewProjMatrix));
+            // Base color for the texture.
+            gl.uniform4f(sphereColorLoc, 0.7, 0.7, 0.7, 0.5);
+            gl.uniform3f(sphereLightDirLoc, 0.5, 0.7, 1.0);
+
+            gl.drawElements(gl.TRIANGLES, sphereMesh.indices.length, gl.UNSIGNED_SHORT, 0);
+
+            // --- Draw the Boids as Points ---
+            gl.useProgram(boidsProgram);
+            const boidPosLoc = gl.getAttribLocation(boidsProgram, "a_position");
+            const boidMatrixLoc = gl.getUniformLocation(boidsProgram, "u_matrix");
+            const boidColorLoc = gl.getUniformLocation(boidsProgram, "u_color");
+            const boidPointSizeLoc = gl.getUniformLocation(boidsProgram, "u_pointSize");
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, boidsBuffer);
+            gl.enableVertexAttribArray(boidPosLoc);
+            gl.vertexAttribPointer(boidPosLoc, 3, gl.FLOAT, false, 0, 0);
+
+            gl.uniformMatrix4fv(boidMatrixLoc, false, new Float32Array(viewProjMatrix));
+            gl.uniform4f(boidColorLoc, 1.0, 0.8, 0.0, 1.0);  // Bright yellow
+            gl.uniform1f(boidPointSizeLoc, 10.0);
+
+            gl.drawArrays(gl.POINTS, 0, boids.length);
+
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+
+</html>
