@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pac-Man Inspired Maze Game - Levels</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #222;
+      color: white;
+      font-family: sans-serif;
+    }
+    canvas {
+      display: block;
+      background: #000;
+      outline: none;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 2;
+      font-size: 24px;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      font-size: 40px;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="info"></div>
+  <canvas id="gameCanvas" tabindex="0"></canvas>
+  <div id="overlay"></div>
+  <script>
+    // --- Global Variables ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const infoDiv = document.getElementById('info');
+    const overlay = document.getElementById('overlay');
+
+    // Dynamic grid dimensions (must be odd)
+    let gridRows, gridCols, cellSize, marginX, marginY;
+    // Fixed board margin (for UI display outside board)
+    const boardMargin = 50;
+
+    // Maze grid: 0 = wall, 1 = passage
+    let maze = [];
+
+    // Pellets array: each pellet has { row, col, type:"normal"/"power", consumed }
+    let pellets = [];
+
+    // Game state variables
+    let gameOver = false;
+    let gameWin = false;
+    let level = 1;
+    let score = 0;
+
+    // Movement speeds (pixels per second)
+    const PLAYER_SPEED = 200;
+    let enemySpeed = PLAYER_SPEED / 2; // enemy speed; increases with level
+
+    // Enemy vulnerability settings
+    let enemyVulnerable = false;
+    let vulnerabilityTimer = 0;
+    const VULNERABILITY_DURATION = 8; // seconds
+    const ENEMY_KILL_BONUS = 200;
+
+    // --- Entity Template ---
+    class Entity {
+      constructor(row, col, color) {
+        this.gridRow = row;
+        this.gridCol = col;
+        this.color = color;
+        this.x = 0;
+        this.y = 0;
+        this.targetRow = row;
+        this.targetCol = col;
+        this.moving = false;
+        // For player: holds desired movement direction
+        this.desiredDir = { dx: 0, dy: 0 };
+      }
+      static cellCenter(row, col) {
+        return {
+          x: marginX + col * cellSize + cellSize / 2,
+          y: marginY + row * cellSize + cellSize / 2
+        };
+      }
+      snap() {
+        const center = Entity.cellCenter(this.gridRow, this.gridCol);
+        this.x = center.x;
+        this.y = center.y;
+      }
+    }
+
+    // --- Create Player and Enemy ---
+    let player = new Entity(0, 0, 'yellow'); // starts at entrance
+    let enemy = new Entity(0, 0, 'red');       // will be set to exit later
+
+    // --- Resize Canvas & Compute Grid Dimensions ---
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      // Compute maximum available board size (inside boardMargin)
+      const availableWidth = canvas.width - 2 * boardMargin;
+      const availableHeight = canvas.height - 2 * boardMargin;
+      // Determine grid dimensions from BASE_CELL_SIZE
+      const BASE_CELL_SIZE = 20;
+      gridCols = Math.floor(availableWidth / BASE_CELL_SIZE);
+      if (gridCols % 2 === 0) gridCols--;
+      gridRows = Math.floor(availableHeight / BASE_CELL_SIZE);
+      if (gridRows % 2 === 0) gridRows--;
+
+      // Now compute cellSize to maximize board usage while keeping cells square
+      cellSize = Math.min(availableWidth / gridCols, availableHeight / gridRows);
+      // Center board within canvas (respecting boardMargin)
+      marginX = boardMargin + (availableWidth - cellSize * gridCols) / 2;
+      marginY = boardMargin + (availableHeight - cellSize * gridRows) / 2;
+      // Snap entities to grid centers
+      player.snap();
+      enemy.snap();
+    }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      initGame();
+    });
+    resizeCanvas();
+
+    // --- Maze Generation (Recursive Backtracker + Sparsification) ---
+    function generateMaze() {
+      maze = Array(gridRows).fill().map(() => Array(gridCols).fill(0));
+      function carve(x, y) {
+        const dirs = [
+          [0, -2],
+          [2, 0],
+          [0, 2],
+          [-2, 0]
+        ];
+        dirs.sort(() => Math.random() - 0.5);
+        dirs.forEach(dir => {
+          const nx = x + dir[0], ny = y + dir[1];
+          if (ny >= 0 && ny < gridRows && nx >= 0 && nx < gridCols && maze[ny][nx] === 0) {
+            maze[y + dir[1] / 2][x + dir[0] / 2] = 1;
+            maze[ny][nx] = 1;
+            carve(nx, ny);
+          }
+        });
+      }
+      maze[0][0] = 1;
+      carve(0, 0);
+      maze[0][0] = 1;
+      maze[gridRows - 1][gridCols - 1] = 1;
+      
+      // Sparsification: for higher levels, make maze denser (less removal).
+      // We'll let removalProbability decrease with level.
+      let removalProbability = Math.max(0.4 - (level - 1) * 0.05, 0.1);
+      for (let r = 1; r < gridRows - 1; r++) {
+        for (let c = 1; c < gridCols - 1; c++) {
+          if (maze[r][c] === 0) {
+            let passages = 0;
+            if (maze[r - 1][c] === 1) passages++;
+            if (maze[r + 1][c] === 1) passages++;
+            if (maze[r][c - 1] === 1) passages++;
+            if (maze[r][c + 1] === 1) passages++;
+            if (passages >= 2 && Math.random() < removalProbability) {
+              maze[r][c] = 1;
+            }
+          }
+        }
+      }
+    }
+
+    // --- Pellet Generation ---
+    function generatePellets() {
+      pellets = [];
+      for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < gridCols; c++) {
+          // Place pellet on every passage cell except entrance and exit.
+          if (maze[r][c] === 1 && !((r === 0 && c === 0) || (r === gridRows - 1 && c === gridCols - 1))) {
+            // 5% chance to be a power pellet.
+            const type = (Math.random() < 0.05) ? "power" : "normal";
+            pellets.push({ row: r, col: c, type: type, consumed: false });
+          }
+        }
+      }
+    }
+
+    // --- Continuous Movement Update ---
+    function updateEntity(entity, dt) {
+      const speed = (entity === enemy) ? enemySpeed : PLAYER_SPEED;
+      if (entity.moving) {
+        const target = Entity.cellCenter(entity.targetRow, entity.targetCol);
+        const dx = target.x - entity.x;
+        const dy = target.y - entity.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < speed * dt) {
+          entity.x = target.x;
+          entity.y = target.y;
+          entity.gridRow = entity.targetRow;
+          entity.gridCol = entity.targetCol;
+          entity.moving = false;
+        } else {
+          entity.x += (dx / dist) * speed * dt;
+          entity.y += (dy / dist) * speed * dt;
+        }
+      } else {
+        entity.snap();
+      }
+    }
+
+    // --- Player Movement Handling ---
+    function updatePlayerMovement() {
+      if (!player.moving) {
+        // Try desired direction
+        if (player.desiredDir.dx !== 0 || player.desiredDir.dy !== 0) {
+          const newR = player.gridRow + player.desiredDir.dy;
+          const newC = player.gridCol + player.desiredDir.dx;
+          if (newR >= 0 && newR < gridRows && newC >= 0 && newC < gridCols && maze[newR][newC] === 1) {
+            player.targetRow = newR;
+            player.targetCol = newC;
+            player.moving = true;
+            return;
+          }
+        }
+        // Else try to continue in current direction
+        const d = player.desiredDir;
+        if (d.dx !== 0 || d.dy !== 0) {
+          const newR = player.gridRow + d.dy;
+          const newC = player.gridCol + d.dx;
+          if (newR >= 0 && newR < gridRows && newC >= 0 && newC < gridCols && maze[newR][newC] === 1) {
+            player.targetRow = newR;
+            player.targetCol = newC;
+            player.moving = true;
+          }
+        }
+      }
+    }
+
+    // --- Enemy Pathfinding (BFS) ---
+    function enemyFindNextStep() {
+      // Don't move enemy until player has left start.
+      if (player.gridRow === 0 && player.gridCol === 0) return;
+      if (enemy.moving) return;
+      const start = { r: enemy.gridRow, c: enemy.gridCol };
+      const goal = { r: player.gridRow, c: player.gridCol };
+      const queue = [];
+      const cameFrom = Array(gridRows).fill().map(() => Array(gridCols).fill(null));
+      queue.push(start);
+      cameFrom[start.r][start.c] = start;
+      let found = false;
+      while (queue.length && !found) {
+        const current = queue.shift();
+        const neighbors = [
+          { r: current.r - 1, c: current.c },
+          { r: current.r + 1, c: current.c },
+          { r: current.r, c: current.c - 1 },
+          { r: current.r, c: current.c + 1 }
+        ];
+        for (const next of neighbors) {
+          if (
+            next.r >= 0 && next.r < gridRows &&
+            next.c >= 0 && next.c < gridCols &&
+            maze[next.r][next.c] === 1 &&
+            !cameFrom[next.r][next.c]
+          ) {
+            cameFrom[next.r][next.c] = current;
+            queue.push(next);
+            if (next.r === goal.r && next.c === goal.c) {
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!found) return;
+      let current = goal;
+      const path = [];
+      while (!(current.r === start.r && current.c === start.c)) {
+        path.push(current);
+        current = cameFrom[current.r][current.c];
+      }
+      path.push(start);
+      path.reverse();
+      if (path.length >= 2) {
+        const nextStep = path[1];
+        enemy.targetRow = nextStep.r;
+        enemy.targetCol = nextStep.c;
+        enemy.moving = true;
+      }
+    }
+
+    // --- Pellet Collision ---
+    function checkPelletCollision() {
+      for (const pellet of pellets) {
+        if (!pellet.consumed && pellet.row === player.gridRow && pellet.col === player.gridCol) {
+          pellet.consumed = true;
+          if (pellet.type === "power") {
+            score += 50;
+            enemyVulnerable = true;
+            vulnerabilityTimer = VULNERABILITY_DURATION;
+          } else {
+            score += 10;
+          }
+        }
+      }
+    }
+
+    // --- Check Win/Lose Conditions ---
+    function checkGameStatus() {
+      // Win level if player reaches exit.
+      if (player.gridRow === gridRows - 1 && player.gridCol === gridCols - 1) {
+        level++;
+        // Increase enemy speed and make maze less sparse by reducing removalProbability.
+        enemySpeed += 20;
+        initGame();
+      }
+      // If enemy is vulnerable and collides, enemy dies and respawns.
+      if (enemy.gridRow === player.gridRow && enemy.gridCol === player.gridCol) {
+        if (enemyVulnerable) {
+          score += ENEMY_KILL_BONUS;
+          enemy.gridRow = gridRows - 1;
+          enemy.gridCol = gridCols - 1;
+          enemy.targetRow = gridRows - 1;
+          enemy.targetCol = gridCols - 1;
+          enemy.moving = false;
+          enemy.snap();
+          enemyVulnerable = false;
+        } else {
+          gameOver = true;
+          overlay.textContent = `Game Over!`;
+        }
+      }
+    }
+
+    // --- Update Vulnerability Timer ---
+    function updateVulnerability(dt) {
+      if (enemyVulnerable) {
+        vulnerabilityTimer -= dt;
+        if (vulnerabilityTimer <= 0) {
+          enemyVulnerable = false;
+        }
+      }
+    }
+
+    // --- Input Handling ---
+    document.addEventListener('keydown', (e) => {
+      if (gameOver || gameWin) return;
+      let dir = null;
+      if (e.key === 'ArrowUp') dir = { dx: 0, dy: -1 };
+      else if (e.key === 'ArrowDown') dir = { dx: 0, dy: 1 };
+      else if (e.key === 'ArrowLeft') dir = { dx: -1, dy: 0 };
+      else if (e.key === 'ArrowRight') dir = { dx: 1, dy: 0 };
+      if (dir) {
+        player.desiredDir = dir;
+        updatePlayerMovement();
+      }
+    });
+
+    // --- Rendering ---
+    function drawGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw board margin (optional: a border around game board)
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(marginX, marginY, cellSize * gridCols, cellSize * gridRows);
+      // Draw maze walls.
+      for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < gridCols; c++) {
+          if (maze[r][c] === 0) {
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(marginX + c * cellSize, marginY + r * cellSize, cellSize, cellSize);
+          }
+        }
+      }
+      // Mark exit cell with a green square.
+      ctx.fillStyle = 'green';
+      ctx.fillRect(marginX + (gridCols - 1) * cellSize, marginY + (gridRows - 1) * cellSize, cellSize, cellSize);
+      // Draw pellets.
+      for (const pellet of pellets) {
+        if (!pellet.consumed) {
+          ctx.fillStyle = (pellet.type === "power") ? "orange" : "white";
+          const center = Entity.cellCenter(pellet.row, pellet.col);
+          ctx.beginPath();
+          ctx.arc(center.x, center.y, cellSize * 0.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // Draw player.
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, cellSize * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      // Draw enemy.
+      // If vulnerable, draw enemy with a different color (e.g., light blue).
+      ctx.fillStyle = enemyVulnerable ? "lightblue" : enemy.color;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, cellSize * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      // Draw level and score outside board margin.
+      infoDiv.textContent = `Level: ${level}   Score: ${score}`;
+    }
+
+    // --- Game Loop ---
+    let lastTime = null;
+    function gameLoop(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const dt = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
+      if (!gameOver && !gameWin) {
+        updatePlayerMovement();
+        updateEntity(player, dt);
+        // Only move enemy if player has started moving.
+        if (!(player.gridRow === 0 && player.gridCol === 0)) {
+          updateEntity(enemy, dt);
+          if (!enemy.moving) enemyFindNextStep();
+        }
+        updateVulnerability(dt);
+        checkPelletCollision();
+        checkGameStatus();
+      }
+      drawGame();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // --- Initialization ---
+    function initGame() {
+      generateMaze();
+      generatePellets();
+      gameOver = false;
+      gameWin = false;
+      overlay.textContent = "";
+      // Place player at entrance.
+      player.gridRow = 0;
+      player.gridCol = 0;
+      player.targetRow = 0;
+      player.targetCol = 0;
+      player.desiredDir = { dx: 0, dy: 0 };
+      player.moving = false;
+      player.snap();
+      // Place enemy at exit.
+      enemy.gridRow = gridRows - 1;
+      enemy.gridCol = gridCols - 1;
+      enemy.targetRow = gridRows - 1;
+      enemy.targetCol = gridCols - 1;
+      enemy.moving = false;
+      enemy.snap();
+      // Reset enemy vulnerability.
+      enemyVulnerable = false;
+      vulnerabilityTimer = 0;
+    }
+
+    window.onload = function() {
+      canvas.focus();
+      initGame();
+      requestAnimationFrame(gameLoop);
+    };
+  </script>
+</body>
+</html>

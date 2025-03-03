@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Voronoi Breakout – Increasing Ball Speed</title>
+  <style>
+    body { margin: 0; background: #000; overflow: hidden; }
+    canvas { display: block; background: #222; }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+(function() {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Global game variables.
+  let level = 1;
+  let score = 0;
+  const numSeeds = 30; // number of voronoi pieces per level.
+  const basePointsPerPiece = 10; // points per piece at level 1.
+  
+  // Region growth settings.
+  const initialRegionHeight = Math.min(150, window.innerHeight * 0.25);
+  let regionHeight = initialRegionHeight;
+  const baseGrowthRate = 0.1; // initial growth speed (pixels per frame)
+  const growthRateIncrement = 0.05; // additional growth speed per level.
+  let regionGrowthRate = baseGrowthRate + (level - 1) * growthRateIncrement;
+  
+  // Ball speed increase settings.
+  const ballSpeedIncrement = 0.001; // increase factor per frame.
+  
+  // Canvas dimensions and responsive resize.
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  canvas.width = width;
+  canvas.height = height;
+  
+  let regionPolygon = [
+    {x: 0, y: 0},
+    {x: width, y: 0},
+    {x: width, y: regionHeight},
+    {x: 0, y: regionHeight}
+  ];
+  
+  // Seeds for voronoi cells. Each seed gets a fixed random color.
+  let seeds = [];
+  function initSeeds() {
+    seeds = [];
+    for (let i = 0; i < numSeeds; i++) {
+      seeds.push({
+        x: Math.random() * width,
+        y: Math.random() * regionHeight,
+        color: "#" + ((1<<24)*Math.random() | 0).toString(16).padStart(6, '0')
+      });
+    }
+  }
+  initSeeds();
+  
+  // Update region polygon based on regionHeight.
+  function updateRegionPolygon() {
+    regionPolygon = [
+      {x: 0, y: 0},
+      {x: width, y: 0},
+      {x: width, y: regionHeight},
+      {x: 0, y: regionHeight}
+    ];
+  }
+  
+  // Responsive resizing.
+  function resizeCanvas() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+    updateRegionPolygon();
+    // Recompute voronoi cells in new bounds.
+    voronoiCells = computeVoronoi(seeds, regionPolygon);
+    paddle.y = height - 30;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  
+  // Compute Voronoi diagram using half‑plane clipping.
+  function computeVoronoi(seeds, region) {
+    let cells = [];
+    for (let i = 0; i < seeds.length; i++) {
+      let seed = seeds[i];
+      let poly = region.slice();
+      for (let j = 0; j < seeds.length; j++) {
+        if (i === j) continue;
+        let other = seeds[j];
+        let mid = { x: (seed.x + other.x) / 2, y: (seed.y + other.y) / 2 };
+        let dx = other.x - seed.x;
+        let dy = other.y - seed.y;
+        let d = (seed.x - mid.x) * dx + (seed.y - mid.y) * dy;
+        let inside = function(point) {
+          let val = (point.x - mid.x) * dx + (point.y - mid.y) * dy;
+          return d >= 0 ? val >= 0 : val <= 0;
+        };
+        poly = clipPolygon(poly, inside, {p: mid, dx: dx, dy: dy});
+        if (poly.length === 0) break;
+      }
+      cells.push({ seed: seed, polygon: poly });
+    }
+    return cells;
+  }
+  
+  // Sutherland–Hodgman polygon clipping.
+  function clipPolygon(poly, inside, line) {
+    let clipped = [];
+    for (let i = 0; i < poly.length; i++) {
+      let current = poly[i];
+      let prev = poly[(i - 1 + poly.length) % poly.length];
+      let currInside = inside(current);
+      let prevInside = inside(prev);
+      if (prevInside && currInside) {
+        clipped.push(current);
+      } else if (prevInside && !currInside) {
+        let inter = lineIntersection(prev, current, line);
+        if (inter) clipped.push(inter);
+      } else if (!prevInside && currInside) {
+        let inter = lineIntersection(prev, current, line);
+        if (inter) clipped.push(inter);
+        clipped.push(current);
+      }
+    }
+    return clipped;
+  }
+  
+  // Intersection between segment and line.
+  function lineIntersection(p1, p2, line) {
+    let dx = p2.x - p1.x;
+    let dy = p2.y - p1.y;
+    let numerator = line.dx * (line.p.x - p1.x) + line.dy * (line.p.y - p1.y);
+    let denominator = line.dx * dx + line.dy * dy;
+    if (denominator === 0) return null;
+    let t = numerator / denominator;
+    return { x: p1.x + t * dx, y: p1.y + t * dy };
+  }
+  
+  let voronoiCells = computeVoronoi(seeds, regionPolygon);
+  
+  // Ball object.
+  let ball = {
+    x: width / 2,
+    y: height - 60,
+    radius: 8,
+    dx: 4 * (Math.random() > 0.5 ? 1 : -1),
+    dy: -4
+  };
+  
+  // Paddle object.
+  let paddle = {
+    width: 100,
+    height: 10,
+    x: width / 2 - 50,
+    y: height - 30,
+    dx: 7
+  };
+  
+  // Game state flags.
+  let gameOver = false;
+  let levelComplete = false;
+  
+  // Collision cooldown to allow only one elimination per collision.
+  let collisionCooldownFrames = 0;
+  const cooldownDuration = 10; // frames.
+  
+  // Controls.
+  let rightPressed = false;
+  let leftPressed = false;
+  document.addEventListener("keydown", keyDownHandler, false);
+  document.addEventListener("keyup", keyUpHandler, false);
+  document.addEventListener("mousemove", mouseMoveHandler, false);
+  
+  function keyDownHandler(e) {
+    if (e.key === "Right" || e.key === "ArrowRight") { rightPressed = true; }
+    else if (e.key === "Left" || e.key === "ArrowLeft") { leftPressed = true; }
+  }
+  function keyUpHandler(e) {
+    if (e.key === "Right" || e.key === "ArrowRight") { rightPressed = false; }
+    else if (e.key === "Left" || e.key === "ArrowLeft") { leftPressed = false; }
+  }
+  function mouseMoveHandler(e) {
+    let relativeX = e.clientX - canvas.offsetLeft;
+    if (relativeX > paddle.width/2 && relativeX < width - paddle.width/2) {
+      paddle.x = relativeX - paddle.width/2;
+    }
+  }
+  
+  // Collision detection: circle vs. rectangle.
+  function circleRectCollision(circle, rect) {
+    let distX = Math.abs(circle.x - rect.x - rect.width/2);
+    let distY = Math.abs(circle.y - rect.y - rect.height/2);
+    if (distX > (rect.width/2 + circle.radius)) return false;
+    if (distY > (rect.height/2 + circle.radius)) return false;
+    if (distX <= (rect.width/2)) return true;
+    if (distY <= (rect.height/2)) return true;
+    let dx = distX - rect.width/2;
+    let dy = distY - rect.height/2;
+    return (dx*dx + dy*dy <= circle.radius*circle.radius);
+  }
+  
+  // Collision detection: circle vs. polygon.
+  function circlePolygonCollision(circle, poly) {
+    if (pointInPolygon(circle, poly)) return true;
+    for (let i = 0; i < poly.length; i++) {
+      let next = (i + 1) % poly.length;
+      let dist = distanceToSegment(circle, poly[i], poly[next]);
+      if (dist <= circle.radius) return true;
+    }
+    return false;
+  }
+  function pointInPolygon(point, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      let xi = poly[i].x, yi = poly[i].y;
+      let xj = poly[j].x, yj = poly[j].y;
+      let intersect = ((yi > point.y) !== (yj > point.y)) &&
+                      (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+  function distanceToSegment(point, v, w) {
+    let l2 = (w.x - v.x)**2 + (w.y - v.y)**2;
+    if (l2 === 0) return Math.hypot(point.x - v.x, point.y - v.y);
+    let t = ((point.x - v.x) * (w.x - v.x) + (point.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    let projX = v.x + t * (w.x - v.x);
+    let projY = v.y + t * (w.y - v.y);
+    return Math.hypot(point.x - projX, point.y - projY);
+  }
+  
+  // Draw ball.
+  function drawBall() {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+    ctx.fillStyle = "#FFF";
+    ctx.fill();
+    ctx.closePath();
+  }
+  
+  // Draw paddle.
+  function drawPaddle() {
+    ctx.beginPath();
+    ctx.rect(paddle.x, paddle.y, paddle.width, paddle.height);
+    ctx.fillStyle = "#FFF";
+    ctx.fill();
+    ctx.closePath();
+  }
+  
+  // Draw voronoi cells.
+  function drawVoronoiCells(cells) {
+    cells.forEach(cell => {
+      if (cell.polygon.length === 0) return;
+      ctx.beginPath();
+      ctx.moveTo(cell.polygon[0].x, cell.polygon[0].y);
+      for (let i = 1; i < cell.polygon.length; i++) {
+        ctx.lineTo(cell.polygon[i].x, cell.polygon[i].y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = cell.seed.color;
+      ctx.fill();
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+    });
+  }
+  
+  // Draw HUD: score and level.
+  function drawHUD() {
+    ctx.font = "24px sans-serif";
+    ctx.fillStyle = "#FFF";
+    ctx.textAlign = "left";
+    ctx.fillText("Score: " + score, 10, 30);
+    ctx.fillText("Level: " + level, 10, 60);
+  }
+  
+  // Draw message (Game Over, etc.)
+  function drawMessage(text) {
+    ctx.font = "48px sans-serif";
+    ctx.fillStyle = "#FFF";
+    ctx.textAlign = "center";
+    ctx.fillText(text, width / 2, height / 2);
+  }
+  
+  // Start a new level.
+  function newLevel() {
+    level++;
+    regionGrowthRate = baseGrowthRate + (level - 1) * growthRateIncrement;
+    // Reset region height.
+    regionHeight = initialRegionHeight;
+    updateRegionPolygon();
+    // Reset seeds.
+    initSeeds();
+    voronoiCells = computeVoronoi(seeds, regionPolygon);
+    // Reset ball position and velocity.
+    ball.x = width / 2;
+    ball.y = height - 60;
+    ball.dx = 4 * (Math.random() > 0.5 ? 1 : -1);
+    ball.dy = -4;
+    levelComplete = false;
+  }
+  
+  // Main game loop.
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+    
+    // Grow the top region if the game is active.
+    if (!gameOver && !levelComplete) {
+      regionHeight += regionGrowthRate;
+      updateRegionPolygon();
+      voronoiCells = computeVoronoi(seeds, regionPolygon);
+      // Check if the region reaches the paddle.
+      if (regionHeight >= paddle.y) {
+        gameOver = true;
+      }
+    }
+    
+    // Draw the voronoi region (clipped).
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, regionHeight);
+    ctx.clip();
+    drawVoronoiCells(voronoiCells);
+    ctx.restore();
+    
+    drawBall();
+    drawPaddle();
+    drawHUD();
+    
+    // Game updates if active.
+    if (!gameOver && !levelComplete) {
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+      
+      // Increase ball speed gradually.
+      ball.dx *= (1 + ballSpeedIncrement);
+      ball.dy *= (1 + ballSpeedIncrement);
+      
+      // Bounce off walls.
+      if (ball.x + ball.radius > width || ball.x - ball.radius < 0) {
+        ball.dx = -ball.dx;
+      }
+      if (ball.y - ball.radius < 0) {
+        ball.dy = -ball.dy;
+      }
+      if (ball.y - ball.radius > height) {
+        gameOver = true;
+      }
+      
+      // Paddle collision.
+      if (circleRectCollision(ball, paddle)) {
+        ball.dy = -Math.abs(ball.dy);
+        let deltaX = ball.x - (paddle.x + paddle.width / 2);
+        ball.dx = deltaX * 0.15;
+      }
+      
+      // Collision with voronoi cells (only if not in cooldown).
+      if (ball.y - ball.radius < regionHeight && collisionCooldownFrames === 0) {
+        for (let i = 0; i < voronoiCells.length; i++) {
+          let cell = voronoiCells[i];
+          if (cell.polygon.length === 0) continue;
+          if (circlePolygonCollision(ball, cell.polygon)) {
+            score += basePointsPerPiece * level;
+            seeds = seeds.filter(s => s !== cell.seed);
+            voronoiCells = computeVoronoi(seeds, regionPolygon);
+            ball.dy = -ball.dy;
+            collisionCooldownFrames = cooldownDuration;
+            break;
+          }
+        }
+      }
+      
+      if (collisionCooldownFrames > 0) {
+        collisionCooldownFrames--;
+      }
+      
+      // Paddle movement.
+      if (rightPressed && paddle.x < width - paddle.width) {
+        paddle.x += paddle.dx;
+      } else if (leftPressed && paddle.x > 0) {
+        paddle.x -= paddle.dx;
+      }
+      
+      // Check for level completion.
+      if (seeds.length === 0 && !levelComplete) {
+        levelComplete = true;
+        setTimeout(newLevel, 1000);
+      }
+    }
+    
+    if (gameOver) {
+      drawMessage("Game Over");
+    }
+    
+    requestAnimationFrame(draw);
+  }
+  
+  draw();
+})();
+</script>
+</body>
+</html>
