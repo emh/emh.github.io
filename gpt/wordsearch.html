@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Interactive Infinite Word Grid</title>
     <style>
       html, body {
@@ -202,6 +203,97 @@
       }
       centerScroll();
 
+
+// Helper to simulate mouse events for word selection.
+function simulateMouseEvent(eventType, touch) {
+  const simulatedEvent = new MouseEvent(eventType, {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    bubbles: true,
+    cancelable: true
+  });
+  container.dispatchEvent(simulatedEvent);
+}
+
+let isPanning = false;
+let isSelecting = false;
+let lastCenter = null;
+
+container.addEventListener('touchstart', function(e) {
+  if (e.touches.length === 1) {
+    // One-finger touch: start word selection.
+    isSelecting = true;
+    simulateMouseEvent('mousedown', e.touches[0]);
+  } else if (e.touches.length === 2) {
+    // Two-finger touch: cancel any selection and begin panning.
+    if (isSelecting) {
+      simulateMouseEvent('mouseup', e.touches[0]);
+      isSelecting = false;
+    }
+    isPanning = true;
+    // Record the initial center of the two touches.
+    lastCenter = {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+    };
+    e.preventDefault();
+  }
+}, { passive: false });
+
+container.addEventListener('touchmove', function(e) {
+  if (isSelecting && e.touches.length === 1) {
+    // One-finger move: update word selection.
+    simulateMouseEvent('mousemove', e.touches[0]);
+    e.preventDefault();
+  } else if (isPanning && e.touches.length === 2) {
+    // Two-finger move: calculate the new center.
+    const currentCenter = {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+    };
+    
+    // Compute the incremental movement.
+    const deltaX = currentCenter.x - lastCenter.x;
+    const deltaY = currentCenter.y - lastCenter.y;
+    
+    // Move the grid by the exact incremental delta.
+    container.scrollLeft -= deltaX;
+    container.scrollTop -= deltaY;
+    
+    // Update the last center to the current center for the next event.
+    lastCenter = currentCenter;
+    
+    e.preventDefault();
+  }
+}, { passive: false });
+
+container.addEventListener('touchend', function(e) {
+  if (isSelecting && e.touches.length === 0) {
+    simulateMouseEvent('mouseup', e.changedTouches[0]);
+    isSelecting = false;
+  }
+  if (isPanning && e.touches.length < 2) {
+    isPanning = false;
+  }
+});
+
+// Helper function to draw a rounded rectangle.
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.arcTo(x + width, y, x + width, y + radius, radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
+  ctx.lineTo(x + radius, y + height);
+  ctx.arcTo(x, y + height, x, y + height - radius, radius);
+  ctx.lineTo(x, y + radius);
+  ctx.arcTo(x, y, x + radius, y, radius);
+  ctx.closePath();
+  ctx.strokeStyle = "green"; // Change to desired border color.
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
       // --- Drawing Function ---
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -226,7 +318,7 @@
         }
 
         // 2. Overlay seeded words in grey (or red if revealed).
-        const seededColor = revealHidden ? "red" : "lightgrey";
+        const seededColor = revealHidden || true ? "red" : "lightgrey";
         const gridX_min = offsetX - cellsX;
         const gridX_max = offsetX + cellsX;
         const gridY_min = offsetY - cellsY;
@@ -258,6 +350,34 @@
             const posY = originY + (cell.y - offsetY) * cellSize;
             ctx.clearRect(posX - cellSize / 2, posY - cellSize / 2, cellSize, cellSize);
             ctx.fillText(getEffectiveLetter(cell.x, cell.y, WORD_LIST), posX, posY);
+
+    // Draw a rotated rectangle if the selection has more than one cell.
+    if (selection.cells.length > 0) {
+      let firstCell = selection.cells[0];
+      let lastCell = selection.cells[selection.cells.length - 1];
+      
+      // Compute canvas centers for first and last cells.
+      let startX = originX + (firstCell.x - offsetX) * cellSize;
+      let startY = originY + (firstCell.y - offsetY) * cellSize;
+      let endX = originX + (lastCell.x - offsetX) * cellSize;
+      let endY = originY + (lastCell.y - offsetY) * cellSize;
+      
+      // Calculate the vector from the first cell to the last cell.
+      let dx = endX - startX;
+      let dy = endY - startY;
+      let length = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx);
+      
+      // Translate to the center of the first cell.
+      ctx.save();
+      ctx.translate(startX, startY);
+      ctx.rotate(angle);
+      
+      // Draw a rectangle that starts half a cell before the first letter
+      // and extends to half a cell after the last letter.
+      drawRoundedRect(ctx, -cellSize/2, -cellSize/2, length + cellSize, cellSize, 10);
+      ctx.restore();
+    }
           });
         });
 
@@ -270,6 +390,35 @@
             ctx.fillRect(posX - cellSize / 2, posY - cellSize / 2, cellSize, cellSize);
             ctx.fillStyle = "black";
             ctx.fillText(getEffectiveLetter(cell.x, cell.y, WORD_LIST), posX, posY);
+
+  // For a rotated rectangle, assume selectionCells is ordered along the word.
+  let firstCell = selectionCells[0];
+  let lastCell = selectionCells[selectionCells.length - 1];
+  
+  // Compute canvas coordinates for the first and last cells (centers).
+  let startX = originX + (firstCell.x - offsetX) * cellSize;
+  let startY = originY + (firstCell.y - offsetY) * cellSize;
+  let endX = originX + (lastCell.x - offsetX) * cellSize;
+  let endY = originY + (lastCell.y - offsetY) * cellSize;
+  
+  // Calculate the vector from first to last cell.
+  let dx = endX - startX;
+  let dy = endY - startY;
+  let length = Math.sqrt(dx * dx + dy * dy);
+  let angle = Math.atan2(dy, dx);
+  
+  // Translate to the center of the first cell.
+  ctx.save();
+  ctx.translate(startX, startY);
+  ctx.rotate(angle);
+  
+  // Draw a rectangle that starts half a cell before the first letter and extends 
+  // to half a cell after the last letter.
+  // This means the rectangle's x position is -cellSize/2 and its width is length + cellSize.
+  drawRoundedRect(ctx, -cellSize/2, -cellSize/2, length + cellSize, cellSize, 10);
+  
+  ctx.restore();
+
           });
         }
       }
