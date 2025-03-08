@@ -23,7 +23,7 @@
   const basePointsPerPiece = 10; // points per piece at level 1.
   
   // Region growth settings.
-  const initialRegionHeight = Math.min(150, window.innerHeight * 0.25);
+  const initialRegionHeight = window.innerHeight * 0.33;
   let regionHeight = initialRegionHeight;
   const baseGrowthRate = 0.1; // initial growth speed (pixels per frame)
   const growthRateIncrement = 0.05; // additional growth speed per level.
@@ -189,7 +189,23 @@
       paddle.x = relativeX - paddle.width/2;
     }
   }
-  
+
+  // Mobile touch support.
+canvas.addEventListener("touchmove", touchMoveHandler, { passive: false });
+canvas.addEventListener("touchstart", touchMoveHandler, { passive: false });
+
+function touchMoveHandler(e) {
+  e.preventDefault(); // Prevent scrolling while playing.
+  // Use the first touch point.
+  let touch = e.touches[0];
+  let relativeX = touch.clientX - canvas.offsetLeft;
+  // Ensure paddle stays within canvas boundaries.
+  if (relativeX > paddle.width / 2 && relativeX < width - paddle.width / 2) {
+    paddle.x = relativeX - paddle.width / 2;
+  }
+}
+
+
   // Collision detection: circle vs. rectangle.
   function circleRectCollision(circle, rect) {
     let distX = Math.abs(circle.x - rect.x - rect.width/2);
