@@ -318,7 +318,7 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
         }
 
         // 2. Overlay seeded words in grey (or red if revealed).
-        const seededColor = revealHidden || true ? "red" : "lightgrey";
+        const seededColor = revealHidden ? "red" : "lightgrey";
         const gridX_min = offsetX - cellsX;
         const gridX_max = offsetX + cellsX;
         const gridY_min = offsetY - cellsY;
