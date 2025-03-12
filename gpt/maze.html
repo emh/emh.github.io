@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <!-- Allows zoom on mobile devices -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3D Cube Maze Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #eee;
+      font-family: sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    /* Header fixed at top */
+    #info {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      box-sizing: border-box;
+      height: 50px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 10px;
+      background: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      z-index: 10;
+    }
+    /* Desktop canvas container */
+    #canvasContainer {
+      margin-top: 55px; /* some margin below header */
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-direction: row;
+    }
+    canvas {
+      background: #fff;
+    }
+    /* Footer controls hidden on desktop */
+    #controls {
+      display: none;
+    }
+    /* Mobile adjustments */
+    @media (max-width: 600px) {
+      /* Position canvasContainer absolutely between header and footer */
+      #canvasContainer {
+        touch-action: manipulation;
+        position: absolute;
+        top: 50px;
+        bottom: 60px;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px; /* no extra gap */
+        margin: 0;
+        padding: 0;
+        align-items: center;
+      }
+      /* Footer fixed at bottom */
+      #controls {
+        touch-action: manipulation;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 60px;
+        background: #fff;
+        box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+        z-index: 10;
+      }
+      #controls button {
+        touch-action: manipulation;
+        font-size: 24px;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        box-sizing: border-box;
+        border-radius: 10px;
+      }
+    }
+  /* By default, show desktop instructions and hide mobile ones */
+  .desktop { display: block; }
+  .mobile { display: none; }
+  /* For mobile devices, using a media query */
+  @media (max-width: 600px) {
+    .desktop { display: none; }
+    .mobile { display: block; }
+    /* Add horizontal margin so the dialog isn’t flush with the sides */
+    #helpDialog {
+      margin: 0 20px;
+    }
+  }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <div id="coords">Coordinates: (0, 0, 0)</div>
+    <div id="moves">Moves: 0</div>
+  </div>
+  <div id="canvasContainer">
+    <canvas id="canvasLeft"></canvas>
+    <canvas id="canvasCenter"></canvas>
+    <canvas id="canvasRight"></canvas>
+  </div>
+  <footer id="controls">
+    <button id="btn-left">←</button>
+    <button id="btn-up">↑</button>
+    <button id="btn-down">↓</button>
+    <button id="btn-right">→</button>
+  </footer>
+  <script>
+    (function() {
+      // Maze dimensions and base cell size
+      const mazeSizeX = 5, mazeSizeY = 5, mazeSizeZ = 5;
+      const baseCellSize = 40;
+
+      // Get canvas elements and contexts
+      const canvasLeft = document.getElementById('canvasLeft');
+      const ctxLeft = canvasLeft.getContext('2d');
+      const canvasCenter = document.getElementById('canvasCenter');
+      const ctxCenter = canvasCenter.getContext('2d');
+      const canvasRight = document.getElementById('canvasRight');
+      const ctxRight = canvasRight.getContext('2d');
+
+      // Info elements
+      const coordsDiv = document.getElementById('coords');
+      const movesDiv = document.getElementById('moves');
+
+      // Mobile control buttons
+      const btnLeft = document.getElementById('btn-left');
+      const btnUp = document.getElementById('btn-up');
+      const btnDown = document.getElementById('btn-down');
+      const btnRight = document.getElementById('btn-right');
+
+      // Player state and move counter
+      let player = { x: 0, y: 0, z: 0 };
+      let moves = 0;
+
+      /*
+        Perspectives:
+        0: x,y slice (at player's current z)
+        1: y,z slice (at player's current x)
+        2: z,x slice (at player's current y)
+
+        The three canvases display these fixed perspectives.
+        selectedIndex (0, 1, or 2) indicates the active view.
+        Movement uses the perspective of the active view.
+      */
+      let selectedIndex = 1; // initially, the center (perspective 1) is active
+
+      // Build the 3D maze using recursive backtracking
+      let maze = [];
+      for (let x = 0; x < mazeSizeX; x++) {
+        maze[x] = [];
+        for (let y = 0; y < mazeSizeY; y++) {
+          maze[x][y] = [];
+          for (let z = 0; z < mazeSizeZ; z++) {
+            maze[x][y][z] = {
+              x: x, y: y, z: z,
+              visited: false,
+              walls: { posX: true, negX: true, posY: true, negY: true, posZ: true, negZ: true }
+            };
+          }
+        }
+      }
+      function getUnvisitedNeighbors(cell) {
+        const neighbors = [];
+        const { x, y, z } = cell;
+        if (x < mazeSizeX - 1 && !maze[x+1][y][z].visited)
+          neighbors.push({ cell: maze[x+1][y][z], direction: 'posX' });
+        if (x > 0 && !maze[x-1][y][z].visited)
+          neighbors.push({ cell: maze[x-1][y][z], direction: 'negX' });
+        if (y < mazeSizeY - 1 && !maze[x][y+1][z].visited)
+          neighbors.push({ cell: maze[x][y+1][z], direction: 'posY' });
+        if (y > 0 && !maze[x][y-1][z].visited)
+          neighbors.push({ cell: maze[x][y-1][z], direction: 'negY' });
+        if (z < mazeSizeZ - 1 && !maze[x][y][z+1].visited)
+          neighbors.push({ cell: maze[x][y][z+1], direction: 'posZ' });
+        if (z > 0 && !maze[x][y][z-1].visited)
+          neighbors.push({ cell: maze[x][y][z-1], direction: 'negZ' });
+        return neighbors;
+      }
+      function removeWall(current, next, direction) {
+        current.walls[direction] = false;
+        switch(direction) {
+          case 'posX': next.walls['negX'] = false; break;
+          case 'negX': next.walls['posX'] = false; break;
+          case 'posY': next.walls['negY'] = false; break;
+          case 'negY': next.walls['posY'] = false; break;
+          case 'posZ': next.walls['negZ'] = false; break;
+          case 'negZ': next.walls['posZ'] = false; break;
+        }
+      }
+      function generateMaze() {
+        let stack = [];
+        const totalCells = mazeSizeX * mazeSizeY * mazeSizeZ;
+        let current = maze[0][0][0];
+        current.visited = true;
+        let visitedCount = 1;
+        while (visitedCount < totalCells) {
+          const neighbors = getUnvisitedNeighbors(current);
+          if (neighbors.length > 0) {
+            const randIndex = Math.floor(Math.random() * neighbors.length);
+            const { cell: next, direction } = neighbors[randIndex];
+            removeWall(current, next, direction);
+            stack.push(current);
+            current = next;
+            current.visited = true;
+            visitedCount++;
+          } else if (stack.length > 0) {
+            current = stack.pop();
+          }
+        }
+      }
+      generateMaze();
+
+      // updateCanvasSize: On mobile, the container (#canvasContainer) is absolutely positioned
+      // between header (50px) and footer (60px). So availableHeight = window.innerHeight - 50 - 60.
+      function updateCanvasSize(canvas, perspective) {
+        let virtualWidth, virtualHeight;
+        if (perspective === 0) {
+          virtualWidth = mazeSizeX * baseCellSize;
+          virtualHeight = mazeSizeY * baseCellSize;
+        } else if (perspective === 1) {
+          virtualWidth = mazeSizeY * baseCellSize;
+          virtualHeight = mazeSizeZ * baseCellSize;
+        } else if (perspective === 2) {
+          virtualWidth = mazeSizeZ * baseCellSize;
+          virtualHeight = mazeSizeX * baseCellSize;
+        }
+        if (window.innerWidth <= 600) {
+          const headerHeight = 50;
+          const footerHeight = 60;
+          const gaps = 4 * 10;
+          const availableHeight = window.innerHeight - headerHeight - footerHeight - gaps;
+          const desiredCanvasHeight = availableHeight / 3;
+          const containerWidth = document.getElementById('canvasContainer').clientWidth;
+          const scaleW = containerWidth / virtualWidth;
+          const scaleH = desiredCanvasHeight / virtualHeight;
+          const scale = Math.min(scaleW, scaleH);
+          canvas.width = virtualWidth;
+          canvas.height = virtualHeight;
+          canvas.style.width = (virtualWidth * scale) + "px";
+          canvas.style.height = (virtualHeight * scale) + "px";
+        } else {
+          canvas.width = virtualWidth;
+          canvas.height = virtualHeight;
+          canvas.style.width = "";
+          canvas.style.height = "";
+        }
+      }
+
+      // Draw an indicator (a small circle) for the entrance or exit.
+      function drawIndicator(ctx, xPos, yPos, type) {
+        ctx.beginPath();
+        let centerX = xPos + baseCellSize / 2;
+        let centerY = yPos + baseCellSize / 2;
+        let radius = baseCellSize / 6;
+        ctx.fillStyle = (type === 'entrance') ? 'green' : 'red';
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw the maze slice on a given context based on the specified perspective.
+      // Walls are drawn blue if this view is active (perspective equals selectedIndex), gray otherwise.
+      // The player's current position is drawn as a yellow circle in every view.
+      function drawMazeOnContext(ctx, perspective) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.strokeStyle = (perspective === selectedIndex) ? 'blue' : 'gray';
+        ctx.lineWidth = 2;
+        if (perspective === 0) {
+          let currentZ = player.z;
+          for (let y = 0; y < mazeSizeY; y++) {
+            for (let x = 0; x < mazeSizeX; x++) {
+              let cell = maze[x][y][currentZ];
+              let xPos = x * baseCellSize;
+              let yPos = y * baseCellSize;
+              ctx.beginPath();
+              if (cell.walls.negY) { ctx.moveTo(xPos, yPos); ctx.lineTo(xPos + baseCellSize, yPos); }
+              if (cell.walls.posX) { ctx.moveTo(xPos + baseCellSize, yPos); ctx.lineTo(xPos + baseCellSize, yPos + baseCellSize); }
+              if (cell.walls.posY) { ctx.moveTo(xPos + baseCellSize, yPos + baseCellSize); ctx.lineTo(xPos, yPos + baseCellSize); }
+              if (cell.walls.negX) { ctx.moveTo(xPos, yPos + baseCellSize); ctx.lineTo(xPos, yPos); }
+              ctx.stroke();
+              if (cell.x === 0 && cell.y === 0 && cell.z === 0)
+                drawIndicator(ctx, xPos, yPos, 'entrance');
+              if (cell.x === mazeSizeX - 1 && cell.y === mazeSizeY - 1 && cell.z === mazeSizeZ - 1)
+                drawIndicator(ctx, xPos, yPos, 'exit');
+              if (player.x === x && player.y === y) {
+                ctx.beginPath();
+                let cx = xPos + baseCellSize / 2;
+                let cy = yPos + baseCellSize / 2;
+                let radius = baseCellSize / 4;
+                ctx.fillStyle = 'yellow';
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        } else if (perspective === 1) {
+          let currentX = player.x;
+          for (let z = 0; z < mazeSizeZ; z++) {
+            for (let y = 0; y < mazeSizeY; y++) {
+              let cell = maze[currentX][y][z];
+              let xPos = y * baseCellSize;
+              let yPos = z * baseCellSize;
+              ctx.beginPath();
+              if (cell.walls.negY) { ctx.moveTo(xPos, yPos); ctx.lineTo(xPos, yPos + baseCellSize); }
+              if (cell.walls.posY) { ctx.moveTo(xPos + baseCellSize, yPos); ctx.lineTo(xPos + baseCellSize, yPos + baseCellSize); }
+              if (cell.walls.negZ) { ctx.moveTo(xPos, yPos); ctx.lineTo(xPos + baseCellSize, yPos); }
+              if (cell.walls.posZ) { ctx.moveTo(xPos, yPos + baseCellSize); ctx.lineTo(xPos + baseCellSize, yPos + baseCellSize); }
+              ctx.stroke();
+              if (cell.x === 0 && cell.y === 0 && cell.z === 0)
+                drawIndicator(ctx, xPos, yPos, 'entrance');
+              if (cell.x === mazeSizeX - 1 && cell.y === mazeSizeY - 1 && cell.z === mazeSizeZ - 1)
+                drawIndicator(ctx, xPos, yPos, 'exit');
+              if (player.y === y && player.z === z) {
+                ctx.beginPath();
+                let cx = xPos + baseCellSize / 2;
+                let cy = yPos + baseCellSize / 2;
+                let radius = baseCellSize / 4;
+                ctx.fillStyle = 'yellow';
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        } else if (perspective === 2) {
+          let currentY = player.y;
+          for (let x = 0; x < mazeSizeX; x++) {
+            for (let z = 0; z < mazeSizeZ; z++) {
+              let cell = maze[x][currentY][z];
+              let xPos = z * baseCellSize;
+              let yPos = x * baseCellSize;
+              ctx.beginPath();
+              if (cell.walls.negZ) { ctx.moveTo(xPos, yPos); ctx.lineTo(xPos, yPos + baseCellSize); }
+              if (cell.walls.posZ) { ctx.moveTo(xPos + baseCellSize, yPos); ctx.lineTo(xPos + baseCellSize, yPos + baseCellSize); }
+              if (cell.walls.negX) { ctx.moveTo(xPos, yPos); ctx.lineTo(xPos + baseCellSize, yPos); }
+              if (cell.walls.posX) { ctx.moveTo(xPos, yPos + baseCellSize); ctx.lineTo(xPos + baseCellSize, yPos + baseCellSize); }
+              ctx.stroke();
+              if (cell.x === 0 && cell.y === 0 && cell.z === 0)
+                drawIndicator(ctx, xPos, yPos, 'entrance');
+              if (cell.x === mazeSizeX - 1 && cell.y === mazeSizeY - 1 && cell.z === mazeSizeZ - 1)
+                drawIndicator(ctx, xPos, yPos, 'exit');
+              if (player.z === z && player.x === x) {
+                ctx.beginPath();
+                let cx = xPos + baseCellSize / 2;
+                let cy = yPos + baseCellSize / 2;
+                let radius = baseCellSize / 4;
+                ctx.fillStyle = 'yellow';
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+      }
+      
+      function updateInfo() {
+        coordsDiv.innerText = `Coordinates: (${player.x}, ${player.y}, ${player.z})`;
+        movesDiv.innerText = `Moves: ${moves}`;
+      }
+      
+      function renderAll() {
+        updateCanvasSize(canvasLeft, 0);
+        updateCanvasSize(canvasCenter, 1);
+        updateCanvasSize(canvasRight, 2);
+        drawMazeOnContext(ctxLeft, 0);
+        drawMazeOnContext(ctxCenter, 1);
+        drawMazeOnContext(ctxRight, 2);
+        updateInfo();
+      }
+      
+      function processInput(key) {
+        let moved = false;
+        let currentCell = maze[player.x][player.y][player.z];
+        if (key === 'ArrowUp' || key === 'ArrowDown' ||
+            key === 'ArrowLeft' || key === 'ArrowRight') {
+          if (selectedIndex === 0) {
+            if (key === 'ArrowLeft' && player.x > 0 && !currentCell.walls.negX) { player.x--; moved = true; }
+            if (key === 'ArrowRight' && player.x < mazeSizeX - 1 && !currentCell.walls.posX) { player.x++; moved = true; }
+            if (key === 'ArrowUp' && player.y > 0 && !currentCell.walls.negY) { player.y--; moved = true; }
+            if (key === 'ArrowDown' && player.y < mazeSizeY - 1 && !currentCell.walls.posY) { player.y++; moved = true; }
+          } else if (selectedIndex === 1) {
+            if (key === 'ArrowLeft' && player.y > 0 && !currentCell.walls.negY) { player.y--; moved = true; }
+            if (key === 'ArrowRight' && player.y < mazeSizeY - 1 && !currentCell.walls.posY) { player.y++; moved = true; }
+            if (key === 'ArrowUp' && player.z > 0 && !currentCell.walls.negZ) { player.z--; moved = true; }
+            if (key === 'ArrowDown' && player.z < mazeSizeZ - 1 && !currentCell.walls.posZ) { player.z++; moved = true; }
+          } else if (selectedIndex === 2) {
+            if (key === 'ArrowLeft' && player.z > 0 && !currentCell.walls.negZ) { player.z--; moved = true; }
+            if (key === 'ArrowRight' && player.z < mazeSizeZ - 1 && !currentCell.walls.posZ) { player.z++; moved = true; }
+            if (key === 'ArrowUp' && player.x > 0 && !currentCell.walls.negX) { player.x--; moved = true; }
+            if (key === 'ArrowDown' && player.x < mazeSizeX - 1 && !currentCell.walls.posX) { player.x++; moved = true; }
+          }
+          if (moved) moves++;
+        } else if (key === ' ') {
+          selectedIndex = (selectedIndex + 1) % 3;
+        }
+        renderAll();
+      }
+      
+      document.addEventListener('keydown', function(e) {
+        processInput(e.key);
+      });
+      
+      canvasLeft.addEventListener('click', function() { selectedIndex = 0; renderAll(); });
+      canvasCenter.addEventListener('click', function() { selectedIndex = 1; renderAll(); });
+      canvasRight.addEventListener('click', function() { selectedIndex = 2; renderAll(); });
+      
+      btnLeft.addEventListener('click', function() { processInput('ArrowLeft'); });
+      btnUp.addEventListener('click', function() { processInput('ArrowUp'); });
+      btnDown.addEventListener('click', function() { processInput('ArrowDown'); });
+      btnRight.addEventListener('click', function() { processInput('ArrowRight'); });
+      
+      renderAll();
+      window.addEventListener('resize', renderAll);
+    })();
+  </script>
+
+<dialog id="helpDialog">
+    <form method="dialog">
+      <h2>flatlander's nightmare</h2>
+      <p>you're a two dimensional circle stuck in a three dimensional maze. the three mazes you see are slices through that cube and you have to use your position in each slice to find your way out.</p>
+      <p class="desktop">
+        Use the arrow keys to move and press space to cycle through the slices.
+      </p>
+      <p class="mobile">
+        Use the on‑screen buttons to move and tap a canvas to select the slice.
+      </p>
+      <menu>
+        <button id="closeHelp" value="default">OK</button>
+      </menu>
+    </form>
+  </dialog>
+  
+  <script>
+    // Show the help dialog on page load and dismiss it when the OK button is clicked.
+    document.addEventListener("DOMContentLoaded", function() {
+      const dialog = document.getElementById("helpDialog");
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+      } else {
+        alert("The <dialog> API is not supported by this browser.");
+      }
+      document.getElementById("closeHelp").addEventListener("click", function() {
+        dialog.close();
+      });
+    });
+  </script> 
+
+<script async data-id="101394794" src="//static.getclicky.com/js"></script>
+</body>
+</html>
