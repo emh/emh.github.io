@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- Mobile viewport optimization -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retro Missile Defense</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      background: #000;
+    }
+    /* Stats displayed at the top on one line */
+    #stats {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      color: #fff;
+      font-family: monospace;
+      font-size: 18px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 8px;
+    }
+    /* Upgrade buttons container at the bottom */
+    #upgrades {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+    }
+    /* Style for each upgrade button */
+    #upgrades button {
+      position: relative;
+      width: 60px;
+      height: 60px;
+      background: #333;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+    }
+    /* Current level in top left of button */
+    #upgrades button .level {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      font-size: 12px;
+    }
+    /* Upgrade cost in bottom right of button */
+    #upgrades button .cost {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      font-size: 12px;
+    }
+    /* Game Over message styling */
+    #gameOver {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-family: monospace;
+      font-size: 24px;
+      background: rgba(0,0,0,0.8);
+      padding: 20px;
+      border-radius: 8px;
+      display: none;
+      text-align: center;
+    }
+    #gameOver button {
+      margin-top: 10px;
+      font-size: 18px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <!-- Game stats at the top (with emojis) -->
+  <div id="stats">🛡️ 100/100 | 💰 0 | ⭐ 0</div>
+  <!-- Upgrade buttons at the bottom -->
+  <div id="upgrades">
+    <button id="upgradeMissileSpeed"></button>
+    <button id="upgradeConcurrent"></button>
+    <button id="upgradeBlastRadius"></button>
+    <button id="upgradeShield"></button>
+  </div>
+  <!-- Game Over message -->
+  <div id="gameOver">
+    Game Over!<br>
+    <button id="restart">Restart</button>
+  </div>
+
+  <script>
+    // --- Global Variables and Declarations ---
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Base object must be declared before being used in resizeCanvas.
+    let base = { x: 0, shield: 100, maxShield: 100 };
+
+    // Ground line y-coordinate.
+    let groundY;
+
+    // --- Resize and Rendering Functions ---
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      // Set ground line 100px from the bottom.
+      groundY = canvas.height - 100;
+      // Center the base horizontally.
+      base.x = canvas.width / 2;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // Draw the ground as a straight horizontal line with grey fill underneath.
+    function drawGround() {
+      ctx.fillStyle = "#777";
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+      ctx.strokeStyle = "#333";
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      ctx.lineTo(canvas.width, groundY);
+      ctx.stroke();
+    }
+
+    // Draw the base as half of a rounded square (shrunk by 25% to 75px).
+    // The base's bottom edge is flush with the ground.
+    function drawBase(cx) {
+      const size = 75; // 25% smaller than original 100
+      const half = size / 2;
+      // Position the square so its bottom edge is on the ground.
+      const x = cx - half;
+      const y = groundY - size;
+      ctx.fillStyle = "blue";
+      ctx.beginPath();
+      // Start at bottom left.
+      ctx.moveTo(x, groundY);
+      // Left side up.
+      ctx.lineTo(x, y + 20);
+      // Top-left rounded corner.
+      ctx.quadraticCurveTo(x, y, x + 20, y);
+      // Top edge.
+      ctx.lineTo(x + size - 20, y);
+      // Top-right rounded corner.
+      ctx.quadraticCurveTo(x + size, y, x + size, y + 20);
+      // Right side down.
+      ctx.lineTo(x + size, groundY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // --- Game Logic (Missiles, Explosions, Upgrades, etc.) ---
+    function drawBullet(x, y, vx, vy, color) {
+      const angle = Math.atan2(vy, vx);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = color;
+      const bulletLength = 12;
+      const bulletWidth = 4;
+      ctx.fillRect(0, -bulletWidth / 2, bulletLength - bulletWidth, bulletWidth);
+      ctx.beginPath();
+      ctx.arc(bulletLength - bulletWidth, 0, bulletWidth / 2, -Math.PI/2, Math.PI/2);
+      ctx.fill();
+      ctx.restore();
+    }
+    function drawExplosions() {
+      explosions.forEach(exp => {
+        let elapsed = performance.now() - exp.startTime;
+        let progress = elapsed / (explosionDuration * 1000);
+        if (progress > 1) progress = 1;
+        for (let i = 0; i < 3; i++) {
+          let offsetProgress = progress + i * 0.2;
+          if (offsetProgress > 1) offsetProgress = 1;
+          let radius = offsetProgress * explosionRadius;
+          let alpha = 1 - offsetProgress;
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = "yellow";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(exp.x, exp.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      });
+    }
+
+    // --- Game State Variables ---
+    let money = 0, score = 0, gameOver = false;
+    let maxConcurrentMissiles = 1, playerMissileSpeed = 500, explosionRadius = 30;
+    let lastEnemySpawnTime = performance.now();
+    const enemyMissileSpeed = 100, enemySpawnInterval = 2000, explosionDuration = 0.5;
+    const upgrades = {
+      missileSpeed: { level: 0, cost: 50 },
+      concurrent: { level: 0, cost: 50 },
+      blastRadius: { level: 0, cost: 50 },
+      shield: { level: 0, cost: 50 }
+    };
+    let playerMissiles = [], enemyMissiles = [], explosions = [];
+    let lastFrameTime = performance.now();
+
+    function updateUpgradeButton(button, emoji, upgradeObj) {
+      button.innerHTML = `
+        <span class="level">Lv: ${upgradeObj.level}</span>
+        <span class="emoji">${emoji}</span>
+        <span class="cost">$${upgradeObj.cost}</span>
+      `;
+    }
+    const btnMissileSpeed = document.getElementById("upgradeMissileSpeed");
+    const btnConcurrent = document.getElementById("upgradeConcurrent");
+    const btnBlastRadius = document.getElementById("upgradeBlastRadius");
+    const btnShield = document.getElementById("upgradeShield");
+    updateUpgradeButton(btnMissileSpeed, "🚀", upgrades.missileSpeed);
+    updateUpgradeButton(btnConcurrent, "🔢", upgrades.concurrent);
+    updateUpgradeButton(btnBlastRadius, "💥", upgrades.blastRadius);
+    updateUpgradeButton(btnShield, "🛡️", upgrades.shield);
+
+    function gameLoop(currentTime) {
+      const dt = (currentTime - lastFrameTime) / 1000;
+      lastFrameTime = currentTime;
+      update(dt);
+      draw();
+      if (!gameOver) requestAnimationFrame(gameLoop);
+    }
+    function update(dt) {
+      for (let i = playerMissiles.length - 1; i >= 0; i--) {
+        const m = playerMissiles[i];
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        const dx = m.targetX - m.x, dy = m.targetY - m.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) {
+          explosions.push({ x: m.x, y: m.y, startTime: performance.now(), radius: explosionRadius });
+          playerMissiles.splice(i, 1);
+        }
+      }
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        if (performance.now() - explosions[i].startTime > explosionDuration * 1000) {
+          explosions.splice(i, 1);
+        }
+      }
+      enemyMissiles.forEach((m, i) => {
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        if (m.y >= groundY) {
+          base.shield -= 20;
+          enemyMissiles.splice(i, 1);
+        }
+      });
+      explosions.forEach(exp => {
+        for (let i = enemyMissiles.length - 1; i >= 0; i--) {
+          const m = enemyMissiles[i];
+          const dx = exp.x - m.x, dy = exp.y - m.y;
+          if (Math.sqrt(dx * dx + dy * dy) < exp.radius) {
+            enemyMissiles.splice(i, 1);
+            money += 10;
+            score++;
+          }
+        }
+      });
+      if (performance.now() - lastEnemySpawnTime > enemySpawnInterval) {
+        spawnEnemyMissile();
+        lastEnemySpawnTime = performance.now();
+      }
+      document.getElementById("stats").innerText =
+        "🛡️ " + base.shield + "/" + base.maxShield + " | 💰 " + money + " | ⭐ " + score;
+      if (base.shield <= 0) {
+        gameOver = true;
+        document.getElementById("gameOver").style.display = "block";
+      }
+    }
+    function draw() {
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drawGround();
+      enemyMissiles.forEach(m => {
+        drawBullet(m.x, m.y, m.vx, m.vy, "red");
+      });
+      playerMissiles.forEach(m => {
+        drawBullet(m.x, m.y, m.vx, m.vy, "white");
+      });
+      drawExplosions();
+      drawBase(base.x);
+    }
+    function spawnEnemyMissile() {
+      const startX = Math.random() * canvas.width;
+      const startY = 0;
+      const targetX = base.x + (Math.random() * 40 - 20);
+      const targetY = groundY;
+      const dx = targetX - startX, dy = targetY - startY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const vx = (dx / distance) * enemyMissileSpeed, vy = (dy / distance) * enemyMissileSpeed;
+      enemyMissiles.push({ x: startX, y: startY, targetX, targetY, vx, vy });
+    }
+    function fireMissile(e) {
+      if (gameOver) return;
+      if (playerMissiles.length >= maxConcurrentMissiles) return;
+      const rect = canvas.getBoundingClientRect();
+      const targetX = (e.clientX || e.x) - rect.left;
+      const targetY = (e.clientY || e.y) - rect.top;
+      const dx = targetX - base.x, dy = targetY - groundY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const vx = (dx / distance) * playerMissileSpeed, vy = (dy / distance) * playerMissileSpeed;
+      playerMissiles.push({ x: base.x, y: groundY, targetX, targetY, vx, vy });
+    }
+    canvas.addEventListener("pointerdown", fireMissile);
+
+    btnMissileSpeed.addEventListener("click", function() {
+      if (money >= upgrades.missileSpeed.cost) {
+        money -= upgrades.missileSpeed.cost;
+        upgrades.missileSpeed.level++;
+        playerMissileSpeed += 100;
+        upgrades.missileSpeed.cost = Math.floor(upgrades.missileSpeed.cost * 1.5);
+        updateUpgradeButton(btnMissileSpeed, "🚀", upgrades.missileSpeed);
+      }
+    });
+    btnConcurrent.addEventListener("click", function() {
+      if (money >= upgrades.concurrent.cost) {
+        money -= upgrades.concurrent.cost;
+        upgrades.concurrent.level++;
+        maxConcurrentMissiles++;
+        upgrades.concurrent.cost = Math.floor(upgrades.concurrent.cost * 1.5);
+        updateUpgradeButton(btnConcurrent, "🔢", upgrades.concurrent);
+      }
+    });
+    btnBlastRadius.addEventListener("click", function() {
+      if (money >= upgrades.blastRadius.cost) {
+        money -= upgrades.blastRadius.cost;
+        upgrades.blastRadius.level++;
+        explosionRadius += 5;
+        upgrades.blastRadius.cost = Math.floor(upgrades.blastRadius.cost * 1.5);
+        updateUpgradeButton(btnBlastRadius, "💥", upgrades.blastRadius);
+      }
+    });
+    btnShield.addEventListener("click", function() {
+      if (money >= upgrades.shield.cost) {
+        money -= upgrades.shield.cost;
+        upgrades.shield.level++;
+        if (base.shield < base.maxShield) {
+          base.shield = base.maxShield;
+        } else {
+          base.maxShield += 20;
+          base.shield = base.maxShield;
+        }
+        upgrades.shield.cost = Math.floor(upgrades.shield.cost * 1.5);
+        updateUpgradeButton(btnShield, "🛡️", upgrades.shield);
+      }
+    });
+    document.getElementById("restart").addEventListener("click", function() {
+      money = 0;
+      score = 0;
+      base.shield = 100;
+      base.maxShield = 100;
+      playerMissiles = [];
+      enemyMissiles = [];
+      explosions = [];
+      upgrades.missileSpeed.level = 0; upgrades.missileSpeed.cost = 50;
+      upgrades.concurrent.level = 0; upgrades.concurrent.cost = 50;
+      upgrades.blastRadius.level = 0; upgrades.blastRadius.cost = 50;
+      upgrades.shield.level = 0; upgrades.shield.cost = 50;
+      playerMissileSpeed = 500;
+      maxConcurrentMissiles = 1;
+      explosionRadius = 30;
+      gameOver = false;
+      document.getElementById("gameOver").style.display = "none";
+      updateUpgradeButton(btnMissileSpeed, "🚀", upgrades.missileSpeed);
+      updateUpgradeButton(btnConcurrent, "🔢", upgrades.concurrent);
+      updateUpgradeButton(btnBlastRadius, "💥", upgrades.blastRadius);
+      updateUpgradeButton(btnShield, "🛡️", upgrades.shield);
+      enemyMissiles = [];
+      requestAnimationFrame(gameLoop);
+    });
+    
+    requestAnimationFrame(gameLoop);
+  </script>
+<a title="Web Analytics" href="https://clicky.com/101394794"><img alt="Clicky" src="//static.getclicky.com/media/links/badge.gif" border="0" /></a>
+<script async data-id="101394794" src="//static.getclicky.com/js"></script>
+</body>
+</html>
