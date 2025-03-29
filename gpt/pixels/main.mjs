@@ -850,6 +850,13 @@ function toggleCell(cellX, cellY, color = currentColor) {
     // In overwrite mode, always set the new color regardless of existing color
     grid.setPixelColor(cellX, cellY, color);
   }
+  
+  // We don't want to update the favicon on every pixel change (would be too frequent)
+  // So we'll use a debounce approach
+  if (toggleCell.faviconUpdateTimer) {
+    clearTimeout(toggleCell.faviconUpdateTimer);
+  }
+  toggleCell.faviconUpdateTimer = setTimeout(generateFavicon, 500); // Update favicon after 500ms of inactivity
 }
 
 // Zoom in: increase resolution by splitting each cell into 4
@@ -875,6 +882,7 @@ function zoomIn() {
   grid.zoomIn();
   
   render();
+  generateFavicon();
 }
 
 // Zoom out: decrease resolution by merging sets of 4 cells
@@ -902,6 +910,7 @@ function zoomOut() {
   grid.zoomOut();
   
   render();
+  generateFavicon();
 }
 
 // Draw the entire grid and filled cells
@@ -1404,12 +1413,26 @@ function handleTouchEnd(e) {
         // Reset circle drawing state
         toolStartCell = null;
         toolEndCell = null;
-        }
+      }
+      
+      // Instead of updating the favicon for each pixel toggle, update it once at the end
+      // Clear any debounced updates that might be pending
+      if (toggleCell.faviconUpdateTimer) {
+        clearTimeout(toggleCell.faviconUpdateTimer);
+        toggleCell.faviconUpdateTimer = null;
+      }
+      
+      // Update favicon immediately after the batch is complete
+      generateFavicon();
 
       if (isDragging || isDrawingShape) render();
 
       grid.endBatch(); // End batch
       isDrawingShape = false;
+      isDragging = false;
+    } else if (isDragging) {
+      // If the user was dragging (free drawing), update the favicon
+      generateFavicon();
       isDragging = false;
     }
     
@@ -1579,7 +1602,17 @@ function handleMouseUp(e) {
       // Reset circle drawing state
       toolStartCell = null;
       toolEndCell = null;
-  }
+    }
+    
+    // Instead of updating the favicon for each pixel toggle, update it once at the end
+    // Clear any debounced updates that might be pending
+    if (toggleCell.faviconUpdateTimer) {
+      clearTimeout(toggleCell.faviconUpdateTimer);
+      toggleCell.faviconUpdateTimer = null;
+    }
+    
+    // Update favicon immediately after the batch is complete
+    generateFavicon();
   }
 
   if (isDragging || isDrawingShape) render();
@@ -1755,6 +1788,140 @@ function loadGridFromUrl() {
   return false;
 }
 
+// Generate a favicon from the pixel grid
+function generateFavicon() {
+  // Create a small canvas for the favicon (16x16 pixels is standard)
+  const faviconSize = 16;
+  const faviconCanvas = document.createElement('canvas');
+  faviconCanvas.width = faviconSize;
+  faviconCanvas.height = faviconSize;
+  const faviconCtx = faviconCanvas.getContext('2d');
+  
+  // Start with a transparent background
+  faviconCtx.clearRect(0, 0, faviconSize, faviconSize);
+  
+  // If there are no pixels, create a simple default icon
+  if (grid.pixels.length === 0) {
+    // Draw a simple pixel grid pattern
+    faviconCtx.fillStyle = '#e8e8e8';
+    faviconCtx.fillRect(0, 0, faviconSize, faviconSize);
+    
+    faviconCtx.fillStyle = '#666666';
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        if ((x + y) % 2 === 0) {
+          faviconCtx.fillRect(x * 4, y * 4, 4, 4);
+        }
+      }
+    }
+  } else {
+    // Find the bounds of the drawing
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+    
+    const z = grid.currentZoomLevel;
+    const activePixels = grid.pixels.filter(pixel => pixel.zoomLevel === z);
+    
+    for (const pixel of activePixels) {
+      minX = Math.min(minX, pixel.x);
+      minY = Math.min(minY, pixel.y);
+      maxX = Math.max(maxX, pixel.x);
+      maxY = Math.max(maxY, pixel.y);
+    }
+    
+    // Adjust if no pixels are found (handle empty grid gracefully)
+    if (minX === Infinity) {
+      return createDefaultFavicon();
+    }
+    
+    // Calculate the dimensions of the drawing
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+    
+    // Determine scale factor to fit the drawing in the favicon
+    const scaleX = faviconSize / width;
+    const scaleY = faviconSize / height;
+    const scale = Math.min(scaleX, scaleY);
+    
+    // Center the drawing in the favicon
+    const offsetX = (faviconSize - width * scale) / 2;
+    const offsetY = (faviconSize - height * scale) / 2;
+    
+    // Fill with a background color
+    faviconCtx.fillStyle = '#f5f5f5';
+    faviconCtx.fillRect(0, 0, faviconSize, faviconSize);
+    
+    // Draw each pixel from the grid
+    for (const pixel of activePixels) {
+      const x = (pixel.x - minX) * scale + offsetX;
+      const y = (pixel.y - minY) * scale + offsetY;
+      const size = Math.max(1, scale); // Ensure at least 1px size
+      
+      faviconCtx.fillStyle = pixel.color;
+      faviconCtx.fillRect(x, y, size, size);
+    }
+  }
+  
+  // Convert the canvas to a data URL and update the favicon
+  const dataUrl = faviconCanvas.toDataURL('image/png');
+  updateFavicon(dataUrl);
+  
+  return dataUrl;
+}
+
+// Create a default favicon when no drawing exists
+function createDefaultFavicon() {
+  const faviconSize = 16;
+  const faviconCanvas = document.createElement('canvas');
+  faviconCanvas.width = faviconSize;
+  faviconCanvas.height = faviconSize;
+  const faviconCtx = faviconCanvas.getContext('2d');
+  
+  // Draw a simple pixel grid pattern
+  faviconCtx.fillStyle = '#e8e8e8';
+  faviconCtx.fillRect(0, 0, faviconSize, faviconSize);
+  
+  faviconCtx.fillStyle = '#666666';
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      if ((x + y) % 2 === 0) {
+        faviconCtx.fillRect(x * 4, y * 4, 4, 4);
+      }
+    }
+  }
+  
+  const dataUrl = faviconCanvas.toDataURL('image/png');
+  updateFavicon(dataUrl);
+  
+  return dataUrl;
+}
+
+// Update the favicon in the document
+function updateFavicon(dataUrl) {
+  // Look for existing favicon
+  let link = document.querySelector('link[rel="icon"]') || 
+             document.querySelector('link[rel="shortcut icon"]');
+  
+  // If not found, create a new link element
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  
+  // Update the href attribute with the new data URL
+  link.href = dataUrl;
+  
+  // Also update apple-touch-icon for iOS devices
+  let appleLink = document.querySelector('link[rel="apple-touch-icon"]');
+  if (!appleLink) {
+    appleLink = document.createElement('link');
+    appleLink.rel = 'apple-touch-icon';
+    document.head.appendChild(appleLink);
+  }
+  appleLink.href = dataUrl;
+}
+
 // Load grid from our bit-packed format
 function loadGridFromBitPackedFormat(base64String) {
   try {
@@ -1773,6 +1940,8 @@ function loadGridFromBitPackedFormat(base64String) {
       newGrid.currentZoomLevel = zoomLevel;
       grid = newGrid;
       render();
+      // Generate favicon
+      generateFavicon();
       return true;
     }
     
@@ -1858,6 +2027,8 @@ function loadGridFromBitPackedFormat(base64String) {
     // Replace current grid
     grid = newGrid;
     render();
+    // Generate favicon
+    generateFavicon();
     return true;
   } catch (error) {
     console.error('Error in bit-packed format decoding:', error);
@@ -1960,6 +2131,8 @@ function loadGridFromCompactFormat(base64String) {
   // Replace current grid
   grid = newGrid;
   render();
+  // Generate favicon
+  generateFavicon();
   return true;
 }
 
@@ -1989,6 +2162,8 @@ function loadGridFromLegacyFormat(base64String) {
     grid = newGrid;
     render();
     
+    // Generate favicon
+    generateFavicon();
     return true;
   } catch (error) {
     console.error('Error in legacy format decoding:', error);
@@ -2002,11 +2177,13 @@ function handleToolClick(toolId) {
     case 'undo':
       if (grid.undo()) {
         render();
+        generateFavicon();
       }
       break;
     case 'redo':
       if (grid.redo()) {
         render();
+        generateFavicon();
       }
       break;
     case 'zoomIn':
@@ -2030,6 +2207,7 @@ function handleToolClick(toolId) {
     case 'new':
       grid = new PixelGrid();
       render();
+      createDefaultFavicon();
       break;
     case 'share':
       // Generate share URL
@@ -2122,4 +2300,6 @@ resizeCanvas();
 if (!loadGridFromUrl()) {
   // If no URL data or loading failed, just render with the default grid
   render();
+  // Generate default favicon
+  createDefaultFavicon();
 }
