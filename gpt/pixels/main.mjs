@@ -121,7 +121,7 @@ const TOOL_TYPE_ICONS = {
 
 // Tool icons (pixel art style) - 7x7 resolution as 2D arrays (1 = filled pixel, 0 = empty)
 const TOOL_ICONS = {
-  'undo': [
+  'redo': [
     [0, 0, 1, 1, 1, 0, 1],
     [0, 1, 0, 0, 0, 1, 1],
     [1, 0, 0, 0, 1, 1, 1],
@@ -130,7 +130,7 @@ const TOOL_ICONS = {
     [0, 1, 0, 0, 0, 1, 0],
     [0, 0, 1, 1, 1, 0, 0]
   ],
-  'redo': [
+  'undo': [
     [1, 0, 1, 1, 1, 0, 0],
     [1, 1, 0, 0, 0, 1, 0],
     [1, 1, 1, 0, 0, 0, 1],
