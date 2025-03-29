@@ -18,3 +18,65 @@ canvas {
   /* Canvas dimensions are set in JavaScript */
   touch-action: none;
 }
+
+dialog {
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  max-width: 300px;
+  width: 90%;
+  background-color: white;
+}
+
+dialog::backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.dialog-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.dialog-content h2 {
+  margin: 0;
+  margin-bottom: 8px;
+  font-size: 1.2rem;
+  color: #333;
+  text-align: center;
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.dialog-buttons button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 5px;
+  background-color: #4285f4;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#close-dialog {
+  padding: 10px;
+  background-color: #f0f0f0;
+  border: none;
+  border-radius: 5px;
+  color: #333;
+  width: 100%;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+#close-dialog:hover, .dialog-buttons button:hover {
+  opacity: 0.9;
+}

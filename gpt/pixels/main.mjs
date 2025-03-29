@@ -1641,34 +1641,61 @@ function handleToolClick(toolId) {
       // Generate share URL
       const shareUrl = createShareUrl();
       
-      // Store the original share icon
-      const originalShareIcon = TOOL_ICONS['share'];
+      // Get the dialog element
+      const shareDialog = document.getElementById('share-dialog');
+      const copyButton = document.getElementById('copy-button');
+      const shareButton = document.getElementById('share-button');
+      const closeButton = document.getElementById('close-dialog');
       
-      // Show copy confirmation by replacing the share icon with a checkmark
-      const showCopyConfirmation = () => {
-        TOOL_ICONS['share'] = CHECKMARK_ICON;
-        render(); // Re-render with checkmark
+      // Setup copy button
+      copyButton.onclick = () => {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          // Show visual confirmation
+          const originalText = copyButton.textContent;
+          copyButton.textContent = '✓ Copied!';
+          
+          // Reset button text after 1 second
+          setTimeout(() => {
+            copyButton.textContent = originalText;
+          }, 1000);
+        });
+      };
+      
+      // Setup share button
+      shareButton.onclick = () => {
+        const data = {
+          title: 'Pixels',
+          url: shareUrl
+        };
         
-        // Reset to original icon after 500ms
-        setTimeout(() => {
-          TOOL_ICONS['share'] = originalShareIcon;
-          render(); // Re-render with original icon
-        }, 500);
+        if (navigator.canShare && navigator.canShare(data)) {
+          navigator.share(data)
+            .then(() => {
+              shareDialog.close();
+            })
+            .catch(error => {
+              console.error('Error sharing:', error);
+            });
+        } else {
+          // Fallback if Web Share API is not available
+          navigator.clipboard.writeText(shareUrl);
+          const originalText = shareButton.textContent;
+          shareButton.textContent = '✓ Link copied instead';
+          
+          setTimeout(() => {
+            shareButton.textContent = originalText;
+          }, 1000);
+        }
       };
       
-      // Copy to clipboard
-
-      const data = {
-        title: 'Pixels',
-        url: shareUrl
+      // Setup close button
+      closeButton.onclick = () => {
+        shareDialog.close();
       };
-
-      if (navigator.canShare && navigator.canShare(data)) {
-        navigator.share(data);
-      }      
-      navigator.clipboard.writeText(shareUrl);
-      showCopyConfirmation();
-
+      
+      // Show the dialog
+      shareDialog.showModal();
+      
       break;
   }
 }
@@ -1698,6 +1725,22 @@ canvas.addEventListener('mouseleave', handleMouseUp);
 canvas.addEventListener('wheel', handleWheel, { passive: false });
 canvas.addEventListener('contextmenu', handleContextMenu);
 window.addEventListener('resize', resizeCanvas);
+
+// Dialog setup
+const shareDialog = document.getElementById('share-dialog');
+
+// Close dialog when clicking outside of it
+shareDialog.addEventListener('click', (e) => {
+  const dialogDimensions = shareDialog.getBoundingClientRect();
+  if (
+    e.clientX < dialogDimensions.left ||
+    e.clientX > dialogDimensions.right ||
+    e.clientY < dialogDimensions.top ||
+    e.clientY > dialogDimensions.bottom
+  ) {
+    shareDialog.close();
+  }
+});
 
 // Initial setup
 calculatePaletteSize(); // Initial calculation of palette dimensions
