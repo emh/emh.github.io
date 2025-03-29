@@ -2327,8 +2327,6 @@ function handleToolClick(toolId) {
         
         // Share data for Web Share API with the thumbnail
         const shareData = {
-          title: 'Pixels Artwork',
-          text: 'Check out my pixel art creation!',
           url: shareUrl
         };
         
