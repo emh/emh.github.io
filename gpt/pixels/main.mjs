@@ -1728,7 +1728,7 @@ function handleToolClick(toolId) {
       // Share data for Web Share API
       const data = {
         title: 'Pixels',
-        url: shareUrl
+        text: shareUrl
       };
 
       // Try to use the Web Share API first if available (works well on mobile)
