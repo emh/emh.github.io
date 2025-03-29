@@ -1621,24 +1621,31 @@ function serializeGridToBase64() {
 
 // Create a share URL from the current grid state
 function createShareUrl() {
-  // Get base URL (current URL without hash)
-  const baseUrl = window.location.href.split('#')[0];
+  // Get base URL (current URL without query parameters)
+  const baseUrl = window.location.href.split('?')[0];
   
   // Serialize grid data to base64
   const encodedData = serializeGridToBase64();
   
   // Construct the full share URL
-  return `${baseUrl}#${encodedData}`;
+  return `${baseUrl}?pixels=${encodedData}`;
 }
 
-// Try to load grid state from URL hash if present
+// Try to load grid state from URL parameter or hash if present
 function loadGridFromUrl() {
-  // Check if URL has a hash component
-  if (window.location.hash) {
+  // First try to get data from URL parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const pixelsParam = urlParams.get('pixels');
+  
+  // Then try to get from hash if parameter is not present (backward compatibility)
+  const hashData = window.location.hash ? window.location.hash.substring(1) : null;
+  
+  // Use parameter data if available, otherwise use hash data if available
+  const base64String = pixelsParam || hashData;
+  
+  // Check if we have data from either source
+  if (base64String) {
     try {
-      // Remove the # character
-      const base64String = window.location.hash.substring(1);
-      
       // Decode the base64 string to JSON
       const jsonString = decodeURIComponent(atob(base64String));
       const data = JSON.parse(jsonString);
