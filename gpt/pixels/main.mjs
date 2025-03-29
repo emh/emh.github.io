@@ -1673,30 +1673,35 @@ function serializeGridToBase64() {
     }
   }
   
-  // Convert to array and ensure we have at most 8 colors (3 bits per pixel)
-  // If more, we'll need to quantize or use more bits per pixel
+  // Convert to array
   const palette = Array.from(uniqueColors);
-  if (palette.length > 8) {
-    console.warn(`More than 8 colors (${palette.length}), some colors will be lost in encoding`);
+  
+  // Determine number of bits needed for the color palette size
+  // For example: 5 colors need 3 bits (2^3 = 8 possible values)
+  const numColors = palette.length + 1; // +1 for transparent/empty
+  
+  // Calculate bits per pixel (minimum 3 bits, but could be more)
+  let bitsPerPixel = 3;
+  while ((1 << bitsPerPixel) < numColors) {
+    bitsPerPixel++;
   }
+  
+  // log how many unique colors and bits per pixel needed
+  console.log(`Encoding ${palette.length} unique colors with ${bitsPerPixel} bits per pixel`);
   
   // Create a map of color to index
   const colorToIndex = {};
   palette.forEach((color, index) => {
-    colorToIndex[color] = index;
+    colorToIndex[color] = index + 1; // +1 so that 0 can be used for null/transparent
   });
   
   // Encode the palette - each color is 3 bytes (RGB without the # prefix)
   let paletteBytes = '';
-  for (let i = 0; i < Math.min(palette.length, 8); i++) {
+  for (let i = 0; i < palette.length; i++) {
     const color = palette[i];
     // Extract RGB values from the color (removing the '#')
     paletteBytes += color.substring(1);
   }
-  
-  // Determine how many bits per pixel we need
-  // We use 3 bits per pixel which allows 8 colors (including empty)
-  const bitsPerPixel = 3;
   
   // Calculate the number of bits needed for the entire grid
   const totalBits = width * height * bitsPerPixel;
@@ -1709,10 +1714,7 @@ function serializeGridToBase64() {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const color = grid2D[y][x];
-      let colorIndex = color === null ? 0 : (colorToIndex[color] + 1);
-      
-      // Ensure we don't exceed our bit capacity
-      colorIndex = colorIndex % (1 << bitsPerPixel);
+      const colorIndex = color === null ? 0 : colorToIndex[color];
       
       // Convert to binary and pad to bitsPerPixel
       const bits = colorIndex.toString(2).padStart(bitsPerPixel, '0');
@@ -1738,13 +1740,14 @@ function serializeGridToBase64() {
   }
 
   // Construct our final format:
-  // Format: [zoomLevel]:[minX]:[minY]:[width]:[height]:[palette count]:[palette bytes]:[pixel data]
+  // Format: [zoomLevel]:[minX]:[minY]:[width]:[height]:[bits per pixel]:[palette count]:[palette bytes]:[pixel data]
   const header = [
     z,                    // Zoom level
     minX,                 // Min X
     minY,                 // Min Y
     width,                // Width
     height,               // Height
+    bitsPerPixel,         // Bits per pixel
     palette.length,       // Number of colors in palette
     paletteBytes          // Palette data (RGB values)
   ].join(':');
@@ -1768,6 +1771,160 @@ function createShareUrl() {
   return `${baseUrl}?pixels=${encodedData}`;
 }
 
+// Generate a thumbnail canvas for sharing
+function generateThumbnailCanvas() {
+  // Create a larger canvas for the thumbnail (256x256 is better for sharing)
+  const thumbnailSize = 256;
+  const thumbnailCanvas = document.createElement('canvas');
+  thumbnailCanvas.width = thumbnailSize;
+  thumbnailCanvas.height = thumbnailSize;
+  const thumbnailCtx = thumbnailCanvas.getContext('2d');
+  
+  // Start with a transparent background
+  thumbnailCtx.clearRect(0, 0, thumbnailSize, thumbnailSize);
+  
+  // If there are no pixels, create a simple default pattern
+  if (grid.pixels.length === 0) {
+    // Draw a simple pixel grid pattern (8x8 checkerboard)
+    thumbnailCtx.fillStyle = '#ffffff';
+    thumbnailCtx.fillRect(0, 0, thumbnailSize, thumbnailSize);
+    
+    thumbnailCtx.fillStyle = '#e8e8e8';
+    const cellSize = thumbnailSize / 8;
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        if ((x + y) % 2 === 0) {
+          thumbnailCtx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+    
+    return thumbnailCanvas;
+  }
+  
+  // Find the bounds of the drawing
+  let minX = Infinity, minY = Infinity;
+  let maxX = -Infinity, maxY = -Infinity;
+  
+  const z = grid.currentZoomLevel;
+  const activePixels = grid.pixels.filter(pixel => pixel.zoomLevel === z);
+  
+  for (const pixel of activePixels) {
+    minX = Math.min(minX, pixel.x);
+    minY = Math.min(minY, pixel.y);
+    maxX = Math.max(maxX, pixel.x);
+    maxY = Math.max(maxY, pixel.y);
+  }
+  
+  // Adjust if no pixels are found (handle empty grid gracefully)
+  if (minX === Infinity) {
+    return thumbnailCanvas;
+  }
+  
+  // Calculate the dimensions of the drawing
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  
+  // Determine scale factor to fit the drawing in the thumbnail
+  const scaleX = thumbnailSize / width;
+  const scaleY = thumbnailSize / height;
+  const scale = Math.min(scaleX, scaleY);
+  
+  // Center the drawing in the thumbnail
+  const offsetX = (thumbnailSize - width * scale) / 2;
+  const offsetY = (thumbnailSize - height * scale) / 2;
+  
+  // Draw grid if there's enough space (only if pixels are large enough)
+  if (scale > 4) {
+    // First draw a white background
+    thumbnailCtx.fillStyle = '#ffffff';
+    thumbnailCtx.fillRect(0, 0, thumbnailSize, thumbnailSize);
+    
+    // Draw grid lines
+    thumbnailCtx.strokeStyle = '#f0f0f0';
+    thumbnailCtx.lineWidth = 0.5;
+    
+    // Vertical grid lines
+    for (let x = 0; x <= width; x++) {
+      thumbnailCtx.beginPath();
+      thumbnailCtx.moveTo(offsetX + x * scale, offsetY);
+      thumbnailCtx.lineTo(offsetX + x * scale, offsetY + height * scale);
+      thumbnailCtx.stroke();
+    }
+    
+    // Horizontal grid lines
+    for (let y = 0; y <= height; y++) {
+      thumbnailCtx.beginPath();
+      thumbnailCtx.moveTo(offsetX, offsetY + y * scale);
+      thumbnailCtx.lineTo(offsetX + width * scale, offsetY + y * scale);
+      thumbnailCtx.stroke();
+    }
+  } else {
+    // For smaller pixels, just use a transparent background
+    thumbnailCtx.clearRect(0, 0, thumbnailSize, thumbnailSize);
+  }
+  
+  // Draw each pixel from the grid
+  for (const pixel of activePixels) {
+    const x = (pixel.x - minX) * scale + offsetX;
+    const y = (pixel.y - minY) * scale + offsetY;
+    const pixelSize = Math.max(1, scale); // Ensure at least 1px size
+    
+    thumbnailCtx.fillStyle = pixel.color;
+    thumbnailCtx.fillRect(x, y, pixelSize, pixelSize);
+  }
+  
+  return thumbnailCanvas;
+}
+
+// Generate a thumbnail as data URL
+function generateThumbnail() {
+  const canvas = generateThumbnailCanvas();
+  const dataUrl = canvas.toDataURL('image/png');
+  console.log('Generated data URL length:', dataUrl.length);
+  return dataUrl;
+}
+
+// Debug function to help verify if the thumbnail is being generated correctly
+function debugThumbnail() {
+  const canvas = generateThumbnailCanvas();
+  const dataURL = canvas.toDataURL('image/png');
+  console.log('DEBUG - Thumbnail data URL length:', dataURL.length);
+  console.log('DEBUG - First 100 chars of thumbnail:', dataURL.substring(0, 100));
+  
+  // Create a test element to verify the thumbnail works
+  const testImg = document.createElement('img');
+  testImg.src = dataURL;
+  testImg.style.position = 'fixed';
+  testImg.style.top = '10px';
+  testImg.style.right = '10px';
+  testImg.style.width = '50px';
+  testImg.style.height = '50px';
+  testImg.style.border = '1px solid black';
+  testImg.style.zIndex = '9999';
+  testImg.style.background = 'white';
+  testImg.title = 'Debug Thumbnail';
+  
+  testImg.onload = () => { 
+    console.log('DEBUG - Test thumbnail loaded successfully');
+    // Remove after 3 seconds
+    setTimeout(() => {
+      if (testImg.parentNode) {
+        testImg.parentNode.removeChild(testImg);
+      }
+    }, 3000);
+  };
+  
+  testImg.onerror = (e) => {
+    console.error('DEBUG - Test thumbnail failed to load:', e);
+    testImg.style.background = 'red';
+    testImg.style.color = 'white';
+    testImg.textContent = 'Error';
+  };
+  
+  document.body.appendChild(testImg);
+}
+
 // Try to load grid state from URL parameter or hash if present
 function loadGridFromUrl() {
   // First try to get data from URL parameter
@@ -1782,7 +1939,12 @@ function loadGridFromUrl() {
   
   // Check if we have data from either source
   if (base64String) {
-    return loadGridFromBitPackedFormat(base64String);
+    try {
+      // Decode using our bit-packed format
+      return loadGridFromBitPackedFormat(base64String);
+    } catch (error) {
+      console.error('Failed to load grid from URL:', error);
+    }
   }
   
   return false;
@@ -1922,6 +2084,55 @@ function updateFavicon(dataUrl) {
   appleLink.href = dataUrl;
 }
 
+// Update meta tags for social media sharing
+function updateMetaTags(thumbnailUrl, shareUrl) {
+  // Define the meta tags to add or update
+  const metaTags = [
+    // Open Graph image (Facebook)
+    { property: 'og:image', content: thumbnailUrl },
+    { property: 'og:url', content: shareUrl },
+    // Twitter image
+    { property: 'twitter:image', content: thumbnailUrl },
+    { property: 'twitter:url', content: shareUrl }
+  ];
+  
+  // Description text based on pixel count
+  const pixelCount = grid.pixels.filter(pixel => pixel.zoomLevel === grid.currentZoomLevel).length;
+  const description = pixelCount > 0 
+    ? `Pixel art creation with ${pixelCount} pixels. Check it out and create your own!`
+    : 'Create, edit, and share your pixel art creations with this simple web-based editor.';
+  
+  // Update description meta tags
+  const descriptionMetaTags = [
+    { name: 'description', content: description },
+    { property: 'og:description', content: description },
+    { property: 'twitter:description', content: description }
+  ];
+  
+  // Add or update all meta tags
+  [...metaTags, ...descriptionMetaTags].forEach(meta => {
+    // Look for existing meta tag
+    let metaTag = null;
+    
+    if (meta.property) {
+      metaTag = document.querySelector(`meta[property="${meta.property}"]`);
+    } else if (meta.name) {
+      metaTag = document.querySelector(`meta[name="${meta.name}"]`);
+    }
+    
+    // If not found, create a new meta tag
+    if (!metaTag) {
+      metaTag = document.createElement('meta');
+      if (meta.property) metaTag.setAttribute('property', meta.property);
+      if (meta.name) metaTag.setAttribute('name', meta.name);
+      document.head.appendChild(metaTag);
+    }
+    
+    // Update the content attribute
+    metaTag.setAttribute('content', meta.content);
+  });
+}
+
 // Load grid from our bit-packed format
 function loadGridFromBitPackedFormat(base64String) {
   try {
@@ -1946,9 +2157,9 @@ function loadGridFromBitPackedFormat(base64String) {
     }
     
     // Parse the header parts
-    // Format: [zoomLevel]:[minX]:[minY]:[width]:[height]:[palette count]:[palette bytes]:[pixel data]
+    // Format: [zoomLevel]:[minX]:[minY]:[width]:[height]:[bits per pixel]:[palette count]:[palette bytes]:[pixel data]
     const parts = outerDecoded.split(':');
-    if (parts.length < 8) {
+    if (parts.length < 9) {
       throw new Error('Invalid bit-packed format');
     }
     
@@ -1958,20 +2169,21 @@ function loadGridFromBitPackedFormat(base64String) {
     const minY = parseInt(parts[2], 10);
     const width = parseInt(parts[3], 10);
     const height = parseInt(parts[4], 10);
-    const paletteCount = parseInt(parts[5], 10);
-    const paletteBytes = parts[6];
+    const bitsPerPixel = parseInt(parts[5], 10);
+    const paletteCount = parseInt(parts[6], 10);
+    const paletteBytes = parts[7];
     
     // Binary data is the last part, base64 encoded
-    const binaryData = atob(parts[7]);
+    const binaryData = atob(parts[8]);
     
     // Check that all values are valid
-    if ([zoomLevel, minX, minY, width, height, paletteCount].some(isNaN)) {
+    if ([zoomLevel, minX, minY, width, height, bitsPerPixel, paletteCount].some(isNaN)) {
       throw new Error('Invalid values in bit-packed format');
     }
     
     // Reconstruct the color palette
     const palette = [];
-    for (let i = 0; i < paletteCount && i < 8; i++) {
+    for (let i = 0; i < paletteCount; i++) {
       // Each color is 6 hex characters (3 bytes)
       const start = i * 6;
       if (start + 6 <= paletteBytes.length) {
@@ -1983,9 +2195,6 @@ function loadGridFromBitPackedFormat(base64String) {
     // Create a new grid
     const newGrid = new PixelGrid();
     newGrid.currentZoomLevel = zoomLevel;
-    
-    // Extract bit-packed pixel data
-    const bitsPerPixel = 3; // We used 3 bits per pixel
     
     // Convert binary string to byte array
     const bytes = [];
@@ -2036,140 +2245,6 @@ function loadGridFromBitPackedFormat(base64String) {
   }
 }
 
-// Load grid from our compact RLE format (for compatibility with previous update)
-function loadGridFromCompactFormat(base64String) {
-  // Decode from base64
-  const encoded = atob(base64String);
-  
-  // If this is a minimal format (just zoom level)
-  if (encoded.startsWith('z') && !encoded.includes(':')) {
-    const zoomLevel = parseInt(encoded.substring(1), 10);
-    if (isNaN(zoomLevel)) {
-      throw new Error('Invalid zoom level');
-    }
-    
-    // Create a new empty grid with the specified zoom level
-    const newGrid = new PixelGrid();
-    newGrid.currentZoomLevel = zoomLevel;
-    grid = newGrid;
-    render();
-    return true;
-  }
-  
-  // Parse the format: z{zoomLevel}:p{palette}:{min x},{min y},{width},{height}:{compressed pixel data}
-  const parts = encoded.split(':');
-  if (parts.length !== 4) {
-    throw new Error('Invalid format');
-  }
-  
-  // Parse zoom level
-  const zoomLevel = parseInt(parts[0].substring(1), 10);
-  if (isNaN(zoomLevel)) {
-    throw new Error('Invalid zoom level');
-  }
-  
-  // Parse color palette
-  const paletteString = parts[1].substring(1);
-  const colorPalette = paletteString.split(',').map(c => `#${c}`);
-  
-  // Parse bounds
-  const bounds = parts[2].split(',').map(n => parseInt(n, 10));
-  if (bounds.length !== 4 || bounds.some(isNaN)) {
-    throw new Error('Invalid bounds');
-  }
-  const [minX, minY, width, height] = bounds;
-  
-  // Parse compressed pixel data
-  const compressed = parts[3];
-  
-  // Decompress the run-length encoded data
-  const gridData = new Array(width * height).fill(-1);
-  
-  // Skip decompression if width or height is 0
-  if (width > 0 && height > 0) {
-    let index = 0;
-    let i = 0;
-    
-    while (i < compressed.length) {
-      // Get the count (in base36)
-      const countChar = compressed.charAt(i++);
-      const count = parseInt(countChar, 36);
-      
-      // Get the value
-      const valueChar = compressed.charAt(i++);
-      const value = valueChar === '_' ? -1 : parseInt(valueChar, 36);
-      
-      // Fill the grid with this run
-      for (let j = 0; j < count; j++) {
-        if (index < gridData.length) {
-          gridData[index++] = value;
-        }
-      }
-    }
-  }
-  
-  // Create a new grid
-  const newGrid = new PixelGrid();
-  newGrid.currentZoomLevel = zoomLevel;
-  
-  // Convert grid data back to pixels
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const dataIndex = y * width + x;
-      const colorIndex = gridData[dataIndex];
-      
-      if (colorIndex !== -1 && colorIndex < colorPalette.length) {
-        const pixelX = minX + x;
-        const pixelY = minY + y;
-        const color = colorPalette[colorIndex];
-        
-        newGrid.pixels.push(new Pixel(pixelX, pixelY, zoomLevel, color));
-      }
-    }
-  }
-  
-  // Replace current grid
-  grid = newGrid;
-  render();
-  // Generate favicon
-  generateFavicon();
-  return true;
-}
-
-// Load grid from the old JSON format (for backward compatibility)
-function loadGridFromLegacyFormat(base64String) {
-  try {
-    // Decode the base64 string to JSON
-    const jsonString = decodeURIComponent(atob(base64String));
-    const data = JSON.parse(jsonString);
-    
-    // Create a new grid
-    const newGrid = new PixelGrid();
-    
-    // Set zoom level
-    newGrid.currentZoomLevel = data.zoomLevel || 10;
-    
-    // Load pixels
-    if (data.pixels && Array.isArray(data.pixels)) {
-      for (const [x, y, color] of data.pixels) {
-        if (typeof x === 'number' && typeof y === 'number' && typeof color === 'string') {
-          newGrid.pixels.push(new Pixel(x, y, newGrid.currentZoomLevel, color));
-        }
-      }
-    }
-    
-    // Replace current grid
-    grid = newGrid;
-    render();
-    
-    // Generate favicon
-    generateFavicon();
-    return true;
-  } catch (error) {
-    console.error('Error in legacy format decoding:', error);
-    throw error; // Re-throw so we can try even older formats
-  }
-}
 
 // Handle tool button clicks
 function handleToolClick(toolId) {
@@ -2228,40 +2303,201 @@ function handleToolClick(toolId) {
         }, 500);
       };
       
-      // Share data for Web Share API
-      const data = {
-        title: 'Pixels',
-        text: shareUrl
-      };
-
-      console.log(data);
-
-      // Try to use the Web Share API first if available (works well on mobile)
-      if (navigator.share && navigator.canShare && navigator.canShare(data)) {
-        navigator.share(data)
-          .then(() => {
-            showCopyConfirmation();
-          })
-          .catch((error) => {
-            // If sharing fails, fallback to clipboard
-            navigator.clipboard.writeText(shareUrl)
-              .then(() => {
-                showCopyConfirmation();
-              })
-              .catch((clipError) => {
-                console.error('Error copying to clipboard:', clipError);
-              });
-          });
-      } else {
-        // Fallback to clipboard copy
-        navigator.clipboard.writeText(shareUrl)
-          .then(() => {
-            showCopyConfirmation();
-          })
-          .catch((error) => {
-            console.error('Error copying to clipboard:', error);
-          });
-      }
+      // Run debug function to verify thumbnail generation is working
+      debugThumbnail();
+      
+      // Generate a thumbnail image for sharing
+      const thumbnailCanvas = generateThumbnailCanvas();
+      
+      // Convert canvas directly to data URL (more reliable than blob URL)
+      const thumbnailUrl = thumbnailCanvas.toDataURL('image/png');
+      console.log('Generated thumbnail data URL (length):', thumbnailUrl.length);
+      
+      // Log first few characters to verify it's a valid data URL
+      console.log('Thumbnail URL starts with:', thumbnailUrl.substring(0, 30));
+      
+      // Update meta tags with the thumbnail for better social sharing
+      updateMetaTags(thumbnailUrl, shareUrl);
+      
+      // Convert to blob for sharing via Web Share API
+      thumbnailCanvas.toBlob(blob => {
+        // Create a file from the thumbnail for sharing
+        const thumbnailFile = new File([blob], 'pixels-artwork.png', { type: 'image/png' });
+        console.log('Thumbnail file created directly from blob');
+        
+        // Share data for Web Share API with the thumbnail
+        const shareData = {
+          title: 'Pixels Artwork',
+          text: 'Check out my pixel art creation!',
+          url: shareUrl
+        };
+        
+        // Try to include the file if the browser supports it
+        try {
+          // Add the file to the share data if files are supported
+          if (navigator.canShare && navigator.canShare({ files: [thumbnailFile] })) {
+            console.log('adding file');
+            shareData.files = [thumbnailFile];
+          }
+        } catch (e) {
+          console.log('File sharing not supported', e);
+        }
+        
+        // Try to use the Web Share API first if available (works well on mobile)
+        if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+          navigator.share(shareData)
+            .then(() => {
+              showCopyConfirmation();
+            })
+            .catch((error) => {
+              console.log('Share API error:', error);
+              // If sharing fails, fallback to clipboard
+              navigator.clipboard.writeText(shareUrl)
+                .then(() => {
+                  showCopyConfirmation();
+                })
+                .catch((clipError) => {
+                  console.error('Error copying to clipboard:', clipError);
+                  // Nothing to clean up with data URLs
+                });
+            });
+        } else {
+            // Create a visual popup with the thumbnail for non-mobile browsers
+            const popup = document.createElement('div');
+            popup.style.position = 'fixed';
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+            popup.style.backgroundColor = 'white';
+            popup.style.padding = '20px';
+            popup.style.borderRadius = '8px';
+            popup.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            popup.style.zIndex = '1000';
+            popup.style.textAlign = 'center';
+            popup.style.maxWidth = '90%';
+            
+            // Create a container just for the thumbnail (to aid debugging)
+            const thumbnailContainer = document.createElement('div');
+            thumbnailContainer.style.width = '200px';
+            thumbnailContainer.style.height = '200px';
+            thumbnailContainer.style.margin = '0 auto 20px auto';
+            thumbnailContainer.style.border = '2px solid #333';
+            thumbnailContainer.style.borderRadius = '4px';
+            thumbnailContainer.style.overflow = 'hidden';
+            thumbnailContainer.style.backgroundColor = '#f0f0f0';
+            thumbnailContainer.style.display = 'flex';
+            thumbnailContainer.style.alignItems = 'center';
+            thumbnailContainer.style.justifyContent = 'center';
+            popup.appendChild(thumbnailContainer);
+            
+            // Create and add the image directly to the container
+            const img = document.createElement('img');
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.display = 'block';
+            img.style.objectFit = 'contain'; // Ensure aspect ratio is maintained
+            
+            // Add the image directly - no need for placeholders with data URLs
+            thumbnailContainer.appendChild(img);
+            img.src = thumbnailUrl;
+            
+            // Add debugging text
+            const debugText = document.createElement('div');
+            debugText.textContent = `Image loaded from data URL (${thumbnailUrl.length} chars)`;
+            debugText.style.fontSize = '10px';
+            debugText.style.color = '#666';
+            debugText.style.marginBottom = '10px';
+            debugText.style.marginTop = '-15px';
+            popup.appendChild(debugText);
+            
+            // Add event handlers for image load/error
+            img.onload = () => {
+                console.log('Thumbnail image loaded successfully in popup');
+                debugText.textContent += ' ✓';
+                debugText.style.color = 'green';
+            };
+            
+            img.onerror = (e) => {
+                console.error('Error loading thumbnail in popup:', e);
+                thumbnailContainer.innerHTML = 'Error loading thumbnail';
+                thumbnailContainer.style.color = 'red';
+                debugText.textContent += ' ✗';
+                debugText.style.color = 'red';
+            };
+            
+            // Add share URL input
+            const input = document.createElement('input');
+            input.value = shareUrl;
+            input.readOnly = true;
+            input.style.width = '100%';
+            input.style.padding = '8px';
+            input.style.marginBottom = '15px';
+            input.style.borderRadius = '4px';
+            input.style.border = '1px solid #ccc';
+            popup.appendChild(input);
+            
+            // Add copy button
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent = 'Copy Link';
+            copyBtn.style.padding = '8px 16px';
+            copyBtn.style.backgroundColor = '#4a90e2';
+            copyBtn.style.color = 'white';
+            copyBtn.style.border = 'none';
+            copyBtn.style.borderRadius = '4px';
+            copyBtn.style.cursor = 'pointer';
+            copyBtn.style.marginRight = '10px';
+            copyBtn.onclick = () => {
+              input.select();
+              document.execCommand('copy');
+              navigator.clipboard.writeText(shareUrl)
+                .then(() => {
+                  copyBtn.textContent = 'Copied!';
+                  setTimeout(() => {
+                    document.body.removeChild(popup);
+                    showCopyConfirmation();
+                  }, 1000);
+                })
+                .catch(err => {
+                  console.error('Failed to copy: ', err);
+                });
+            };
+            popup.appendChild(copyBtn);
+            
+            // Add close button
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.padding = '8px 16px';
+            closeBtn.style.backgroundColor = '#e0e0e0';
+            closeBtn.style.color = '#333';
+            closeBtn.style.border = 'none';
+            closeBtn.style.borderRadius = '4px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.onclick = () => {
+              document.body.removeChild(popup);
+            };
+            popup.appendChild(closeBtn);
+            
+            // Add popup to the body
+            document.body.appendChild(popup);
+            
+            // Auto-select the input field for easy copying
+            input.select();
+          }
+        })
+        .catch(error => {
+          console.error('Error creating thumbnail file:', error);
+          
+          // Data URLs don't need to be revoked - no cleanup needed
+          
+          // Fallback to basic clipboard copy if there's an error
+          navigator.clipboard.writeText(shareUrl)
+            .then(() => {
+              showCopyConfirmation();
+            })
+            .catch((clipError) => {
+              console.error('Error copying to clipboard:', clipError);
+            });
+        });
       break;
   }
 }
