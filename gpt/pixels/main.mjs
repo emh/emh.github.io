@@ -2309,63 +2309,58 @@ function handleToolClick(toolId) {
       // Generate a thumbnail image for sharing
       const thumbnailCanvas = generateThumbnailCanvas();
       
-      // For visual display in our own UI, data URL works well
-      const thumbnailUrl = thumbnailCanvas.toDataURL('image/jpeg', 0.85); // Use JPEG with good quality for smaller size
+      // Convert canvas directly to data URL (more reliable than blob URL)
+      const thumbnailUrl = thumbnailCanvas.toDataURL('image/png');
       console.log('Generated thumbnail data URL (length):', thumbnailUrl.length);
+      
+      // Log first few characters to verify it's a valid data URL
+      console.log('Thumbnail URL starts with:', thumbnailUrl.substring(0, 30));
       
       // Update meta tags with the thumbnail for better social sharing
       updateMetaTags(thumbnailUrl, shareUrl);
       
-      // Create JPEG blob for Facebook Messenger compatibility
-      thumbnailCanvas.toBlob(function(jpegBlob) {
-        const jpegFile = new File([jpegBlob], 'pixels-artwork.jpg', { type: 'image/jpeg' });
-        console.log('JPEG file created:', jpegFile.size, 'bytes');
+      // Convert to blob for sharing via Web Share API
+      thumbnailCanvas.toBlob(blob => {
+        // Create a file from the thumbnail for sharing
+        const thumbnailFile = new File([blob], 'pixels-artwork.png', { type: 'image/png' });
+        console.log('Thumbnail file created directly from blob');
         
-        // Create PNG blob as a fallback
-        thumbnailCanvas.toBlob(function(pngBlob) {
-          const pngFile = new File([pngBlob], 'pixels-artwork.png', { type: 'image/png' });
-          console.log('PNG file created:', pngFile.size, 'bytes');
-          
-          // Prepare share data with link and text
-          const shareData = {
-            title: 'Pixels Artwork',
-            text: 'Check out my pixel art creation!',
-            url: shareUrl
-          };
-          
-          // Try to add image file(s) if supported
-          try {
-            // Facebook Messenger works best with JPEG
-            if (navigator.canShare && navigator.canShare({ files: [jpegFile] })) {
-              console.log('Adding JPEG file for sharing');
-              shareData.files = [jpegFile];
-            }
-            // Fallback to PNG if JPEG not supported
-            else if (navigator.canShare && navigator.canShare({ files: [pngFile] })) {
-              console.log('Adding PNG file for sharing');
-              shareData.files = [pngFile];
-            }
-          } catch (e) {
-            console.log('File sharing not supported:', e);
+        // Share data for Web Share API with the thumbnail
+        const shareData = {
+          url: shareUrl
+        };
+        
+        // Try to include the file if the browser supports it
+        try {
+          // Add the file to the share data if files are supported
+          if (navigator.canShare && navigator.canShare({ files: [thumbnailFile] })) {
+            console.log('adding file');
+            shareData.files = [thumbnailFile];
           }
-          
-          // Try Web Share API for mobile sharing
-          if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-            navigator.share(shareData)
-              .then(() => {
-                showCopyConfirmation();
-              })
-              .catch((error) => {
-                console.log('Share API error:', error);
-                // Fallback to clipboard
-                navigator.clipboard.writeText(shareUrl)
-                  .then(() => showCopyConfirmation())
-                  .catch((clipError) => console.error('Clipboard error:', clipError));
-              });
-          }
-          // Fallback to custom popup for desktop browsers
-          else {
-            // Create popup container
+        } catch (e) {
+          console.log('File sharing not supported', e);
+        }
+        
+        // Try to use the Web Share API first if available (works well on mobile)
+        if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+          navigator.share(shareData)
+            .then(() => {
+              showCopyConfirmation();
+            })
+            .catch((error) => {
+              console.log('Share API error:', error);
+              // If sharing fails, fallback to clipboard
+              navigator.clipboard.writeText(shareUrl)
+                .then(() => {
+                  showCopyConfirmation();
+                })
+                .catch((clipError) => {
+                  console.error('Error copying to clipboard:', clipError);
+                  // Nothing to clean up with data URLs
+                });
+            });
+        } else {
+            // Create a visual popup with the thumbnail for non-mobile browsers
             const popup = document.createElement('div');
             popup.style.position = 'fixed';
             popup.style.top = '50%';
@@ -2379,7 +2374,7 @@ function handleToolClick(toolId) {
             popup.style.textAlign = 'center';
             popup.style.maxWidth = '90%';
             
-            // Create thumbnail container
+            // Create a container just for the thumbnail (to aid debugging)
             const thumbnailContainer = document.createElement('div');
             thumbnailContainer.style.width = '200px';
             thumbnailContainer.style.height = '200px';
@@ -2393,38 +2388,42 @@ function handleToolClick(toolId) {
             thumbnailContainer.style.justifyContent = 'center';
             popup.appendChild(thumbnailContainer);
             
-            // Add image to thumbnail container
+            // Create and add the image directly to the container
             const img = document.createElement('img');
             img.style.maxWidth = '100%';
             img.style.maxHeight = '100%';
             img.style.display = 'block';
-            img.style.objectFit = 'contain';
+            img.style.objectFit = 'contain'; // Ensure aspect ratio is maintained
+            
+            // Add the image directly - no need for placeholders with data URLs
             thumbnailContainer.appendChild(img);
             img.src = thumbnailUrl;
             
-            // Add debug info text
+            // Add debugging text
             const debugText = document.createElement('div');
-            debugText.textContent = `Thumbnail size: ${thumbnailUrl.length} chars`;
+            debugText.textContent = `Image loaded from data URL (${thumbnailUrl.length} chars)`;
             debugText.style.fontSize = '10px';
             debugText.style.color = '#666';
             debugText.style.marginBottom = '10px';
+            debugText.style.marginTop = '-15px';
             popup.appendChild(debugText);
             
-            // Add image load/error handlers
+            // Add event handlers for image load/error
             img.onload = () => {
-              console.log('Thumbnail loaded in popup');
-              debugText.textContent += ' ✓';
-              debugText.style.color = 'green';
+                console.log('Thumbnail image loaded successfully in popup');
+                debugText.textContent += ' ✓';
+                debugText.style.color = 'green';
             };
             
             img.onerror = (e) => {
-              console.error('Thumbnail error:', e);
-              thumbnailContainer.innerHTML = 'Error loading thumbnail';
-              thumbnailContainer.style.color = 'red';
-              debugText.style.color = 'red';
+                console.error('Error loading thumbnail in popup:', e);
+                thumbnailContainer.innerHTML = 'Error loading thumbnail';
+                thumbnailContainer.style.color = 'red';
+                debugText.textContent += ' ✗';
+                debugText.style.color = 'red';
             };
             
-            // Add URL input field
+            // Add share URL input
             const input = document.createElement('input');
             input.value = shareUrl;
             input.readOnly = true;
@@ -2447,6 +2446,7 @@ function handleToolClick(toolId) {
             copyBtn.style.marginRight = '10px';
             copyBtn.onclick = () => {
               input.select();
+              document.execCommand('copy');
               navigator.clipboard.writeText(shareUrl)
                 .then(() => {
                   copyBtn.textContent = 'Copied!';
@@ -2455,7 +2455,9 @@ function handleToolClick(toolId) {
                     showCopyConfirmation();
                   }, 1000);
                 })
-                .catch(err => console.error('Copy error:', err));
+                .catch(err => {
+                  console.error('Failed to copy: ', err);
+                });
             };
             popup.appendChild(copyBtn);
             
@@ -2468,15 +2470,32 @@ function handleToolClick(toolId) {
             closeBtn.style.border = 'none';
             closeBtn.style.borderRadius = '4px';
             closeBtn.style.cursor = 'pointer';
-            closeBtn.onclick = () => document.body.removeChild(popup);
+            closeBtn.onclick = () => {
+              document.body.removeChild(popup);
+            };
             popup.appendChild(closeBtn);
             
-            // Add popup to body and focus input
+            // Add popup to the body
             document.body.appendChild(popup);
+            
+            // Auto-select the input field for easy copying
             input.select();
           }
-        }, 'image/png'); // End PNG blob
-      }, 'image/jpeg', 0.85); // End JPEG blob
+        })
+        .catch(error => {
+          console.error('Error creating thumbnail file:', error);
+          
+          // Data URLs don't need to be revoked - no cleanup needed
+          
+          // Fallback to basic clipboard copy if there's an error
+          navigator.clipboard.writeText(shareUrl)
+            .then(() => {
+              showCopyConfirmation();
+            })
+            .catch((clipError) => {
+              console.error('Error copying to clipboard:', clipError);
+            });
+        });
       break;
   }
 }
