@@ -1591,32 +1591,94 @@ function handleMouseUp(e) {
   lastTouchedCell = null;
 }
 
-// Serialize current grid state to base64
+// Serialize current grid state to a compact encoding
 function serializeGridToBase64() {
-  // Create a compact representation of the current grid state
-  const pixels = [];
-  
   // Only include pixels at the current zoom level
   const z = grid.currentZoomLevel;
   
-  for (const pixel of grid.pixels) {
-    if (pixel.zoomLevel === z) {
-      // Store each pixel as [x, y, color] to keep it compact
-      pixels.push([pixel.x, pixel.y, pixel.color]);
-    }
+  // Get all pixels at current zoom level
+  const activePixels = grid.pixels.filter(pixel => pixel.zoomLevel === z);
+  
+  // If there are no pixels, return a minimal string
+  if (activePixels.length === 0) {
+    return btoa(`z${z}`);
   }
   
-  // Create an object with the necessary data to recreate the grid
-  const data = {
-    pixels: pixels,
-    zoomLevel: z
-  };
+  // Store color palette (unique colors used)
+  const colorSet = new Set();
+  for (const pixel of activePixels) {
+    colorSet.add(pixel.color);
+  }
+  const colorPalette = Array.from(colorSet);
   
-  // Convert to JSON and then to base64
-  const jsonString = JSON.stringify(data);
-  const base64String = btoa(encodeURIComponent(jsonString));
+  // Create a color index for more efficient encoding
+  const colorIndex = {};
+  colorPalette.forEach((color, index) => {
+    colorIndex[color] = index;
+  });
   
-  return base64String;
+  // Find bounds to make coordinates more efficient
+  let minX = Infinity, minY = Infinity;
+  let maxX = -Infinity, maxY = -Infinity;
+  
+  for (const pixel of activePixels) {
+    minX = Math.min(minX, pixel.x);
+    minY = Math.min(minY, pixel.y);
+    maxX = Math.max(maxX, pixel.x);
+    maxY = Math.max(maxY, pixel.y);
+  }
+  
+  // Encode the pixel data
+  // Format: z{zoomLevel}:p{palette}:{min x},{min y},{width},{height}:{compressed pixel data}
+  
+  // First, join the color palette
+  const paletteString = colorPalette.map(color => color.substring(1)).join(',');
+  
+  // Width and height of our coordinate system
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  
+  // Create an array to represent the grid and fill with empty cells
+  const gridArray = new Array(width * height).fill(-1);
+  
+  // Fill in pixels
+  for (const pixel of activePixels) {
+    const normalizedX = pixel.x - minX;
+    const normalizedY = pixel.y - minY;
+    const index = normalizedY * width + normalizedX;
+    gridArray[index] = colorIndex[pixel.color];
+  }
+  
+  // Compress the grid using run-length encoding
+  let compressed = '';
+  
+  // Handle empty grid case
+  if (gridArray.length === 0) {
+    compressed = '0_';  // No data
+  } else {
+    let count = 1;
+    let lastValue = gridArray[0];
+    
+    for (let i = 1; i < gridArray.length; i++) {
+      if (gridArray[i] === lastValue && count < 35) { // Use base36 for count, max is 35 (Z in base36)
+        count++;
+      } else {
+        // Add the run to our compressed string
+        compressed += count.toString(36) + (lastValue === -1 ? '_' : lastValue.toString(36));
+        lastValue = gridArray[i];
+        count = 1;
+      }
+    }
+    
+    // Add the final run
+    compressed += count.toString(36) + (lastValue === -1 ? '_' : lastValue.toString(36));
+  }
+  
+  // Combine all parts into the final encoded string
+  const encoded = `z${z}:p${paletteString}:${minX},${minY},${width},${height}:${compressed}`;
+  
+  // Return base64 encoded to ensure URL safety
+  return btoa(encoded);
 }
 
 // Create a share URL from the current grid state
@@ -1646,36 +1708,146 @@ function loadGridFromUrl() {
   // Check if we have data from either source
   if (base64String) {
     try {
-      // Decode the base64 string to JSON
-      const jsonString = decodeURIComponent(atob(base64String));
-      const data = JSON.parse(jsonString);
-      
-      // Create a new grid
-      const newGrid = new PixelGrid();
-      
-      // Set zoom level
-      newGrid.currentZoomLevel = data.zoomLevel || 10;
-      
-      // Load pixels
-      if (data.pixels && Array.isArray(data.pixels)) {
-        for (const [x, y, color] of data.pixels) {
-          if (typeof x === 'number' && typeof y === 'number' && typeof color === 'string') {
-            newGrid.pixels.push(new Pixel(x, y, newGrid.currentZoomLevel, color));
-          }
-        }
+      // Try to decode using the new compact format first
+      try {
+        return loadGridFromCompactFormat(base64String);
+      } catch (formatError) {
+        // If that fails, try the old JSON format for backward compatibility
+        console.log("New format decoding failed, trying legacy format");
+        return loadGridFromLegacyFormat(base64String);
       }
-      
-      // Replace current grid
-      grid = newGrid;
-      render();
-      
-      return true;
     } catch (error) {
       console.error('Failed to load grid from URL:', error);
     }
   }
   
   return false;
+}
+
+// Load grid from our compact format
+function loadGridFromCompactFormat(base64String) {
+  // Decode from base64
+  const encoded = atob(base64String);
+  
+  // If this is a minimal format (just zoom level)
+  if (encoded.startsWith('z') && !encoded.includes(':')) {
+    const zoomLevel = parseInt(encoded.substring(1), 10);
+    if (isNaN(zoomLevel)) {
+      throw new Error('Invalid zoom level');
+    }
+    
+    // Create a new empty grid with the specified zoom level
+    const newGrid = new PixelGrid();
+    newGrid.currentZoomLevel = zoomLevel;
+    grid = newGrid;
+    render();
+    return true;
+  }
+  
+  // Parse the format: z{zoomLevel}:p{palette}:{min x},{min y},{width},{height}:{compressed pixel data}
+  const parts = encoded.split(':');
+  if (parts.length !== 4) {
+    throw new Error('Invalid format');
+  }
+  
+  // Parse zoom level
+  const zoomLevel = parseInt(parts[0].substring(1), 10);
+  if (isNaN(zoomLevel)) {
+    throw new Error('Invalid zoom level');
+  }
+  
+  // Parse color palette
+  const paletteString = parts[1].substring(1);
+  const colorPalette = paletteString.split(',').map(c => `#${c}`);
+  
+  // Parse bounds
+  const bounds = parts[2].split(',').map(n => parseInt(n, 10));
+  if (bounds.length !== 4 || bounds.some(isNaN)) {
+    throw new Error('Invalid bounds');
+  }
+  const [minX, minY, width, height] = bounds;
+  
+  // Parse compressed pixel data
+  const compressed = parts[3];
+  
+  // Decompress the run-length encoded data
+  const gridData = new Array(width * height).fill(-1);
+  
+  // Skip decompression if width or height is 0
+  if (width > 0 && height > 0) {
+    let index = 0;
+    let i = 0;
+    
+    while (i < compressed.length) {
+      // Get the count (in base36)
+      const countChar = compressed.charAt(i++);
+      const count = parseInt(countChar, 36);
+      
+      // Get the value
+      const valueChar = compressed.charAt(i++);
+      const value = valueChar === '_' ? -1 : parseInt(valueChar, 36);
+      
+      // Fill the grid with this run
+      for (let j = 0; j < count; j++) {
+        if (index < gridData.length) {
+          gridData[index++] = value;
+        }
+      }
+    }
+  }
+  
+  // Create a new grid
+  const newGrid = new PixelGrid();
+  newGrid.currentZoomLevel = zoomLevel;
+  
+  // Convert grid data back to pixels
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const dataIndex = y * width + x;
+      const colorIndex = gridData[dataIndex];
+      
+      if (colorIndex !== -1 && colorIndex < colorPalette.length) {
+        const pixelX = minX + x;
+        const pixelY = minY + y;
+        const color = colorPalette[colorIndex];
+        
+        newGrid.pixels.push(new Pixel(pixelX, pixelY, zoomLevel, color));
+      }
+    }
+  }
+  
+  // Replace current grid
+  grid = newGrid;
+  render();
+  return true;
+}
+
+// Load grid from the old JSON format (for backward compatibility)
+function loadGridFromLegacyFormat(base64String) {
+  // Decode the base64 string to JSON
+  const jsonString = decodeURIComponent(atob(base64String));
+  const data = JSON.parse(jsonString);
+  
+  // Create a new grid
+  const newGrid = new PixelGrid();
+  
+  // Set zoom level
+  newGrid.currentZoomLevel = data.zoomLevel || 10;
+  
+  // Load pixels
+  if (data.pixels && Array.isArray(data.pixels)) {
+    for (const [x, y, color] of data.pixels) {
+      if (typeof x === 'number' && typeof y === 'number' && typeof color === 'string') {
+        newGrid.pixels.push(new Pixel(x, y, newGrid.currentZoomLevel, color));
+      }
+    }
+  }
+  
+  // Replace current grid
+  grid = newGrid;
+  render();
+  
+  return true;
 }
 
 // Handle tool button clicks
