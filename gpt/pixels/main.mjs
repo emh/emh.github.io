@@ -1427,10 +1427,15 @@ function handleTouchEnd(e) {
 
       if (isDragging || isDrawingShape) render();
 
-      grid.endBatch(); // End batch
+      // We're in the shape drawing block, so we just called startBatch()
+      // So we need to end that batch now
+      grid.endBatch(); 
       isDrawingShape = false;
       isDragging = false;
     } else if (isDragging) {
+      // If we were using point/spray tool (which started a batch on touchdown)
+      // we need to end that batch now
+      grid.endBatch();
       // If the user was dragging (free drawing), update the favicon
       generateFavicon();
       isDragging = false;
@@ -1617,7 +1622,11 @@ function handleMouseUp(e) {
 
   if (isDragging || isDrawingShape) render();
 
-  grid.endBatch(); // End batch
+  // Only end batch if we started one (point, spray, or completed shape)
+  if (isDragging || isDrawingShape) {
+    grid.endBatch(); // End batch
+  }
+  
   isDrawingShape = false;
   isDragging = false;
   
