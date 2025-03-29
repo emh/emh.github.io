@@ -504,6 +504,24 @@ function getToolAt(x, y) {
   return (toolIndex >= 0 && toolIndex < TOOLS_CONFIG.length) ? TOOLS_CONFIG[toolIndex].id : null;
 }
 
+// Check if the given point is over the share button (special case for mobile)
+function isOverShareButton(x, y) {
+  // Skip this check if the share button doesn't exist yet
+  const shareButton = document.getElementById('share-button');
+  if (!shareButton) return false;
+  
+  // Get button position and dimensions
+  const rect = shareButton.getBoundingClientRect();
+  
+  // Check if the point is inside the button's rectangle
+  return (
+    x >= rect.left && 
+    x <= rect.right && 
+    y >= rect.top && 
+    y <= rect.bottom
+  );
+}
+
 // Resize canvas to fill the screen
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -1050,6 +1068,32 @@ function render() {
   const canUndo = grid.history.length > 0;
   const canRedo = grid.redoStack.length > 0;
   
+  // Create/update share button HTML element if needed
+  let shareButton = document.getElementById('share-button');
+  if (!shareButton) {
+    shareButton = document.createElement('button');
+    shareButton.id = 'share-button';
+    shareButton.setAttribute('aria-label', 'Share');
+    shareButton.style.position = 'absolute';
+    // Make button completely transparent but clickable
+    shareButton.style.opacity = '0';
+    shareButton.style.background = 'transparent';
+    shareButton.style.border = 'none';
+    shareButton.style.cursor = 'pointer';
+    shareButton.style.outline = 'none';
+    // Ensure it's on top of the canvas
+    shareButton.style.zIndex = '10';
+    // Ensure touch events work on mobile
+    shareButton.style.WebkitTapHighlightColor = 'transparent';
+    shareButton.style.touchAction = 'manipulation';
+    document.body.appendChild(shareButton);
+    
+    // Add click event listener to the share button
+    shareButton.addEventListener('click', () => {
+      handleToolClick('share');
+    });
+  }
+  
   for (let i = 0; i < TOOLS_CONFIG.length; i++) {
     const toolX = i * toolButtonWidth;
     const toolId = TOOLS_CONFIG[i].id;
@@ -1117,6 +1161,15 @@ function render() {
       }
     
       drawPixelIcon(toolId, toolX, toolsY, toolButtonWidth, PALETTE_ROW_HEIGHT);
+      
+      // Position the actual share button over the drawn share icon when we reach it
+      if (toolId === 'share') {
+        // Update the position and size of the share button to match the drawn button
+        shareButton.style.left = `${toolX}px`;
+        shareButton.style.top = `${toolsY}px`;
+        shareButton.style.width = `${toolButtonWidth}px`;
+        shareButton.style.height = `${PALETTE_ROW_HEIGHT}px`;
+      }
     }
   }
 }
@@ -1180,8 +1233,13 @@ function handleTouchStart(e) {
   isTwoFingerGesture = e.touches.length >= 2;
   
   if (!isTwoFingerGesture) {
+    // Check if touch is over the share button (special case)
+    if (isOverShareButton(touchStartX, touchStartY)) {
+      // The HTML button will handle the click itself
+      return;
+    }
     // Check if touch is in color palette row
-    if (isInColorRow(touchStartY)) {
+    else if (isInColorRow(touchStartY)) {
       // Handle color swatch selection
       const swatchIndex = getSwatchAt(touchStartX, touchStartY);
       if (swatchIndex >= 0) {
@@ -1196,7 +1254,10 @@ function handleTouchStart(e) {
       // Handle tool button click
       const toolId = getToolAt(touchStartX, touchStartY);
       if (toolId) {
-        handleToolClick(toolId);
+        // Handle all tools except share (which uses its own HTML button)
+        if (toolId !== 'share') {
+          handleToolClick(toolId);
+        }
         return;
       }
     } 
@@ -1369,8 +1430,13 @@ function handleTouchEnd(e) {
 function handleMouseDown(e) {
   e.preventDefault();
   
+  // Check if click is over the share button (special case)
+  if (isOverShareButton(e.clientX, e.clientY)) {
+    // The HTML button will handle the click itself
+    return;
+  }
   // Check if click is in color palette row
-  if (isInColorRow(e.clientY)) {
+  else if (isInColorRow(e.clientY)) {
     // Handle color swatch selection
     const swatchIndex = getSwatchAt(e.clientX, e.clientY);
     if (swatchIndex >= 0) {
@@ -1385,7 +1451,10 @@ function handleMouseDown(e) {
     // Handle tool button click
     const toolId = getToolAt(e.clientX, e.clientY);
     if (toolId) {
-      handleToolClick(toolId);
+      // Handle all tools except share (which uses its own HTML button)
+      if (toolId !== 'share') {
+        handleToolClick(toolId);
+      }
       return;
     }
   } 
@@ -1641,61 +1710,53 @@ function handleToolClick(toolId) {
       // Generate share URL
       const shareUrl = createShareUrl();
       
-      // Get the dialog element
-      const shareDialog = document.getElementById('share-dialog');
-      const copyButton = document.getElementById('copy-button');
-      const shareButton = document.getElementById('share-button');
-      const closeButton = document.getElementById('close-dialog');
+      // Store the original share icon
+      const originalShareIcon = TOOL_ICONS['share'];
       
-      // Setup copy button
-      copyButton.onclick = () => {
-        navigator.clipboard.writeText(shareUrl).then(() => {
-          // Show visual confirmation
-          const originalText = copyButton.textContent;
-          copyButton.textContent = '✓ Copied!';
-          
-          // Reset button text after 1 second
-          setTimeout(() => {
-            copyButton.textContent = originalText;
-          }, 1000);
-        });
-      };
-      
-      // Setup share button
-      shareButton.onclick = () => {
-        const data = {
-          title: 'Pixels',
-          url: shareUrl
-        };
+      // Show copy confirmation by replacing the share icon with a checkmark
+      const showCopyConfirmation = () => {
+        TOOL_ICONS['share'] = CHECKMARK_ICON;
+        render(); // Re-render with checkmark
         
-        if (navigator.canShare && navigator.canShare(data)) {
-          navigator.share(data)
-            .then(() => {
-              shareDialog.close();
-            })
-            .catch(error => {
-              console.error('Error sharing:', error);
-            });
-        } else {
-          // Fallback if Web Share API is not available
-          navigator.clipboard.writeText(shareUrl);
-          const originalText = shareButton.textContent;
-          shareButton.textContent = '✓ Link copied instead';
-          
-          setTimeout(() => {
-            shareButton.textContent = originalText;
-          }, 1000);
-        }
+        // Reset to original icon after 500ms
+        setTimeout(() => {
+          TOOL_ICONS['share'] = originalShareIcon;
+          render(); // Re-render with original icon
+        }, 500);
       };
       
-      // Setup close button
-      closeButton.onclick = () => {
-        shareDialog.close();
+      // Share data for Web Share API
+      const data = {
+        title: 'Pixels',
+        url: shareUrl
       };
-      
-      // Show the dialog
-      shareDialog.showModal();
-      
+
+      // Try to use the Web Share API first if available (works well on mobile)
+      if (navigator.share && navigator.canShare && navigator.canShare(data)) {
+        navigator.share(data)
+          .then(() => {
+            showCopyConfirmation();
+          })
+          .catch((error) => {
+            // If sharing fails, fallback to clipboard
+            navigator.clipboard.writeText(shareUrl)
+              .then(() => {
+                showCopyConfirmation();
+              })
+              .catch((clipError) => {
+                console.error('Error copying to clipboard:', clipError);
+              });
+          });
+      } else {
+        // Fallback to clipboard copy
+        navigator.clipboard.writeText(shareUrl)
+          .then(() => {
+            showCopyConfirmation();
+          })
+          .catch((error) => {
+            console.error('Error copying to clipboard:', error);
+          });
+      }
       break;
   }
 }
@@ -1725,22 +1786,6 @@ canvas.addEventListener('mouseleave', handleMouseUp);
 canvas.addEventListener('wheel', handleWheel, { passive: false });
 canvas.addEventListener('contextmenu', handleContextMenu);
 window.addEventListener('resize', resizeCanvas);
-
-// Dialog setup
-const shareDialog = document.getElementById('share-dialog');
-
-// Close dialog when clicking outside of it
-shareDialog.addEventListener('click', (e) => {
-  const dialogDimensions = shareDialog.getBoundingClientRect();
-  if (
-    e.clientX < dialogDimensions.left ||
-    e.clientX > dialogDimensions.right ||
-    e.clientY < dialogDimensions.top ||
-    e.clientY > dialogDimensions.bottom
-  ) {
-    shareDialog.close();
-  }
-});
 
 // Initial setup
 calculatePaletteSize(); // Initial calculation of palette dimensions
