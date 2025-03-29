@@ -1660,7 +1660,7 @@ function handleToolClick(toolId) {
 
       const data = {
         title: 'Pixels',
-        text: shareUrl
+        url: shareUrl
       };
 
       if (navigator.canShare && navigator.canShare(data)) {
