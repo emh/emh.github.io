@@ -1591,7 +1591,7 @@ function handleMouseUp(e) {
   lastTouchedCell = null;
 }
 
-// Serialize current grid state to a compact encoding
+// Serialize current grid state to a compact bit-packed encoding
 function serializeGridToBase64() {
   // Only include pixels at the current zoom level
   const z = grid.currentZoomLevel;
@@ -1604,20 +1604,7 @@ function serializeGridToBase64() {
     return btoa(`z${z}`);
   }
   
-  // Store color palette (unique colors used)
-  const colorSet = new Set();
-  for (const pixel of activePixels) {
-    colorSet.add(pixel.color);
-  }
-  const colorPalette = Array.from(colorSet);
-  
-  // Create a color index for more efficient encoding
-  const colorIndex = {};
-  colorPalette.forEach((color, index) => {
-    colorIndex[color] = index;
-  });
-  
-  // Find bounds to make coordinates more efficient
+  // Find bounds of the drawing
   let minX = Infinity, minY = Infinity;
   let maxX = -Infinity, maxY = -Infinity;
   
@@ -1628,56 +1615,111 @@ function serializeGridToBase64() {
     maxY = Math.max(maxY, pixel.y);
   }
   
-  // Encode the pixel data
-  // Format: z{zoomLevel}:p{palette}:{min x},{min y},{width},{height}:{compressed pixel data}
-  
-  // First, join the color palette
-  const paletteString = colorPalette.map(color => color.substring(1)).join(',');
-  
   // Width and height of our coordinate system
   const width = maxX - minX + 1;
   const height = maxY - minY + 1;
   
-  // Create an array to represent the grid and fill with empty cells
-  const gridArray = new Array(width * height).fill(-1);
+  // Create an empty grid with the determined width and height
+  // Fill with null (no color)
+  const grid2D = Array(height).fill().map(() => Array(width).fill(null));
   
-  // Fill in pixels
+  // Fill the grid with pixels
   for (const pixel of activePixels) {
-    const normalizedX = pixel.x - minX;
-    const normalizedY = pixel.y - minY;
-    const index = normalizedY * width + normalizedX;
-    gridArray[index] = colorIndex[pixel.color];
+    const x = pixel.x - minX;
+    const y = pixel.y - minY;
+    grid2D[y][x] = pixel.color;
   }
   
-  // Compress the grid using run-length encoding
-  let compressed = '';
-  
-  // Handle empty grid case
-  if (gridArray.length === 0) {
-    compressed = '0_';  // No data
-  } else {
-    let count = 1;
-    let lastValue = gridArray[0];
-    
-    for (let i = 1; i < gridArray.length; i++) {
-      if (gridArray[i] === lastValue && count < 35) { // Use base36 for count, max is 35 (Z in base36)
-        count++;
-      } else {
-        // Add the run to our compressed string
-        compressed += count.toString(36) + (lastValue === -1 ? '_' : lastValue.toString(36));
-        lastValue = gridArray[i];
-        count = 1;
+  // Extract unique colors for the palette
+  const uniqueColors = new Set();
+  for (const row of grid2D) {
+    for (const color of row) {
+      if (color !== null) {
+        uniqueColors.add(color);
       }
     }
-    
-    // Add the final run
-    compressed += count.toString(36) + (lastValue === -1 ? '_' : lastValue.toString(36));
   }
   
-  // Combine all parts into the final encoded string
-  const encoded = `z${z}:p${paletteString}:${minX},${minY},${width},${height}:${compressed}`;
+  // Convert to array and ensure we have at most 8 colors (3 bits per pixel)
+  // If more, we'll need to quantize or use more bits per pixel
+  const palette = Array.from(uniqueColors);
+  if (palette.length > 8) {
+    console.warn(`More than 8 colors (${palette.length}), some colors will be lost in encoding`);
+  }
   
-  // Return base64 encoded to ensure URL safety
+  // Create a map of color to index
+  const colorToIndex = {};
+  palette.forEach((color, index) => {
+    colorToIndex[color] = index;
+  });
+  
+  // Encode the palette - each color is 3 bytes (RGB without the # prefix)
+  let paletteBytes = '';
+  for (let i = 0; i < Math.min(palette.length, 8); i++) {
+    const color = palette[i];
+    // Extract RGB values from the color (removing the '#')
+    paletteBytes += color.substring(1);
+  }
+  
+  // Determine how many bits per pixel we need
+  // We use 3 bits per pixel which allows 8 colors (including empty)
+  const bitsPerPixel = 3;
+  
+  // Calculate the number of bits needed for the entire grid
+  const totalBits = width * height * bitsPerPixel;
+  
+  // Create a buffer to hold our bit-packed data
+  // We'll use a string of 0s and 1s initially, then pack into bytes
+  let bitString = '';
+  
+  // Pack the pixel data
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const color = grid2D[y][x];
+      let colorIndex = color === null ? 0 : (colorToIndex[color] + 1);
+      
+      // Ensure we don't exceed our bit capacity
+      colorIndex = colorIndex % (1 << bitsPerPixel);
+      
+      // Convert to binary and pad to bitsPerPixel
+      const bits = colorIndex.toString(2).padStart(bitsPerPixel, '0');
+      bitString += bits;
+    }
+  }
+  
+  // Now convert the bit string to bytes
+  const bytes = [];
+  for (let i = 0; i < bitString.length; i += 8) {
+    // Extract 8 bits, pad with 0s if needed
+    const byte = bitString.substr(i, 8).padEnd(8, '0');
+    // Convert binary to decimal
+    const decimal = parseInt(byte, 2);
+    // Add to our byte array
+    bytes.push(decimal);
+  }
+  
+  // Convert bytes to a binary string
+  let binaryString = '';
+  for (const byte of bytes) {
+    binaryString += String.fromCharCode(byte);
+  }
+
+  // Construct our final format:
+  // Format: [zoomLevel]:[minX]:[minY]:[width]:[height]:[palette count]:[palette bytes]:[pixel data]
+  const header = [
+    z,                    // Zoom level
+    minX,                 // Min X
+    minY,                 // Min Y
+    width,                // Width
+    height,               // Height
+    palette.length,       // Number of colors in palette
+    paletteBytes          // Palette data (RGB values)
+  ].join(':');
+  
+  // Combine header and binary data and encode for URL
+  const encoded = header + ':' + btoa(binaryString);
+  
+  // Make the whole thing URL-safe with base64
   return btoa(encoded);
 }
 
@@ -1707,24 +1749,123 @@ function loadGridFromUrl() {
   
   // Check if we have data from either source
   if (base64String) {
-    try {
-      // Try to decode using the new compact format first
-      try {
-        return loadGridFromCompactFormat(base64String);
-      } catch (formatError) {
-        // If that fails, try the old JSON format for backward compatibility
-        console.log("New format decoding failed, trying legacy format");
-        return loadGridFromLegacyFormat(base64String);
-      }
-    } catch (error) {
-      console.error('Failed to load grid from URL:', error);
-    }
+    return loadGridFromBitPackedFormat(base64String);
   }
   
   return false;
 }
 
-// Load grid from our compact format
+// Load grid from our bit-packed format
+function loadGridFromBitPackedFormat(base64String) {
+  try {
+    // Double base64 decode (first the outer wrapper, then the inner data)
+    const outerDecoded = atob(base64String);
+    
+    // Check for minimal format (just zoom level)
+    if (outerDecoded.startsWith('z') && !outerDecoded.includes(':')) {
+      const zoomLevel = parseInt(outerDecoded.substring(1), 10);
+      if (isNaN(zoomLevel)) {
+        throw new Error('Invalid zoom level');
+      }
+      
+      // Create a new empty grid with the specified zoom level
+      const newGrid = new PixelGrid();
+      newGrid.currentZoomLevel = zoomLevel;
+      grid = newGrid;
+      render();
+      return true;
+    }
+    
+    // Parse the header parts
+    // Format: [zoomLevel]:[minX]:[minY]:[width]:[height]:[palette count]:[palette bytes]:[pixel data]
+    const parts = outerDecoded.split(':');
+    if (parts.length < 8) {
+      throw new Error('Invalid bit-packed format');
+    }
+    
+    // Parse header values
+    const zoomLevel = parseInt(parts[0], 10);
+    const minX = parseInt(parts[1], 10);
+    const minY = parseInt(parts[2], 10);
+    const width = parseInt(parts[3], 10);
+    const height = parseInt(parts[4], 10);
+    const paletteCount = parseInt(parts[5], 10);
+    const paletteBytes = parts[6];
+    
+    // Binary data is the last part, base64 encoded
+    const binaryData = atob(parts[7]);
+    
+    // Check that all values are valid
+    if ([zoomLevel, minX, minY, width, height, paletteCount].some(isNaN)) {
+      throw new Error('Invalid values in bit-packed format');
+    }
+    
+    // Reconstruct the color palette
+    const palette = [];
+    for (let i = 0; i < paletteCount && i < 8; i++) {
+      // Each color is 6 hex characters (3 bytes)
+      const start = i * 6;
+      if (start + 6 <= paletteBytes.length) {
+        const hexColor = paletteBytes.substring(start, start + 6);
+        palette.push(`#${hexColor}`);
+      }
+    }
+    
+    // Create a new grid
+    const newGrid = new PixelGrid();
+    newGrid.currentZoomLevel = zoomLevel;
+    
+    // Extract bit-packed pixel data
+    const bitsPerPixel = 3; // We used 3 bits per pixel
+    
+    // Convert binary string to byte array
+    const bytes = [];
+    for (let i = 0; i < binaryData.length; i++) {
+      bytes.push(binaryData.charCodeAt(i));
+    }
+    
+    // Convert byte array to bit string
+    let bitString = '';
+    for (const byte of bytes) {
+      bitString += byte.toString(2).padStart(8, '0');
+    }
+    
+    // Process the bits to extract pixel colors
+    // We process in groups of bitsPerPixel bits
+    let bitIndex = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        // Extract bitsPerPixel bits
+        if (bitIndex + bitsPerPixel <= bitString.length) {
+          const colorBits = bitString.substring(bitIndex, bitIndex + bitsPerPixel);
+          bitIndex += bitsPerPixel;
+          
+          // Convert bits to color index
+          const colorIndex = parseInt(colorBits, 2);
+          
+          // Color index 0 means no color (transparent)
+          if (colorIndex > 0 && colorIndex - 1 < palette.length) {
+            const color = palette[colorIndex - 1];
+            const pixelX = minX + x;
+            const pixelY = minY + y;
+            
+            newGrid.pixels.push(new Pixel(pixelX, pixelY, zoomLevel, color));
+          }
+        }
+      }
+    }
+    
+    // Replace current grid
+    grid = newGrid;
+    render();
+    return true;
+  } catch (error) {
+    console.error('Error in bit-packed format decoding:', error);
+    throw error; // Re-throw to try other formats
+  }
+}
+
+// Load grid from our compact RLE format (for compatibility with previous update)
 function loadGridFromCompactFormat(base64String) {
   // Decode from base64
   const encoded = atob(base64String);
@@ -1824,30 +1965,35 @@ function loadGridFromCompactFormat(base64String) {
 
 // Load grid from the old JSON format (for backward compatibility)
 function loadGridFromLegacyFormat(base64String) {
-  // Decode the base64 string to JSON
-  const jsonString = decodeURIComponent(atob(base64String));
-  const data = JSON.parse(jsonString);
-  
-  // Create a new grid
-  const newGrid = new PixelGrid();
-  
-  // Set zoom level
-  newGrid.currentZoomLevel = data.zoomLevel || 10;
-  
-  // Load pixels
-  if (data.pixels && Array.isArray(data.pixels)) {
-    for (const [x, y, color] of data.pixels) {
-      if (typeof x === 'number' && typeof y === 'number' && typeof color === 'string') {
-        newGrid.pixels.push(new Pixel(x, y, newGrid.currentZoomLevel, color));
+  try {
+    // Decode the base64 string to JSON
+    const jsonString = decodeURIComponent(atob(base64String));
+    const data = JSON.parse(jsonString);
+    
+    // Create a new grid
+    const newGrid = new PixelGrid();
+    
+    // Set zoom level
+    newGrid.currentZoomLevel = data.zoomLevel || 10;
+    
+    // Load pixels
+    if (data.pixels && Array.isArray(data.pixels)) {
+      for (const [x, y, color] of data.pixels) {
+        if (typeof x === 'number' && typeof y === 'number' && typeof color === 'string') {
+          newGrid.pixels.push(new Pixel(x, y, newGrid.currentZoomLevel, color));
+        }
       }
     }
+    
+    // Replace current grid
+    grid = newGrid;
+    render();
+    
+    return true;
+  } catch (error) {
+    console.error('Error in legacy format decoding:', error);
+    throw error; // Re-throw so we can try even older formats
   }
-  
-  // Replace current grid
-  grid = newGrid;
-  render();
-  
-  return true;
 }
 
 // Handle tool button clicks
@@ -1909,6 +2055,8 @@ function handleToolClick(toolId) {
         title: 'Pixels',
         text: shareUrl
       };
+
+      console.log(data);
 
       // Try to use the Web Share API first if available (works well on mobile)
       if (navigator.share && navigator.canShare && navigator.canShare(data)) {
