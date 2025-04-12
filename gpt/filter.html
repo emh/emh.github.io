@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Webcam ASCII Art Filter</title>
+  <style>
+    /* Full screen canvas */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    /* Controls styling */
+    #controls {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 5px;
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 14px;
+    }
+    #controls label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    #controls input[type="range"],
+    #controls select,
+    #controls button {
+      width: 100%;
+      margin-bottom: 5px;
+    }
+    #controls button {
+      padding: 5px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <!-- Controls Panel -->
+  <div id="controls">
+    <label>Effect:
+      <select id="effect">
+        <option value="pixelize" selected>Pixelize</option>
+        <option value="pointelist">Pointelist</option>
+        <option value="lichtenstein">Lichtenstein</option>
+        <option value="ascii">ASCII</option>
+      </select>
+    </label>
+    <label>Resolution: <span id="resolutionValue">10</span></label>
+    <input type="range" id="resolution" min="5" max="20" value="10">
+    <label>Palette Depth: <span id="paletteDepthValue">16</span></label>
+    <input type="range" id="paletteDepth" min="8" max="256" value="16">
+    <label>
+      <input type="checkbox" id="monochrome"> Monochrome
+    </label>
+    <label>Ghost Frames: <span id="ghostFrameValue">0</span></label>
+    <input type="range" id="ghostFrames" min="0" max="10" value="0">
+    <button id="capture">Take Photo</button>
+  </div>
+  
+  <script>
+    (function() {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.playsInline = true;
+      
+      // Global settings (controlled by UI)
+      let pixelSize = 10;
+      let paletteDepth = 16;
+      let monochrome = false;
+      let currentEffect = "pixelize";
+      let ghostFrameCount = 0;
+      const ghostTrailFactor = 4;
+      const ghostFrames = [];
+      
+      // Resize canvas to full screen.
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+      
+      // UI controls.
+      document.getElementById('effect').addEventListener('change', function() {
+        currentEffect = this.value;
+      });
+      const resSlider = document.getElementById('resolution');
+      const resVal = document.getElementById('resolutionValue');
+      resSlider.addEventListener('input', function() {
+        pixelSize = parseInt(this.value);
+        resVal.textContent = this.value;
+      });
+      const paletteSlider = document.getElementById('paletteDepth');
+      const paletteVal = document.getElementById('paletteDepthValue');
+      paletteSlider.addEventListener('input', function() {
+        paletteDepth = parseInt(this.value);
+        paletteVal.textContent = this.value;
+      });
+      const monoCheckbox = document.getElementById('monochrome');
+      monoCheckbox.addEventListener('change', function() {
+        monochrome = this.checked;
+      });
+      const ghostSlider = document.getElementById('ghostFrames');
+      const ghostVal = document.getElementById('ghostFrameValue');
+      ghostSlider.addEventListener('input', function() {
+        ghostFrameCount = parseInt(this.value);
+        ghostVal.textContent = this.value;
+        while(ghostFrames.length > ghostFrameCount * ghostTrailFactor) {
+          ghostFrames.shift();
+        }
+      });
+      document.getElementById('capture').addEventListener('click', function() {
+        canvas.toBlob(function(blob) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'snapshot.png';
+          a.click();
+          URL.revokeObjectURL(url);
+        }, 'image/png');
+      });
+      
+      // Get webcam access.
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          video.srcObject = stream;
+          video.play();
+          requestAnimationFrame(renderFrame);
+        })
+        .catch(err => console.error('Webcam access error:', err));
+      
+      // Transformation function for various effects.
+      function transformFrame() {
+        const vidW = video.videoWidth, vidH = video.videoHeight;
+        if(!vidW || !vidH) return null;
+        
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = vidW;
+        offCanvas.height = vidH;
+        const offCtx = offCanvas.getContext('2d');
+        offCtx.drawImage(video, 0, 0, vidW, vidH);
+        const frame = offCtx.getImageData(0, 0, vidW, vidH);
+        const data = frame.data;
+        offCtx.clearRect(0, 0, vidW, vidH);
+        
+        if(currentEffect === "ascii") {
+          // ASCII Art filter.
+          offCtx.fillStyle = "black";
+          offCtx.fillRect(0, 0, vidW, vidH);
+          // Use a monospace font with size = pixelSize.
+          offCtx.font = `${pixelSize}px monospace`;
+          offCtx.textAlign = "center";
+          offCtx.textBaseline = "middle";
+          // ASCII characters ordered by increasing density.
+          const asciiChars = " .:-=+*#%@";
+          for(let y = 0; y < vidH; y += pixelSize) {
+            for(let x = 0; x < vidW; x += pixelSize) {
+              let r = 0, g = 0, b = 0, count = 0;
+              for(let dy = 0; dy < pixelSize; dy++) {
+                for(let dx = 0; dx < pixelSize; dx++) {
+                  const posX = x + dx, posY = y + dy;
+                  if(posX < vidW && posY < vidH) {
+                    const index = (posY * vidW + posX) * 4;
+                    r += data[index];
+                    g += data[index + 1];
+                    b += data[index + 2];
+                    count++;
+                  }
+                }
+              }
+              const rAvg = r / count, gAvg = g / count, bAvg = b / count;
+              // Compute brightness.
+              const brightness = 0.299 * rAvg + 0.587 * gAvg + 0.114 * bAvg;
+              let charIndex = Math.floor(brightness / 255 * asciiChars.length);
+              if(charIndex >= asciiChars.length) charIndex = asciiChars.length - 1;
+              const asciiChar = asciiChars[charIndex];
+              // Set fill color to the dominant (average) color of this block.
+              console.log(`rgb(${Math.round(rAvg)}, ${Math.round(gAvg)}, ${Math.round(bAvg)})`);
+              offCtx.fillStyle = `rgb(${Math.round(rAvg)}, ${Math.round(gAvg)}, ${Math.round(bAvg)})`;
+              offCtx.fillText(asciiChar, x + pixelSize / 2, y + pixelSize / 2);
+            }
+          }
+          return offCanvas;
+        }
+        // Other effects (lichtenstein, pointelist, pixelize) remain unchanged.
+        else if(currentEffect === "lichtenstein") {
+          // For brevity, using existing implementation for Lichtenstein.
+          // (This branch divides the frame into a grid and maps each block's average
+          // color to a primary hue with discrete brightness levels, drawing thick black edges.)
+          
+          const baseHues = [0, 30, 60, 120, 240, 300];
+          function rgbToHsv(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            const delta = max - min;
+            let h = 0;
+            if(delta !== 0) {
+              if(max === r) h = 60 * (((g - b) / delta) % 6);
+              else if(max === g) h = 60 * (((b - r) / delta) + 2);
+              else h = 60 * (((r - g) / delta) + 4);
+            }
+            if(h < 0) h += 360;
+            return { h, s: max === 0 ? 0 : delta/max, v: max };
+          }
+          function hsvToRgb(h, s, v) {
+            const c = v * s;
+            const x = c * (1 - Math.abs((h/60) % 2 - 1));
+            const m = v - c;
+            let r1, g1, b1;
+            if(h < 60) { r1 = c; g1 = x; b1 = 0; }
+            else if(h < 120) { r1 = x; g1 = c; b1 = 0; }
+            else if(h < 180) { r1 = 0; g1 = c; b1 = x; }
+            else if(h < 240) { r1 = 0; g1 = x; b1 = c; }
+            else if(h < 300) { r1 = x; g1 = 0; b1 = c; }
+            else { r1 = c; g1 = 0; b1 = x; }
+            return { r: Math.round((r1 + m) * 255), g: Math.round((g1 + m) * 255), b: Math.round((b1 + m) * 255) };
+          }
+          const gridW = Math.ceil(vidW / pixelSize);
+          const gridH = Math.ceil(vidH / pixelSize);
+          const blockColors = [];
+          for(let j = 0; j < gridH; j++){
+            blockColors[j] = [];
+            for(let i = 0; i < gridW; i++){
+              let x = i * pixelSize, y = j * pixelSize;
+              let rSum = 0, gSum = 0, bSum = 0, count = 0;
+              for(let dy = 0; dy < pixelSize; dy++){
+                for(let dx = 0; dx < pixelSize; dx++){
+                  const posX = x + dx, posY = y + dy;
+                  if(posX < vidW && posY < vidH){
+                    const index = (posY * vidW + posX) * 4;
+                    rSum += data[index];
+                    gSum += data[index+1];
+                    bSum += data[index+2];
+                    count++;
+                  }
+                }
+              }
+              let rAvg = rSum/count, gAvg = gSum/count, bAvg = bSum/count;
+              const hsv = rgbToHsv(rAvg, gAvg, bAvg);
+              let minDiff = Infinity, chosenHue = baseHues[0];
+              for(let k = 0; k < baseHues.length; k++){
+                let diff = Math.abs(hsv.h - baseHues[k]);
+                if(diff > 180) diff = 360 - diff;
+                if(diff < minDiff){ minDiff = diff; chosenHue = baseHues[k]; }
+              }
+              let vAdj = 0.3 * hsv.v + 0.7;
+              const brightnessLevels = Math.max(1, Math.floor(paletteDepth / baseHues.length));
+              if(brightnessLevels > 1){
+                const step = 1 / (brightnessLevels - 1);
+                vAdj = Math.round(vAdj/step)*step;
+                vAdj = Math.min(1, vAdj);
+              }
+              const primary = hsvToRgb(chosenHue, 1, vAdj);
+              blockColors[j][i] = { r: primary.r, g: primary.g, b: primary.b };
+            }
+          }
+          for(let j = 0; j < gridH; j++){
+            for(let i = 0; i < gridW; i++){
+              const color = blockColors[j][i];
+              offCtx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+              offCtx.fillRect(i * pixelSize, j * pixelSize, pixelSize, pixelSize);
+            }
+          }
+          const threshold = 30, thickness = Math.max(2, Math.floor(pixelSize/3));
+          offCtx.fillStyle = 'black';
+          for(let j = 0; j < gridH; j++){
+            for(let i = 0; i < gridW; i++){
+              const current = blockColors[j][i];
+              if(i < gridW - 1){
+                const right = blockColors[j][i+1];
+                const diff = Math.sqrt(Math.pow(current.r - right.r,2) + Math.pow(current.g - right.g,2) + Math.pow(current.b - right.b,2));
+                if(diff > threshold) offCtx.fillRect((i+1)*pixelSize - thickness/2, j*pixelSize, thickness, pixelSize);
+              }
+              if(j < gridH - 1){
+                const bottom = blockColors[j+1][i];
+                const diff = Math.sqrt(Math.pow(current.r - bottom.r,2) + Math.pow(current.g - bottom.g,2) + Math.pow(current.b - bottom.b,2));
+                if(diff > threshold) offCtx.fillRect(i*pixelSize, (j+1)*pixelSize - thickness/2, pixelSize, thickness);
+              }
+            }
+          }
+          return offCanvas;
+        }
+        else {
+          // For pixelize and pointelist effects.
+          for(let y = 0; y < vidH; y += pixelSize){
+            for(let x = 0; x < vidW; x += pixelSize){
+              let r = 0, g = 0, b = 0, count = 0;
+              for(let dy = 0; dy < pixelSize; dy++){
+                for(let dx = 0; dx < pixelSize; dx++){
+                  const posX = x + dx, posY = y + dy;
+                  if(posX < vidW && posY < vidH){
+                    const index = (posY * vidW + posX) * 4;
+                    r += data[index];
+                    g += data[index+1];
+                    b += data[index+2];
+                    count++;
+                  }
+                }
+              }
+              r /= count; g /= count; b /= count;
+              const levels = [];
+              for(let i = 0; i < paletteDepth; i++){
+                levels.push(Math.round(i * (255/(paletteDepth-1))));
+              }
+              const quantize = value => {
+                let nearest = levels[0];
+                let minDiff = Math.abs(value - nearest);
+                for(let i = 1; i < levels.length; i++){
+                  const diff = Math.abs(value - levels[i]);
+                  if(diff < minDiff){ minDiff = diff; nearest = levels[i]; }
+                }
+                return nearest;
+              };
+              if(currentEffect === "pointelist"){
+                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+                let fillColor;
+                if(monochrome){
+                  const qGray = quantize(brightness);
+                  fillColor = `rgb(${qGray}, ${qGray}, ${qGray})`;
+                } else {
+                  const qR = quantize(r), qG = quantize(g), qB = quantize(b);
+                  fillColor = `rgb(${qR}, ${qG}, ${qB})`;
+                }
+                offCtx.fillStyle = fillColor;
+                const radius = (brightness/255)*(pixelSize/2);
+                offCtx.beginPath();
+                offCtx.arc(x+pixelSize/2, y+pixelSize/2, radius, 0, Math.PI*2);
+                offCtx.fill();
+              } else {
+                if(monochrome){
+                  const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                  const qGray = quantize(gray);
+                  offCtx.fillStyle = `rgb(${qGray}, ${qGray}, ${qGray})`;
+                } else {
+                  const qR = quantize(r), qG = quantize(g), qB = quantize(b);
+                  offCtx.fillStyle = `rgb(${qR}, ${qG}, ${qB})`;
+                }
+                offCtx.fillRect(x, y, pixelSize, pixelSize);
+              }
+            }
+          }
+          return offCanvas;
+        }
+      }
+      
+      // Render loop: clear canvas, draw ghost frames, then current frame (flipped horizontally).
+      function renderFrame(){
+        ctx.clearRect(0,0, canvas.width, canvas.height);
+        const transformed = transformFrame();
+        if(transformed){
+          // Calculate aspect ratios to maintain the camera's aspect ratio.
+          const videoAspectRatio = video.videoWidth / video.videoHeight;
+          const canvasAspectRatio = canvas.width / canvas.height;
+          let drawWidth, drawHeight, offsetX, offsetY;
+          if (canvasAspectRatio > videoAspectRatio) {
+            // Canvas is wider than video: match height, center horizontally.
+            drawHeight = canvas.height;
+            drawWidth = drawHeight * videoAspectRatio;
+            offsetX = (canvas.width - drawWidth) / 2;
+            offsetY = 0;
+          } else {
+            // Canvas is taller than video: match width, center vertically.
+            drawWidth = canvas.width;
+            drawHeight = drawWidth / videoAspectRatio;
+            offsetX = 0;
+            offsetY = (canvas.height - drawHeight) / 2;
+          }
+          
+          // Flip the image horizontally and draw the transformed frame preserving aspect ratio.
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.drawImage(transformed, -offsetX - drawWidth, offsetY, drawWidth, drawHeight);
+          ctx.restore();
+                    
+          if(ghostFrameCount > 0 && ghostFrames.length > 0){
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ghostFrames.forEach((frame,i)=>{
+              const alpha = ((i+1)/ghostFrames.length)*0.05;
+              ctx.save();
+              ctx.globalAlpha = alpha;
+              ctx.scale(-1,1);
+              ctx.drawImage(frame, -canvas.width, 0, canvas.width, canvas.height);
+              ctx.restore();
+            });
+            ctx.restore();
+          }
+          
+          if(ghostFrameCount > 0){
+            const ghostCanvas = document.createElement('canvas');
+            ghostCanvas.width = transformed.width;
+            ghostCanvas.height = transformed.height;
+            const ghostCtx = ghostCanvas.getContext('2d');
+            ghostCtx.drawImage(transformed, 0, 0);
+            ghostFrames.push(ghostCanvas);
+            if(ghostFrames.length > ghostFrameCount * ghostTrailFactor){
+              ghostFrames.shift();
+            }
+          } else {
+            ghostFrames.length = 0;
+          }
+        }
+        requestAnimationFrame(renderFrame);
+      }
+    })();
+  </script>
+</body>
+</html>
