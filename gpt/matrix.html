@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ASCII Webcam with Ghost Trail Drops</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; }
+    canvas { display: block; }
+    /* Button styling */
+    #shareBtn {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      background: rgba(0, 0, 0, 0.5);
+      border: none;
+      color: white;
+      padding: 10px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="asciiCanvas"></canvas>
+  <video id="video" autoplay playsinline style="display:none;"></video>
+  <!-- Camera share button -->
+  <button id="shareBtn">📷</button>
+  <script>
+    const canvas = document.getElementById('asciiCanvas');
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('video');
+    const shareBtn = document.getElementById('shareBtn');
+
+    // Settings
+    const cellSize = 12; // size for each ascii block
+    // Use a fixed set of characters (capital letters, numbers, punctuation) ordered by density
+    const asciiChars = "MNHQ$OC?7>!:-;."; 
+    // Reduced grayscale palette for background
+    const palette = ['#222', '#555', '#888', '#bbb', '#fff'];
+
+    let cols, rows;
+    let highlightDrops = [];
+
+    // Resize canvas and recalc grid
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      cols = Math.floor(canvas.width / cellSize);
+      rows = Math.floor(canvas.height / cellSize);
+      highlightDrops = [];
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Offscreen canvas for lower-res video processing
+    const offCanvas = document.createElement('canvas');
+    const offCtx = offCanvas.getContext('2d');
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+        video.play();
+        requestAnimationFrame(draw);
+      })
+      .catch(err => {
+        alert('Error accessing webcam: ' + err);
+      });
+
+    // Map brightness (0-255) to an ascii character
+    function getAsciiChar(brightness) {
+      const index = Math.floor((brightness / 255) * (asciiChars.length - 1));
+      return asciiChars[index];
+    }
+    // Map brightness to a color from our reduced palette
+    function getPaletteColor(brightness) {
+      const index = Math.floor((brightness / 255) * (palette.length - 1));
+      return palette[index];
+    }
+    // Helper function: convert a brightness (0-255) to a grayscale hex color
+    function brightnessToHex(brightness) {
+      const v = Math.round(brightness);
+      let hex = v.toString(16);
+      if (hex.length < 2) hex = "0" + hex;
+      return "#" + hex + hex + hex;
+    }
+
+    function draw() {
+      // Clear full canvas
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Set offscreen canvas to grid size and draw current video frame using center-cropping
+      offCanvas.width = cols;
+      offCanvas.height = rows;
+      
+      // Compute target aspect ratio from offCanvas dimensions
+      const targetAspect = offCanvas.width / offCanvas.height;
+      // Get video dimensions from the stream
+      const videoAspect = video.videoWidth / video.videoHeight;
+      let sx, sy, sWidth, sHeight;
+      if (videoAspect > targetAspect) {
+        // Video is wider than target: crop horizontally.
+        sHeight = video.videoHeight;
+        sWidth = sHeight * targetAspect;
+        sx = (video.videoWidth - sWidth) / 2;
+        sy = 0;
+      } else {
+        // Video is taller than target: crop vertically.
+        sWidth = video.videoWidth;
+        sHeight = sWidth / targetAspect;
+        sx = 0;
+        sy = (video.videoHeight - sHeight) / 2;
+      }
+      offCtx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, offCanvas.width, offCanvas.height);
+      
+      const frame = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
+
+      // Build ascii matrix from the video frame.
+      // Each cell now stores an object with { char, brightness }
+      const asciiMatrix = [];
+      ctx.font = cellSize + "px Courier New, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (let y = 0; y < rows; y++) {
+        asciiMatrix[y] = [];
+        for (let x = 0; x < cols; x++) {
+          const i = (y * offCanvas.width + x) * 4;
+          const r = frame[i], g = frame[i + 1], b = frame[i + 2];
+          const brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          const char = getAsciiChar(brightness);
+          asciiMatrix[y][x] = { char: char, brightness: brightness };
+          // Flip horizontally by drawing at: canvas.width - (x position)
+          ctx.fillStyle = getPaletteColor(brightness);
+          ctx.fillText(char, canvas.width - (x * cellSize + cellSize / 2), y * cellSize + cellSize / 2);
+        }
+      }
+
+      // Randomly start a new drop with high frequency
+      if (Math.random() < 0.9) {
+        highlightDrops.push({
+          col: Math.floor(Math.random() * cols),
+          row: Math.floor(Math.random() * rows),
+          remaining: Math.floor(Math.random() * 60) + 60,  // longer drop lifetime
+          trail: [],
+          trailMax: Math.floor(Math.random() * 60) + 60  // random ghost trail duration
+        });
+      }
+
+      // Process each drop: update trail, draw ghost trail and current drop highlight
+      for (let i = highlightDrops.length - 1; i >= 0; i--) {
+        const drop = highlightDrops[i];
+        const boost = 30; // brightness boost amount
+
+        // Update and draw ghost trail for this drop
+        for (let j = 0; j < drop.trail.length; j++) {
+          const t = drop.trail[j];
+          // Interpolate brightness from boosted (at lifetime=0) to original (at lifetime=trailMax)
+          const factor = Math.max(0, (drop.trailMax - t.lifetime) / drop.trailMax);
+          const ghostBrightness = Math.min(255, t.brightness + boost * factor);
+          ctx.fillStyle = brightnessToHex(ghostBrightness);
+          ctx.fillText(t.char, canvas.width - (drop.col * cellSize + cellSize / 2), t.row * cellSize + cellSize / 2);
+          t.lifetime++;
+        }
+        // Remove ghost trail items that have expired
+        drop.trail = drop.trail.filter(t => t.lifetime < drop.trailMax);
+
+        // Add current drop position into ghost trail (store its ascii char and brightness)
+        if (drop.row >= 0 && drop.row < rows) {
+          drop.trail.push({ row: drop.row, char: asciiMatrix[drop.row][drop.col].char, brightness: asciiMatrix[drop.row][drop.col].brightness, lifetime: 0 });
+        }
+
+        // Draw current drop highlight as slightly brighter than the underlying cell
+        if (drop.row >= 0 && drop.row < rows && drop.col >= 0 && drop.col < cols) {
+          const cell = asciiMatrix[drop.row][drop.col];
+          const dropBrightness = Math.min(255, cell.brightness + boost);
+          ctx.fillStyle = brightnessToHex(dropBrightness);
+          ctx.fillText(cell.char, canvas.width - (drop.col * cellSize + cellSize / 2), drop.row * cellSize + cellSize / 2);
+        }
+
+        // Update drop: move down one cell and decrement lifespan
+        drop.row++;
+        drop.remaining--;
+        if (drop.row >= rows || drop.remaining <= 0) {
+          highlightDrops.splice(i, 1);
+        }
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    // Capture the canvas and share the image using the Web Share API.
+    shareBtn.addEventListener('click', function() {
+      canvas.toBlob(function(blob) {
+        if (!blob) return;
+        // Check if the Web Share API is available with file sharing support
+        const file = new File([blob], "matrix.png", { type: blob.type });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({
+            title: 'ASCII Webcam Snapshot',
+            text: 'Check out my ASCII cam image!',
+            files: [file]
+          })
+          .catch(err => console.error('Share failed:', err));
+        } else {
+          // Fallback: open the image in a new tab
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+        }
+      }, 'image/png');
+    });
+  </script>
+</body>
+</html>
