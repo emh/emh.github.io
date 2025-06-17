@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spaceballs: The Tunnel Run!</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #eee;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+        }
+        h1 {
+            color: #0ff;
+            text-shadow: 0 0 5px #0ff;
+        }
+        .game-container {
+            display: flex;
+            gap: 20px;
+            border: 2px solid #333;
+            padding: 20px;
+            background-color: #010101;
+            position: relative;
+            border-radius: 2em;
+            box-shadow: 0 0 20px rgba(255,0,0,0.3);
+            overflow: hidden;
+        }
+        .view {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #333;
+            background-color: #080000;
+        }
+        .label {
+            margin-bottom: 5px;
+            font-size: 1.2em;
+            color: #0ff;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 2em;
+            cursor: pointer;
+            border-radius: 2em;
+        }
+        #overlay h2 {
+            color: #f00;
+            text-shadow: 0 0 8px #f00;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Spaceballs: The Tunnel Run</h1>
+    <div class="game-container">
+        <!-- 3rd Person View -->
+        <div class="view">
+            <div class="label">EXTERNAL CAM [EAGLE 5]</div>
+            <canvas id="thirdPersonCanvas" width="500" height="300"></canvas>
+        </div>
+
+        <!-- 1st Person View -->
+        <div class="view">
+            <div class="label">FORWARD VIEWSCREEN</div>
+            <canvas id="firstPersonCanvas" width="400" height="300"></canvas>
+        </div>
+
+        <!-- Start / Game Over Screen -->
+        <div id="overlay">
+            <div id="startScreen">
+                <p>"They've gone to plaid!"</p>
+                <br>
+                <p>Use UP/DOWN Arrow Keys</p>
+                <br>
+                <p>Click to Start</p>
+            </div>
+            <div id="gameOverScreen" style="display: none;">
+                <h2>"WE'VE BEEN JAMMED!"</h2>
+                <p>Distance: <span id="finalScore">0</span></p>
+                <br>
+                <p>Click to try again... at Ludicrous Speed!</p>
+            </div>
+        </div>
+    </div>
+
+
+<script>
+    // --- CANVAS & CONTEXT SETUP ---
+    const thirdPersonCanvas = document.getElementById('thirdPersonCanvas');
+    const tpCtx = thirdPersonCanvas.getContext('2d');
+    const TP_W = thirdPersonCanvas.width;
+    const TP_H = thirdPersonCanvas.height;
+
+    const firstPersonCanvas = document.getElementById('firstPersonCanvas');
+    const fpCtx = firstPersonCanvas.getContext('2d');
+    const FP_W = firstPersonCanvas.width;
+    const FP_H = firstPersonCanvas.height;
+
+
+    // --- UI ELEMENTS ---
+    const overlay = document.getElementById('overlay');
+    const startScreen = document.getElementById('startScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const finalScoreEl = document.getElementById('finalScore');
+
+    // --- GAME STATE ---
+    let ship, tunnel, fpTunnel, keys, gameState, magRtd;
+
+    function initState() {
+        // State for 3rd person game
+        ship = {
+            x: TP_W / 4,
+            y: TP_H / 2,
+            width: 60,
+            height: 30,
+            speed: 4
+        };
+        tunnel = {
+            segments: [],
+            segmentWidth: 20,
+            openingSize: 100,
+            lastTopY: TP_H / 2 - 100
+        };
+
+        // NEW: Separate state for 1st person visual tunnel
+        fpTunnel = {
+            segments: [],
+            segmentLength: 15,
+            maxSegments: 50,
+            baseRadius: 80,
+            lastX: 0,
+            lastY: 0
+        };
+
+        keys = { ArrowUp: false, ArrowDown: false };
+        magRtd = 428.1;
+
+        gameState = {
+            speed: 3,
+            distance: 0,
+            isGameOver: false,
+            fov: 150 // for 1st person projection
+        };
+    }
+
+    // --- INITIALIZATION ---
+    function generateInitialTunnel() {
+        // For 3rd person side-scroller
+        tunnel.segments = [];
+        tunnel.lastTopY = TP_H / 2 - tunnel.openingSize / 2;
+        const segmentCount = Math.ceil(TP_W / tunnel.segmentWidth) + 2;
+        for (let i = 0; i < segmentCount; i++) {
+            createNewSideSegment(i * tunnel.segmentWidth);
+        }
+
+        // NEW: For 1st person forward-view
+        fpTunnel.segments = [];
+        fpTunnel.lastX = 0;
+        fpTunnel.lastY = 0;
+        for (let i = 0; i < fpTunnel.maxSegments; i++) {
+            createNewFPSegment(i * fpTunnel.segmentLength);
+        }
+    }
+
+    function createNewSideSegment(xPos) {
+        const targetTopY = tunnel.lastTopY + (Math.random() - 0.5) * 40;
+        tunnel.lastTopY += (targetTopY - tunnel.lastTopY) * 0.2;
+        if (tunnel.lastTopY < 10) tunnel.lastTopY = 10;
+        if (tunnel.lastTopY > TP_H - tunnel.openingSize - 10) tunnel.lastTopY = TP_H - tunnel.openingSize - 10;
+        tunnel.segments.push({ x: xPos, topY: tunnel.lastTopY, bottomY: tunnel.lastTopY + tunnel.openingSize });
+    }
+
+    function createNewFPSegment(zPos) {
+        const targetX = (Math.random() - 0.5) * 150;
+        const targetY = (Math.random() - 0.5) * 150;
+        fpTunnel.lastX += (targetX - fpTunnel.lastX) * 0.1;
+        fpTunnel.lastY += (targetY - fpTunnel.lastY) * 0.1;
+        fpTunnel.segments.push({ z: zPos, x: fpTunnel.lastX, y: fpTunnel.lastY });
+    }
+    
+    // --- GAME LOOP ---
+    function gameLoop() {
+        if (gameState.isGameOver) return;
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function update() {
+        // -- Ship and 3rd person tunnel update --
+        if (keys.ArrowUp && ship.y > 15) ship.y -= ship.speed;
+        if (keys.ArrowDown && ship.y < TP_H - 15) ship.y += ship.speed;
+
+        for (let seg of tunnel.segments) {
+            seg.x -= gameState.speed;
+        }
+        if (tunnel.segments[0].x < -tunnel.segmentWidth) {
+            tunnel.segments.shift();
+            const lastSegment = tunnel.segments[tunnel.segments.length - 1];
+            createNewSideSegment(lastSegment.x + tunnel.segmentWidth);
+        }
+
+        // -- NEW: 1st person tunnel update --
+        for (let seg of fpTunnel.segments) {
+            seg.z -= gameState.speed;
+        }
+        if (fpTunnel.segments[0].z < 0) {
+            fpTunnel.segments.shift();
+            const lastFPSegment = fpTunnel.segments[fpTunnel.segments.length - 1];
+            createNewFPSegment(lastFPSegment.z + fpTunnel.segmentLength);
+        }
+
+        // -- General game state update --
+        gameState.distance++;
+        gameState.speed += 0.001;
+        magRtd += (Math.random() - 0.5) * 5;
+        if (magRtd < 100) magRtd = 450;
+
+        // -- Collision Detection --
+        const shipLeft = ship.x - ship.width / 2;
+        const shipRight = ship.x + ship.width / 2;
+        for (const seg of tunnel.segments) {
+            if (shipRight > seg.x && shipLeft < seg.x + tunnel.segmentWidth) {
+                const shipTop = ship.y - ship.height / 2;
+                const shipBottom = ship.y + ship.height / 2;
+                if (shipTop < seg.topY || shipBottom > seg.bottomY) {
+                    endGame();
+                    return;
+                }
+            }
+        }
+    }
+
+    // --- DRAWING ---
+    function draw() {
+        // Clear 3rd person canvas
+        tpCtx.fillStyle = '#080000';
+        tpCtx.fillRect(0, 0, TP_W, TP_H);
+        drawThirdPerson();
+        
+        // Clear 1st person canvas
+        drawFirstPersonBackground();
+        drawFirstPerson();
+    }
+
+    function drawFirstPersonBackground() {
+        fpCtx.fillStyle = '#200000'; // Dark red base
+        fpCtx.fillRect(0, 0, FP_W, FP_H);
+        
+        // Add noise for texture
+        for (let i = 0; i < 2000; i++) {
+            const x = Math.random() * FP_W;
+            const y = Math.random() * FP_H;
+            const alpha = Math.random() * 0.2;
+            fpCtx.fillStyle = `rgba(255, 100, 100, ${alpha})`;
+            fpCtx.fillRect(x, y, 2, 2);
+        }
+    }
+
+    function drawThirdPerson() {
+        tpCtx.save();
+        tpCtx.fillStyle = '#6e262f';
+        tpCtx.beginPath();
+        tpCtx.moveTo(tunnel.segments[0].x, tunnel.segments[0].topY + 10);
+        for(let i = 1; i < tunnel.segments.length; i++) tpCtx.lineTo(tunnel.segments[i].x, tunnel.segments[i].topY + 10);
+        tpCtx.lineTo(TP_W, 0); tpCtx.lineTo(0, 0); tpCtx.closePath(); tpCtx.fill();
+        tpCtx.fillStyle = '#d63549';
+        tpCtx.beginPath();
+        tpCtx.moveTo(tunnel.segments[0].x, tunnel.segments[0].topY);
+        for(let i = 1; i < tunnel.segments.length; i++) tpCtx.lineTo(tunnel.segments[i].x, tunnel.segments[i].topY);
+        tpCtx.lineTo(TP_W, 0); tpCtx.lineTo(0, 0); tpCtx.closePath(); tpCtx.fill();
+        tpCtx.fillStyle = '#6e262f';
+        tpCtx.beginPath();
+        tpCtx.moveTo(tunnel.segments[0].x, tunnel.segments[0].bottomY - 10);
+        for(let i = 1; i < tunnel.segments.length; i++) tpCtx.lineTo(tunnel.segments[i].x, tunnel.segments[i].bottomY - 10);
+        tpCtx.lineTo(TP_W, TP_H); tpCtx.lineTo(0, TP_H); tpCtx.closePath(); tpCtx.fill();
+        tpCtx.fillStyle = '#d63549';
+        tpCtx.beginPath();
+        tpCtx.moveTo(tunnel.segments[0].x, tunnel.segments[0].bottomY);
+        for(let i = 1; i < tunnel.segments.length; i++) tpCtx.lineTo(tunnel.segments[i].x, tunnel.segments[i].bottomY);
+        tpCtx.lineTo(TP_W, TP_H); tpCtx.lineTo(0, TP_H); tpCtx.closePath(); tpCtx.fill();
+        tpCtx.restore();
+
+        drawEagle5(tpCtx, ship.x, ship.y, 1);
+        drawHud(tpCtx);
+    }
+
+    function drawEagle5(ctx, x, y, scale) {
+        ctx.save();
+        ctx.translate(x, y); ctx.scale(scale, scale);
+        ctx.fillStyle = '#ffec8b'; ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-30, -5); ctx.lineTo(-30, -15); ctx.lineTo(15, -15); ctx.lineTo(30, 0); ctx.lineTo(30, 10); ctx.lineTo(-25, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ccc'; ctx.beginPath(); ctx.moveTo(-30, -15); ctx.lineTo(-10, -20); ctx.lineTo(5, -18); ctx.lineTo(15, -15); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#000030'; ctx.beginPath(); ctx.moveTo(16, -12); ctx.lineTo(26, -2); ctx.lineTo(23, -1); ctx.lineTo(14, -10); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.rect(0, -12, 10, 8); ctx.rect(-15, -12, 10, 8); ctx.fill();
+        ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(18, 12, 4, 0, Math.PI * 2); ctx.arc(-18, 12, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
+    function drawHud(ctx) {
+        drawHudBox(ctx, 40, 30, "DIST", Math.floor(gameState.distance / 10).toString().padStart(4, '0'));
+        drawHudBox(ctx, TP_W - 130, TP_H - 50, "MAG RTD", `${magRtd.toFixed(1)}:1`, {w: 90});
+    }
+
+    function drawHudBox(ctx, x, y, label, value, options = {}) {
+        const boxWidth = options.w || 80;
+        const boxHeight = options.h || 25;
+        const fontSize = options.fontSize || 16;
+        ctx.font = `${fontSize}px 'Courier New', monospace`;
+        ctx.fillStyle = "#9ef"; ctx.fillText(label, x, y - 5);
+        ctx.strokeStyle = "#9ef"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect(x - 5, y, boxWidth, boxHeight, 5); ctx.stroke();
+        ctx.shadowColor = '#0ff'; ctx.shadowBlur = 8;
+        ctx.fillText(value, x, y + 18);
+        ctx.shadowBlur = 0;
+    }
+    
+    function project(x, y, z) {
+        if (z < 1) z = 1;
+        const scale = gameState.fov / z;
+        return { x: FP_W / 2 + x * scale, y: FP_H / 2 + y * scale, scale: scale };
+    }
+
+    function drawFirstPerson() {
+        const shipYOffset = ship.y - TP_H / 2;
+        for (let i = fpTunnel.segments.length - 1; i >= 0; i--) {
+            const seg = fpTunnel.segments[i];
+            const p = project(seg.x, seg.y - shipYOffset, seg.z); 
+            const radius = fpTunnel.baseRadius * p.scale;
+            const alpha = 1 - seg.z / (fpTunnel.maxSegments * fpTunnel.segmentLength);
+            fpCtx.strokeStyle = `rgba(255, 150, 150, ${alpha * 0.5})`;
+            fpCtx.lineWidth = 5 * p.scale;
+            fpCtx.beginPath();
+            fpCtx.ellipse(p.x, p.y, radius * 1.5, radius, 0, 0, Math.PI * 2);
+            fpCtx.stroke();
+        }
+        drawFirstPersonHUD(shipYOffset);
+    }
+
+    function drawFirstPersonHUD(shipYOffset = 0) {
+        fpCtx.save();
+        fpCtx.strokeStyle = '#fff'; fpCtx.lineWidth = 2; fpCtx.shadowColor = '#0af'; fpCtx.shadowBlur = 10;
+        const reticleW = 80; const reticleH = 60; const vCut = 20;
+        const cx = FP_W / 2; const cy = FP_H / 2;
+        fpCtx.beginPath();
+        fpCtx.moveTo(cx - vCut, cy - vCut); fpCtx.lineTo(cx, cy); fpCtx.lineTo(cx - vCut, cy + vCut);
+        fpCtx.arc(cx - vCut, cy, reticleH, Math.PI / 2, -Math.PI / 2, true);
+        fpCtx.closePath(); fpCtx.stroke();
+        fpCtx.beginPath();
+        fpCtx.moveTo(cx + vCut, cy - vCut); fpCtx.lineTo(cx, cy); fpCtx.lineTo(cx + vCut, cy + vCut);
+        fpCtx.arc(cx + vCut, cy, reticleH, -Math.PI / 2, Math.PI / 2, true);
+        fpCtx.closePath(); fpCtx.stroke();
+        fpCtx.restore();
+
+        const velo = Math.floor(gameState.speed * 80);
+        drawHudBox(fpCtx, 20, FP_H - 40, 'VELO', `${velo} !`, {fontSize: 14});
+        const dist = Math.floor(gameState.distance / 5);
+        drawHudBox(fpCtx, FP_W - 100, FP_H - 40, 'DIST', `${dist}`, {fontSize: 14, w: 80});
+
+        fpCtx.font = "14px 'Courier New', monospace";
+        fpCtx.fillStyle = "#9ef"; fpCtx.fillText('HEADING', FP_W/2 - 30, 20);
+        fpCtx.strokeStyle = "#9ef"; fpCtx.lineWidth = 1.5;
+        fpCtx.beginPath(); fpCtx.roundRect(FP_W/2 - 75, 25, 150, 25, 12); fpCtx.stroke();
+        const headingOffset = shipYOffset * 0.2;
+        fpCtx.shadowColor = '#0ff'; fpCtx.shadowBlur = 8;
+        fpCtx.fillStyle = '#6ab';
+        fpCtx.fillText('80', FP_W/2 - 60 - headingOffset, 43);
+        fpCtx.fillText('110', FP_W/2 + 40 - headingOffset, 43);
+        fpCtx.fillStyle = "#9ef";
+        fpCtx.fillText('90', FP_W/2 - 25 - headingOffset, 43);
+        fpCtx.fillText('100', FP_W/2 + 5 - headingOffset, 43);
+        fpCtx.shadowBlur = 0;
+    }
+    
+    // --- EVENT HANDLING & GAME FLOW ---
+    window.addEventListener('keydown', (e) => { if (e.key in keys) keys[e.key] = true; });
+    window.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
+    overlay.addEventListener('click', startGame);
+
+    function startGame() {
+        initState();
+        generateInitialTunnel();
+        overlay.style.display = 'none';
+        gameLoop();
+    }
+
+    function endGame() {
+        gameState.isGameOver = true;
+        finalScoreEl.textContent = Math.floor(gameState.distance / 10).toString().padStart(4, '0');
+        startScreen.style.display = 'none';
+        gameOverScreen.style.display = 'flex';
+        overlay.style.display = 'flex';
+    }
+
+</script>
+</body>
+</html>
