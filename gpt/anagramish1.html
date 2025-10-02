@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anagramish — pick & place (click-to-clear)</title>
+    <style>
+        :root {
+            --blue: #3b82f6;
+            --orange: #fb923c;
+            --muted: #1f2937;
+            --gap: 10px;
+            --size: 72px;
+            --radius: 14px;
+            --select: #22d3ee;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: #0b1020;
+            color: #dbeafe;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+            display: grid;
+            place-items: center;
+        }
+
+        .wrap {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, var(--size));
+            grid-template-rows: repeat(6, var(--size));
+            gap: var(--gap);
+            padding: var(--gap);
+            background: #0a0f1e;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .05);
+        }
+
+        .cell {
+            width: var(--size);
+            height: var(--size);
+            display: grid;
+            place-items: center;
+            background: var(--muted);
+            border-radius: var(--radius);
+            font-weight: 800;
+            letter-spacing: .02em;
+            font-size: 28px;
+            color: white;
+            user-select: none;
+            cursor: pointer;
+            position: relative;
+            transition: transform .05s ease, outline-color .15s ease;
+            outline: 0 solid transparent;
+        }
+
+        .cell:active {
+            transform: translateY(1px)
+        }
+
+        .cell.fixed {
+            cursor: pointer;
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .08);
+        }
+
+        .cell.fixed.selected {
+            outline: 3px solid var(--select);
+            box-shadow:
+                0 0 0 6px rgba(34, 211, 238, .12),
+                0 0 35px rgba(34, 211, 238, .35),
+                inset 0 0 0 2px rgba(255, 255, 255, .18);
+        }
+
+        .cell.blue {
+            background: var(--blue)
+        }
+
+        .cell.orange {
+            background: var(--orange)
+        }
+
+        .cell.empty {
+            color: rgba(255, 255, 255, .18)
+        }
+
+        .legend {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            opacity: .85;
+            font-size: 14px
+        }
+
+        .sw {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            display: inline-block;
+            vertical-align: middle
+        }
+
+        .sw.blue {
+            background: var(--blue)
+        }
+
+        .sw.orange {
+            background: var(--orange)
+        }
+
+        .sw.neutral {
+            background: var(--muted)
+        }
+
+        .hint {
+            opacity: .7;
+            font-size: 14px
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <div class="grid" id="grid" aria-label="Anagramish grid"></div>
+
+    <script>
+        (() => {
+            const ROWS = 6, COLS = 5;
+            const TOP_WORD = "ABHOR";
+            const BOT_WORD = "SNIPE";
+
+            const gridEl = document.getElementById('grid');
+            const idx = (r, c) => (r - 1) * COLS + (c - 1);
+            const isMutable = (r) => r >= 2 && r <= 5;
+
+            // Build cells
+            const cells = [];
+            for (let r = 1; r <= ROWS; r++) {
+                for (let c = 1; c <= COLS; c++) {
+                    const div = document.createElement('div');
+                    div.className = 'cell empty';
+                    div.dataset.row = r;
+                    div.dataset.col = c;
+                    div.dataset.color = '';   // 'blue' | 'orange' | ''
+                    div.textContent = '';
+                    gridEl.appendChild(div);
+                    cells.push(div);
+                }
+            }
+
+            // Fill top/bottom sources
+            for (let c = 1; c <= COLS; c++) {
+                const top = cells[idx(1, c)];
+                top.textContent = TOP_WORD[c - 1];
+                top.classList.remove('empty');
+                top.classList.add('fixed', 'blue');
+                top.dataset.color = 'blue';
+
+                const bot = cells[idx(6, c)];
+                bot.textContent = BOT_WORD[c - 1];
+                bot.classList.remove('empty');
+                bot.classList.add('fixed', 'orange');
+                bot.dataset.color = 'orange';
+            }
+
+            // Selected source letter (must reselect each placement)
+            let selected = null; // {ch, color, el}
+
+            function selectSource(el) {
+                const r = Number(el.dataset.row);
+                if (!(r === 1 || r === 6)) return;
+                const ch = (el.textContent || '').trim();
+                if (!ch) return;
+
+                if (selected?.el === el) {
+                    el.classList.remove('selected');
+                    selected = null;
+                    return;
+                }
+                document.querySelectorAll('.cell.fixed.selected').forEach(n => n.classList.remove('selected'));
+                selected = { ch, color: el.dataset.color, el };
+                el.classList.add('selected');
+            }
+
+            function placeInto(target) {
+                // place letter with source color
+                target.textContent = selected.ch;
+                target.classList.remove('empty', 'blue', 'orange');
+                target.dataset.color = '';
+                if (selected.color === 'blue') {
+                    target.classList.add('blue'); target.dataset.color = 'blue';
+                } else if (selected.color === 'orange') {
+                    target.classList.add('orange'); target.dataset.color = 'orange';
+                }
+                // remove selection; keep source letter intact
+                selected.el.classList.remove('selected');
+                selected = null;
+            }
+
+            function clearCell(el) {
+                el.textContent = '';
+                el.dataset.color = '';
+                el.classList.remove('blue', 'orange');
+                el.classList.add('empty');
+            }
+
+            gridEl.addEventListener('click', (e) => {
+                const t = e.target.closest('.cell');
+                if (!t) return;
+                const r = Number(t.dataset.row);
+
+                if (r === 1 || r === 6) {
+                    // (re)select from sources
+                    selectSource(t);
+                    return;
+                }
+
+                if (isMutable(r)) {
+                    if (selected) {
+                        placeInto(t);
+                    } else {
+                        // no selection => clear this middle square
+                        clearCell(t);
+                    }
+                }
+            });
+
+            // ESC or click outside grid to cancel selection
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && selected) {
+                    selected.el.classList.remove('selected');
+                    selected = null;
+                }
+            });
+            document.addEventListener('click', (e) => {
+                if (!gridEl.contains(e.target) && selected) {
+                    selected.el.classList.remove('selected');
+                    selected = null;
+                }
+            });
+        })();
+    </script>
+</body>
+
+</html>
