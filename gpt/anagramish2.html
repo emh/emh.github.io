@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Anagramish — responsive controls</title>
+    <style>
+        :root {
+            --blue: #3b82f6;
+            --orange: #fb923c;
+            --muted: #1f2937;
+            --gap: 10px;
+            --size: 60px;
+            /* cell size */
+            --radius: 12px;
+            --accent: #22d3ee;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: #0b1020;
+            color: #dbeafe;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+            display: grid;
+            place-items: center;
+            touch-action: manipulation; /* disables double-tap zoom */
+        }
+
+        .wrap {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .board {
+            position: relative;
+            display: inline-block;
+        }
+
+        .grid {
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(5, var(--size));
+            grid-template-rows: repeat(6, var(--size));
+            gap: var(--gap);
+            padding: var(--gap);
+            background: #0a0f1e;
+            border-radius: 18px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .05);
+        }
+
+        .cell {
+            width: var(--size);
+            height: var(--size);
+            display: grid;
+            place-items: center;
+            background: var(--muted);
+            border-radius: var(--radius);
+            font-weight: 800;
+            letter-spacing: .02em;
+            font-size: 26px;
+            color: white;
+            user-select: none;
+            cursor: pointer;
+            position: relative;
+            transition: transform .05s ease, outline-color .15s ease;
+            outline: 0 solid transparent;
+        }
+
+        .cell:active {
+            transform: translateY(1px)
+        }
+
+        .cell.fixed {
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .08);
+        }
+
+        .cell.blue {
+            background: var(--blue)
+        }
+
+        .cell.orange {
+            background: var(--orange)
+        }
+
+        .cell.empty {
+            color: rgba(255, 255, 255, .18)
+        }
+
+        .cell.current {
+            outline: 3px solid var(--accent);
+            box-shadow: 0 0 0 6px rgba(34, 211, 238, .12), 0 0 35px rgba(34, 211, 238, .35);
+        }
+
+        /* Controls: desktop default = to the right of the current row */
+        .controls {
+            position: absolute;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            left: calc(5 * var(--size) + 6 * var(--gap));
+            /* to the right of grid + padding */
+            top: 0;
+            /* JS updates based on current row */
+            height: var(--size);
+            pointer-events: auto;
+        }
+
+        .btn {
+            background: #0f172a;
+            color: #e5e7eb;
+            border: 1px solid rgba(255, 255, 255, .12);
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            min-width: 88px;
+            transition: transform .05s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
+            user-select: none;
+        }
+
+        .btn:active {
+            transform: translateY(1px)
+        }
+
+        .btn[disabled] {
+            opacity: .45;
+            cursor: default;
+        }
+
+        .btn.submit.current {
+            outline: 3px solid var(--accent);
+            box-shadow: 0 0 0 6px rgba(34, 211, 238, .12), 0 0 35px rgba(34, 211, 238, .35);
+        }
+
+        .legend {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+            opacity: .85;
+            font-size: 14px
+        }
+
+        .sw {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            display: inline-block;
+            vertical-align: middle
+        }
+
+        .sw.blue {
+            background: var(--blue)
+        }
+
+        .sw.orange {
+            background: var(--orange)
+        }
+
+        .sw.neutral {
+            background: var(--muted)
+        }
+
+        .hint {
+            opacity: .7;
+            font-size: 14px
+        }
+
+        /* --- Mobile layout: controls below grid --- */
+        @media (max-width: 700px) {
+            :root {
+                --size: 54px;
+            }
+
+            /* tiny shrink */
+            .board {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .controls {
+                position: static;
+                /* leave normal flow under the grid */
+                margin-top: 12px;
+                left: auto;
+                top: auto;
+                height: auto;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <div class="board">
+            <div class="grid" id="grid" aria-label="Anagramish grid"></div>
+            <div class="controls" id="controls" aria-label="Row controls">
+                <button class="btn back" id="backBtn" type="button">⌫ Back</button>
+                <button class="btn submit" id="submitBtn" type="button">⏎ Submit</button>
+            </div>
+        </div>
+        <div class="legend">
+            <span><span class="sw blue"></span> row 1 (fixed sources)</span>
+            <span><span class="sw orange"></span> row 6 (fixed sources)</span>
+            <span><span class="sw neutral"></span> rows 2–5 (editable)</span>
+        </div>
+        <div class="hint">On mobile, Back/Submit sit under the grid.</div>
+    </div>
+
+    <script>
+        (() => {
+            const ROWS = 6, COLS = 5;
+            const TOP_WORD = "ABHOR";
+            const BOT_WORD = "SNIPE";
+
+            const gridEl = document.getElementById('grid');
+            const controlsEl = document.getElementById('controls');
+            const backBtn = document.getElementById('backBtn');
+            const submitBtn = document.getElementById('submitBtn');
+
+            const mq = window.matchMedia('(max-width: 700px)');
+
+            const getNum = (name) => parseInt(getComputedStyle(document.documentElement).getPropertyValue(name));
+            const idx = (r, c) => (r - 1) * COLS + (c - 1);
+            const isMutable = (r) => r >= 2 && r <= 5;
+
+            // Build cells
+            const cells = [];
+            for (let r = 1; r <= ROWS; r++) {
+                for (let c = 1; c <= COLS; c++) {
+                    const div = document.createElement('div');
+                    div.className = 'cell empty';
+                    div.dataset.row = r;
+                    div.dataset.col = c;
+                    div.dataset.color = '';
+                    div.textContent = '';
+                    gridEl.appendChild(div);
+                    cells.push(div);
+                }
+            }
+
+            // Fill fixed rows
+            for (let c = 1; c <= COLS; c++) {
+                const top = cells[idx(1, c)];
+                top.textContent = TOP_WORD[c - 1];
+                top.classList.remove('empty');
+                top.classList.add('fixed', 'blue');
+                top.dataset.color = 'blue';
+
+                const bot = cells[idx(6, c)];
+                bot.textContent = BOT_WORD[c - 1];
+                bot.classList.remove('empty');
+                bot.classList.add('fixed', 'orange');
+                bot.dataset.color = 'orange';
+            }
+
+            // --- current state
+            let curRow = 2;
+            let curCol = 1;
+            let atSubmit = false;
+
+            const firstBlankCol = (r) => {
+                for (let c = 1; c <= COLS; c++) {
+                    if (!cells[idx(r, c)].textContent.trim()) return c;
+                }
+                return null;
+            };
+            const rowIsFull = (r) => firstBlankCol(r) === null;
+
+            function updateHighlights() {
+                document.querySelectorAll('.cell.current').forEach(el => el.classList.remove('current'));
+                submitBtn.classList.remove('current');
+                if (!atSubmit) {
+                    cells[idx(curRow, curCol)].classList.add('current');
+                } else {
+                    submitBtn.classList.add('current');
+                }
+            }
+
+            function positionControls() {
+                // always manage submit enabled state
+                submitBtn.disabled = !rowIsFull(curRow);
+
+                // desktop: pin to current row; mobile: controls flow below grid
+                if (!mq.matches) {
+                    const GAP = getNum('--gap');
+                    const SIZE = getNum('--size');
+                    const PAD = GAP; // padding equals gap in CSS
+                    const rowOffset = PAD + (curRow - 1) * (SIZE + GAP);
+                    controlsEl.style.top = `${rowOffset}px`;
+                } else {
+                    // clear absolute top for mobile layout safety
+                    controlsEl.style.top = '';
+                }
+            }
+
+            function moveToRow(r) {
+                if (!isMutable(r)) return;
+                curRow = r;
+                const fb = firstBlankCol(r);
+                if (fb === null) { curCol = COLS; atSubmit = true; }
+                else { curCol = fb; atSubmit = false; }
+                positionControls();
+                updateHighlights();
+            }
+
+            function advance() {
+                if (curCol < COLS) { curCol += 1; atSubmit = false; }
+                else { atSubmit = true; }
+                positionControls(); updateHighlights();
+            }
+
+            function backspace() {
+                if (atSubmit) {
+                    atSubmit = false;
+                    curCol = COLS;
+                    clearCell(cells[idx(curRow, curCol)]);
+                    positionControls(); updateHighlights();
+                    return;
+                }
+                if (curCol > 1) {
+                    curCol -= 1;
+                    clearCell(cells[idx(curRow, curCol)]);
+                    positionControls(); updateHighlights();
+                }
+            }
+
+            function submitRow() {
+                if (!rowIsFull(curRow)) return;
+                if (curRow < 5) {
+                    curRow += 1;
+                    const fb = firstBlankCol(curRow);
+                    if (fb === null) { curCol = COLS; atSubmit = true; }
+                    else { curCol = fb; atSubmit = false; }
+                } else {
+                    atSubmit = true; // end
+                }
+                positionControls(); updateHighlights();
+            }
+
+            function clearCell(el) {
+                el.textContent = '';
+                el.dataset.color = '';
+                el.classList.remove('blue', 'orange');
+                el.classList.add('empty');
+            }
+
+            function placeFromSource(srcEl) {
+                if (atSubmit) return;
+                const r = Number(srcEl.dataset.row);
+                if (!(r === 1 || r === 6)) return;
+
+                const ch = (srcEl.textContent || '').trim();
+                if (!ch) return;
+
+                const color = srcEl.dataset.color;
+                const dest = cells[idx(curRow, curCol)];
+                dest.textContent = ch;
+                dest.classList.remove('empty', 'blue', 'orange');
+                dest.dataset.color = '';
+                if (color === 'blue') { dest.classList.add('blue'); dest.dataset.color = 'blue'; }
+                else if (color === 'orange') { dest.classList.add('orange'); dest.dataset.color = 'orange'; }
+
+                advance();
+            }
+
+            // interactions
+            gridEl.addEventListener('click', (e) => {
+                const t = e.target.closest('.cell');
+                if (!t) return;
+
+                const r = Number(t.dataset.row);
+                if (r === 1 || r === 6) { placeFromSource(t); return; }
+                if (isMutable(r)) { moveToRow(r); }
+            });
+            backBtn.addEventListener('click', backspace);
+            submitBtn.addEventListener('click', submitRow);
+
+            // handle layout changes
+            window.addEventListener('resize', positionControls);
+            mq.addEventListener('change', positionControls);
+
+            // init
+            positionControls();
+            updateHighlights();
+        })();
+    </script>
+</body>
+
+</html>
