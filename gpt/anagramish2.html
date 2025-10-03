@@ -96,6 +96,19 @@
             box-shadow: 0 0 0 6px rgba(34, 211, 238, .12), 0 0 35px rgba(34, 211, 238, .35);
         }
 
+/* Strong highlight for the entire current row */
+.cell.current-row::after {
+  content: "";
+  position: absolute;
+  inset: -3px;                /* extend slightly outside the cell */
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 6px rgba(34,211,238,.7),
+    0 0 12px rgba(34,211,238,.5),
+    inset 0 0 2px rgba(34,211,238,.4);
+  pointer-events: none;
+}
+
         /* Controls: desktop default = to the right of the current row */
         .controls {
             position: absolute;
@@ -277,7 +290,14 @@
 
             function updateHighlights() {
                 document.querySelectorAll('.cell.current').forEach(el => el.classList.remove('current'));
+                document.querySelectorAll('.cell.current-row').forEach(el => el.classList.remove('current-row'));
                 submitBtn.classList.remove('current');
+
+                // mark current row (adds the overlay ring but preserves .blue/.orange backgrounds)
+                for (let c = 1; c <= COLS; c++) {
+                    cells[idx(curRow, c)].classList.add('current-row');
+                }
+
                 if (!atSubmit) {
                     cells[idx(curRow, curCol)].classList.add('current');
                 } else {
