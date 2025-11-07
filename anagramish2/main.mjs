@@ -49,6 +49,22 @@ const renderMessage = (message) => {
   el._timer = setTimeout(() => el.classList.remove('show'), 3000);
 };
 
+const colorKeyboard = (state) => {
+    get('.key').forEach((el) => {
+        const key = el.dataset.key;
+
+        if (key === 'Backspace') {
+            el.classList.add('special');
+        } else if (state.pair[0].includes(key)) {
+            el.classList.add('start');
+        } else if (state.pair[1].includes(key)) {
+            el.classList.add('end');
+        } else {
+            el.classList.add('misc');
+        }
+    });
+};
+
 const render = (state, app) => {
     const getPositionClass = (y, x) => state.position?.x === x && state.position?.y === y ? 'current' : '';
     const getCharClass = (char) => char === null ? 'normal' : state.pair[0].includes(char) ? 'start' : state.pair[1].includes(char) ? 'end' : 'misc';
@@ -60,6 +76,8 @@ const render = (state, app) => {
     app.innerHTML = '';
 
     const boardEl = renderBoard(state.board);
+
+    colorKeyboard(state);
     
     app.appendChild(boardEl); 
 
@@ -71,7 +89,6 @@ const state = init();
 render(state, app);
 
 const handleKey = (key) => {
-    console.log(key);
     if (key === 'Backspace') {
         if (state.position.x > 0) {
             state.board[state.position.y][state.position.x - 1] = null;
@@ -83,7 +100,7 @@ const handleKey = (key) => {
         state.board[y][x] = key;
 
         if (state.position.x === 4 && !dictionary.includes(state.board[y].join(''))) {
-            renderMessage(`${state.board[y].join('')} is not a word`);
+            renderMessage(`${state.board[y].join('')} is not in our dictionary`);
             state.board.splice(state.position.y, 1, emptyRow());
             state.position.x = 0;
         } else if (state.position.x === 4 && compareWords(state.board[y], state.board[y-1]) !== 4) {
