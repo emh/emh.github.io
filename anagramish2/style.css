@@ -42,6 +42,7 @@ header {
 
 footer {
     padding: 20px;
+    border-top: solid 1px var(--fg);
 }
 
 header h1 {
@@ -119,7 +120,6 @@ main {
     flex-direction: column;
     align-items: center;
     overscroll-behavior: contain;
-    padding: 20px;
 }
 
 .board {
@@ -146,8 +146,8 @@ main {
 }
 
 .cell.current {
-    outline: 1px solid var(--fg);
-    outline-offset: 0px;
+    outline: 1px dashed var(--fg);
+    outline-offset: 2px;
 }
 
 #keyboard {
