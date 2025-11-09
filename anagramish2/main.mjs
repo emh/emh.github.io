@@ -97,7 +97,9 @@ const handleKey = (key) => {
 };
 
 const setupHandlers = () => {
-    get('.key').forEach((el) => el.addEventListener('click', (e) => handleKey(state, e.target.dataset.key)));
+    get('footer').addEventListener('click', (e) => {
+        if (e.target.dataset.key) handleKey(e.target.dataset.key);
+    });
 
     document.addEventListener('keydown', (e) => handleKey(e.key));
 };
