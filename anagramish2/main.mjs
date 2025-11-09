@@ -121,6 +121,7 @@ const renderKeyboard = () => {
 
 const killKeyboard = () => {
     get('footer').innerHTML = '';
+    get('footer').classList.remove('visible');
     get('#back').style.display = 'none';
 };
 
