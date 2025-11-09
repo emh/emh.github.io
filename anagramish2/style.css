@@ -43,6 +43,11 @@ header {
 footer {
     padding: 20px;
     border-top: solid 1px var(--fg);
+    display: none;
+}
+
+footer.visible {
+    display: block;
 }
 
 header h1 {
@@ -122,6 +127,59 @@ main {
     overscroll-behavior: contain;
 }
 
+main section {
+    max-width: 500px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: 0 20px;
+}
+
+.buttons {
+    display: flex;
+    justify-content: space-evenly;
+    gap: 10px;
+}
+
+.buttons button {
+    height: 32px;
+    border: solid 1px var(--fg);
+    border-radius: 8px;
+    color: black;
+    cursor: pointer;
+    font-size: 16px;
+    box-shadow: 0 2px 5px var(--fg);
+}
+
+button#back {
+    position: absolute;
+    left: 20px;
+    top: 20px;
+    height: 24px;
+    width: 24px;
+    border: solid 1px var(--fg);
+    border-radius: 12px;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    box-shadow: 0 2px 5px var(--fg);
+    background-color: red;
+    display: none;
+}
+
+button#back.visible {
+    display: block;
+}
+
+button#play {
+    background-color: yellow;
+    display: none;
+}
+
+button#practice {
+    background-color: orange;
+}
+
 .board {
     position: relative;
     display: grid;
@@ -179,7 +237,7 @@ main {
     box-shadow: 0 2px 5px var(--fg);;
 }
 
-.key:hover {
+button:hover {
     filter: brightness(0.9);
     box-shadow: none;
 }
