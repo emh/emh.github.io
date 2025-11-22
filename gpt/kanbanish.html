@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Flow Kanban</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom scrollbar for horizontal scrolling */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+        }
+        body {
+            background-color: #f3f4f6;
+            font-family: 'Inter', sans-serif;
+        }
+        .task-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .task-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .drag-over {
+            background-color: #e5e7eb;
+            border: 2px dashed #9ca3af;
+        }
+        /* Animation for modals */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.2s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <!-- Preact + HTM setup -->
+    <script type="module">
+        import { h, render } from 'https://esm.sh/preact@10.22.0';
+        import { useState, useEffect, useReducer, useRef } from 'https://esm.sh/preact@10.22.0/hooks';
+        import htm from 'https://esm.sh/htm@3.1.1';
+
+        const html = htm.bind(h);
+
+        // --- Constants ---
+        const COLORS = [
+            'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 
+            'bg-lime-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 
+            'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500', 
+            'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500'
+        ];
+
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+
+        // --- Initial Data ---
+        const initialProjects = [
+            { id: 'p1', name: 'Marketing Website', color: 'bg-blue-500' },
+            { id: 'p2', name: 'Mobile App', color: 'bg-purple-500' }
+        ];
+
+        const initialStages = [
+            { id: 'next', name: 'Next Up' },
+            { id: 'current', name: 'In Progress' },
+            { id: 'done', name: 'Done' }
+        ];
+
+        const initialTasks = [
+            { id: 't1', projectId: 'p1', content: 'Design Homepage', deadline: '2023-12-01', status: 'todo', order: 0 },
+            { id: 't2', projectId: 'p1', content: 'Setup React Repo', deadline: '2023-12-05', status: 'next', order: 1 },
+            { id: 't3', projectId: 'p2', content: 'User Auth Flow', deadline: '', status: 'todo', order: 0 },
+        ];
+
+        // --- Components ---
+
+        function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) {
+            if (!isOpen) return null;
+            return html`
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+                    <div class="bg-white rounded-lg shadow-xl w-full ${maxWidth} p-6 m-4 animate-fade-in-up">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">${title}</h3>
+                            <button type="button" onClick=${onClose} class="text-gray-500 hover:text-gray-700">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        ${children}
+                    </div>
+                </div>
+            `;
+        }
+
+        function TaskCard({ task, project, onDragStart, onEdit, onDelete, showProjectLabel, onTaskDrop }) {
+            const [isDragOver, setIsDragOver] = useState(false);
+            const hasDate = Boolean(task.deadline);
+
+            const handleDragStart = (e) => {
+                e.stopPropagation(); // Prevent column drag start
+                const data = JSON.stringify({ taskId: task.id, originalStatus: task.status, originalProject: task.projectId });
+                e.dataTransfer.setData('application/json', data);
+                e.dataTransfer.effectAllowed = 'move';
+                onDragStart(task.id);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault(); 
+                e.stopPropagation();
+                if (!isDragOver) setIsDragOver(true);
+            };
+
+            const handleDragLeave = () => {
+                setIsDragOver(false);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(false);
+                
+                const data = e.dataTransfer.getData('application/json');
+                if (!data) return;
+                const parsed = JSON.parse(data);
+                
+                // Only handle task drops here
+                if (parsed.taskId && onTaskDrop) {
+                    onTaskDrop(parsed.taskId, task.id);
+                }
+            };
+
+            return html`
+                <div 
+                    draggable="true"
+                    onDragStart=${handleDragStart}
+                    onDragOver=${handleDragOver}
+                    onDragLeave=${handleDragLeave}
+                    onDrop=${handleDrop}
+                    class="task-card bg-white p-3 rounded-lg shadow-sm border border-gray-200 mb-3 cursor-grab active:cursor-grabbing group relative ${isDragOver ? 'border-t-4 border-t-indigo-500 bg-indigo-50' : ''}"
+                >
+                    ${showProjectLabel && project ? html`
+                        <div class="text-[10px] font-bold uppercase tracking-wider mb-2 px-2 py-1 rounded text-white ${project.color}">
+                            ${project.name}
+                        </div>
+                    ` : ''}
+                    
+                    <p class="text-gray-800 text-sm font-medium leading-snug ${hasDate ? 'mb-2' : 'mb-1'}">${task.content}</p>
+                    
+                    ${hasDate 
+                        ? html`
+                            <div class="flex justify-between items-center mt-2 border-t border-gray-100 pt-2">
+                                <div class="flex items-center text-xs text-gray-500">
+                                    <i class="far fa-clock mr-1 ${new Date(task.deadline) < new Date() ? 'text-red-500' : ''}"></i>
+                                    <span>${task.deadline}</span>
+                                </div>
+                                <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                    <button onClick=${() => onEdit(task)} class="text-blue-500 hover:text-blue-700 px-1" title="Edit">
+                                        <i class="fas fa-pen text-xs"></i>
+                                    </button>
+                                    <button onClick=${() => onDelete(task.id)} class="text-red-500 hover:text-red-700 px-1" title="Delete">
+                                        <i class="fas fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `
+                        : html`
+                             <div class="flex justify-end h-4">
+                                <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 bg-white/80 backdrop-blur-sm rounded">
+                                    <button onClick=${() => onEdit(task)} class="text-blue-500 hover:text-blue-700 px-1" title="Edit">
+                                        <i class="fas fa-pen text-xs"></i>
+                                    </button>
+                                    <button onClick=${() => onDelete(task.id)} class="text-red-500 hover:text-red-700 px-1" title="Delete">
+                                        <i class="fas fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                             </div>
+                        `
+                    }
+                </div>
+            `;
+        }
+
+        function Column({ title, id, type, statusId, projectId, tasks, projects, onDropTask, onAddTask, onEditTask, onDeleteTask, onEditColumn, onColumnDrop }) {
+            const [isDragOver, setIsDragOver] = useState(false);
+
+            // COLUMN Drag Handlers
+            const handleColumnDragStart = (e) => {
+                // Only allow dragging by the header or empty space, not by buttons
+                if (e.target.closest('button')) {
+                    e.preventDefault();
+                    return;
+                }
+                
+                const data = JSON.stringify({ 
+                    dragType: 'COLUMN', 
+                    id, 
+                    columnType: type 
+                });
+                e.dataTransfer.setData('application/json', data);
+                e.dataTransfer.effectAllowed = 'move';
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                if (!isDragOver) setIsDragOver(true);
+            };
+
+            const handleDragLeave = () => setIsDragOver(false);
+            
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                const data = e.dataTransfer.getData('application/json');
+                if (!data) return;
+                
+                const parsed = JSON.parse(data);
+
+                // CHECK: Is it a Column or a Task?
+                if (parsed.dragType === 'COLUMN') {
+                    // Handle Column Reordering
+                    if (onColumnDrop) {
+                        onColumnDrop(parsed.id, parsed.columnType, id, type);
+                    }
+                } else {
+                    // Handle Task Drop
+                    onDropTask(parsed.taskId, { type, statusId, projectId, targetTaskId: null });
+                }
+            };
+
+            const handleTaskDrop = (draggedTaskId, targetTaskId) => {
+                onDropTask(draggedTaskId, { type, statusId, projectId, targetTaskId });
+            }
+
+            const headerColor = type === 'project' 
+                ? (projects.find(p => p.id === projectId)?.color || 'bg-gray-500') 
+                : 'bg-gray-700';
+
+            return html`
+                <div 
+                    draggable="true"
+                    onDragStart=${handleColumnDragStart}
+                    class="flex flex-col h-full min-w-[280px] w-full rounded-xl bg-gray-100/50 border border-gray-200 overflow-hidden transition-colors duration-200 cursor-grab active:cursor-grabbing ${isDragOver ? 'drag-over' : ''}"
+                    onDragOver=${handleDragOver}
+                    onDragLeave=${handleDragLeave}
+                    onDrop=${handleDrop}
+                >
+                    <div class="p-3 ${headerColor} text-white flex justify-between items-center shadow-sm group/header">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <h3 class="font-bold text-sm truncate px-1 select-none">${title}</h3>
+                            <button onClick=${() => onEditColumn(id, type)} class="opacity-0 group-hover/header:opacity-100 transition-opacity text-white/70 hover:text-white text-xs" title="Edit Column">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                        </div>
+                        <span class="bg-white/20 text-xs px-2 py-0.5 rounded-full font-mono">${tasks.length}</span>
+                    </div>
+
+                    <div class="flex-1 p-2 overflow-y-auto custom-scrollbar">
+                        ${tasks.map(task => html`
+                            <${TaskCard} 
+                                key=${task.id} 
+                                task=${task} 
+                                project=${projects.find(p => p.id === task.projectId)}
+                                showProjectLabel=${type === 'stage'} 
+                                onDragStart=${() => {}}
+                                onEdit=${onEditTask}
+                                onDelete=${onDeleteTask}
+                                onTaskDrop=${handleTaskDrop}
+                            />
+                        `)}
+                        ${tasks.length === 0 && html`
+                            <div class="text-center text-gray-400 text-sm py-8 italic">
+                                Empty
+                            </div>
+                        `}
+                    </div>
+
+                    ${type === 'project' ? html`
+                        <button 
+                            onClick=${() => onAddTask(projectId)}
+                            class="p-3 text-gray-500 hover:text-gray-800 hover:bg-gray-200 text-sm font-medium transition-colors flex items-center justify-center border-t border-gray-200"
+                        >
+                            <i class="fas fa-plus mr-2"></i> Add Task
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function App() {
+            // -- State --
+            const [projects, setProjects] = useState(() => {
+                const saved = localStorage.getItem('kanban_projects');
+                return saved ? JSON.parse(saved) : initialProjects;
+            });
+            const [stages, setStages] = useState(() => {
+                const saved = localStorage.getItem('kanban_stages');
+                return saved ? JSON.parse(saved) : initialStages;
+            });
+            const [tasks, setTasks] = useState(() => {
+                const saved = localStorage.getItem('kanban_tasks');
+                return saved ? JSON.parse(saved) : initialTasks;
+            });
+
+            const [isTaskModalOpen, setTaskModalOpen] = useState(false);
+            const [isProjectModalOpen, setProjectModalOpen] = useState(false);
+            const [isStageModalOpen, setStageModalOpen] = useState(false);
+            
+            // Confirmation Modal State
+            const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', message: '', action: null });
+            
+            // Resize State
+            const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+            const [isDragging, setIsDragging] = useState(false);
+
+            const [currentTask, setCurrentTask] = useState(null); 
+            const [activeProjectId, setActiveProjectId] = useState(null); 
+            
+            // Project Editing/Creating
+            const [editingProject, setEditingProject] = useState(null); // null = create new
+            const [projectFormName, setProjectFormName] = useState('');
+            const [projectFormColor, setProjectFormColor] = useState('');
+
+            // Stage Editing/Creating
+            const [editingStage, setEditingStage] = useState(null); // null = create new
+            const [stageFormName, setStageFormName] = useState('');
+
+
+            useEffect(() => localStorage.setItem('kanban_projects', JSON.stringify(projects)), [projects]);
+            useEffect(() => localStorage.setItem('kanban_stages', JSON.stringify(stages)), [stages]);
+            useEffect(() => localStorage.setItem('kanban_tasks', JSON.stringify(tasks)), [tasks]);
+
+            // -- Resize Effects --
+            useEffect(() => {
+                if (isDragging) {
+                    const onMove = (e) => {
+                        const newWidth = (e.clientX / window.innerWidth) * 100;
+                        // Clamp between 20% and 80%
+                        setLeftPanelWidth(Math.min(Math.max(newWidth, 20), 80));
+                    };
+                    const onUp = () => {
+                        setIsDragging(false);
+                        document.body.style.cursor = 'default';
+                    };
+                    
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                    document.body.style.cursor = 'col-resize';
+                    
+                    return () => {
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                        document.body.style.cursor = 'default';
+                    };
+                }
+            }, [isDragging]);
+
+            const pickDefaultColor = () => {
+                const usedColors = new Set(projects.map(p => p.color));
+                const available = COLORS.filter(c => !usedColors.has(c));
+                if (available.length > 0) {
+                    return available[Math.floor(Math.random() * available.length)];
+                }
+                return COLORS[Math.floor(Math.random() * COLORS.length)];
+            };
+
+            const handleDropTask = (taskId, target) => {
+                setTasks(prev => {
+                    const draggedTask = prev.find(t => t.id === taskId);
+                    if (!draggedTask) return prev;
+                    if (target.targetTaskId === taskId) return prev;
+
+                    const tasksWithoutDragged = prev.filter(t => t.id !== taskId);
+                    const updatedTask = { ...draggedTask };
+                    
+                    if (target.type === 'stage') {
+                        updatedTask.status = target.statusId;
+                    } else if (target.type === 'project') {
+                        updatedTask.status = 'todo';
+                        updatedTask.projectId = target.projectId;
+                    }
+
+                    if (target.targetTaskId) {
+                        const targetIndex = tasksWithoutDragged.findIndex(t => t.id === target.targetTaskId);
+                        if (targetIndex !== -1) {
+                            const newTasks = [...tasksWithoutDragged];
+                            newTasks.splice(targetIndex, 0, updatedTask);
+                            return newTasks;
+                        }
+                    }
+
+                    return [...tasksWithoutDragged, updatedTask];
+                });
+            };
+
+            // --- Column Reorder Handler ---
+            const handleColumnDrop = (draggedId, draggedType, targetId, targetType) => {
+                if (draggedId === targetId) return;
+                
+                // Prevent mixing areas (Project <-> Stage)
+                if (draggedType !== targetType) return;
+
+                if (draggedType === 'project') {
+                    setProjects(prev => {
+                        const newOrder = [...prev];
+                        const draggedIndex = newOrder.findIndex(p => p.id === draggedId);
+                        const targetIndex = newOrder.findIndex(p => p.id === targetId);
+                        
+                        if (draggedIndex === -1 || targetIndex === -1) return prev;
+
+                        // Remove dragged item
+                        const [draggedItem] = newOrder.splice(draggedIndex, 1);
+                        // Insert at new position
+                        newOrder.splice(targetIndex, 0, draggedItem);
+                        return newOrder;
+                    });
+                } else if (draggedType === 'stage') {
+                    setStages(prev => {
+                        const newOrder = [...prev];
+                        const draggedIndex = newOrder.findIndex(s => s.id === draggedId);
+                        const targetIndex = newOrder.findIndex(s => s.id === targetId);
+
+                        if (draggedIndex === -1 || targetIndex === -1) return prev;
+
+                        const [draggedItem] = newOrder.splice(draggedIndex, 1);
+                        newOrder.splice(targetIndex, 0, draggedItem);
+                        return newOrder;
+                    });
+                }
+            };
+
+            // --- Modals & CRUD ---
+
+            // TASKS
+            const openAddTask = (projectId) => {
+                setCurrentTask(null);
+                setActiveProjectId(projectId);
+                setTaskModalOpen(true);
+            };
+            const openEditTask = (task) => {
+                setCurrentTask(task);
+                setTaskModalOpen(true);
+            };
+            const saveTask = (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const content = formData.get('content');
+                const deadline = formData.get('deadline');
+
+                if (currentTask) {
+                    setTasks(prev => prev.map(t => t.id === currentTask.id ? { ...t, content, deadline } : t));
+                } else {
+                    const newTask = {
+                        id: generateId(),
+                        projectId: activeProjectId,
+                        content,
+                        deadline,
+                        status: 'todo',
+                        order: tasks.length
+                    };
+                    setTasks(prev => [...prev, newTask]);
+                }
+                setTaskModalOpen(false);
+            };
+            const requestDeleteTask = (id) => {
+                setConfirmState({
+                    isOpen: true,
+                    title: 'Delete Task',
+                    message: 'Are you sure you want to delete this task?',
+                    action: () => {
+                        setTasks(prev => prev.filter(t => t.id !== id));
+                        setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    }
+                });
+            };
+
+            // PROJECTS
+            const openAddProject = () => {
+                setEditingProject(null);
+                setProjectFormName('');
+                setProjectFormColor(pickDefaultColor());
+                setProjectModalOpen(true);
+            };
+            const openEditProject = (id) => {
+                const p = projects.find(p => p.id === id);
+                setEditingProject(p);
+                setProjectFormName(p.name);
+                setProjectFormColor(p.color);
+                setProjectModalOpen(true);
+            };
+            const saveProject = (e) => {
+                e.preventDefault();
+                if (!projectFormName.trim()) return;
+                
+                if (editingProject) {
+                    setProjects(prev => prev.map(p => p.id === editingProject.id ? { ...p, name: projectFormName, color: projectFormColor } : p));
+                } else {
+                    setProjects([...projects, { 
+                        id: generateId(), 
+                        name: projectFormName, 
+                        color: projectFormColor
+                    }]);
+                }
+                setProjectModalOpen(false);
+            };
+            const requestDeleteProject = (id) => {
+                setConfirmState({
+                    isOpen: true,
+                    title: 'Delete Project',
+                    message: 'Are you sure you want to delete this project and ALL associated tasks?',
+                    action: () => {
+                        setProjects(prev => prev.filter(p => p.id !== id));
+                        setTasks(prev => prev.filter(t => t.projectId !== id));
+                        setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    }
+                });
+            }
+
+            // STAGES
+            const openAddStage = () => {
+                setEditingStage(null);
+                setStageFormName('');
+                setStageModalOpen(true);
+            }
+            const openEditStage = (id) => {
+                const s = stages.find(st => st.id === id);
+                setEditingStage(s);
+                setStageFormName(s.name);
+                setStageModalOpen(true);
+            }
+            const saveStage = (e) => {
+                e.preventDefault();
+                if(!stageFormName.trim()) return;
+
+                if (editingStage) {
+                    setStages(prev => prev.map(s => s.id === editingStage.id ? {...s, name: stageFormName} : s));
+                } else {
+                    setStages([...stages, { id: generateId(), name: stageFormName }]);
+                }
+                setStageModalOpen(false);
+            }
+            const requestDeleteStage = (id) => {
+                setConfirmState({
+                    isOpen: true,
+                    title: 'Delete Stage',
+                    message: 'Deleting this stage will move all its tasks back to the Project Backlogs. Continue?',
+                    action: () => {
+                        // Move tasks in this stage back to 'todo'
+                        setTasks(prev => prev.map(t => t.status === id ? { ...t, status: 'todo' } : t));
+                        setStages(prev => prev.filter(s => s.id !== id));
+                        setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    }
+                });
+            }
+
+            // GENERIC COLUMN EDIT HANDLER
+            const handleEditColumn = (id, type) => {
+                if (type === 'project') openEditProject(id);
+                else openEditStage(id);
+            }
+
+
+            const getProjectTasks = (pid) => tasks.filter(t => t.projectId === pid && t.status === 'todo');
+            const getStageTasks = (status) => tasks.filter(t => t.status === status);
+
+            return html`
+                <div class="h-screen flex flex-col overflow-hidden select-none">
+                    <!-- Top Navigation -->
+                    <nav class="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shrink-0 z-10">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+                                <i class="fas fa-layer-group"></i>
+                            </div>
+                            <h1 class="font-bold text-xl text-gray-800 tracking-tight">FlowBoard</h1>
+                        </div>
+                        <div class="flex gap-3">
+                             <button 
+                                onClick=${openAddStage}
+                                class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-sm"
+                            >
+                                <i class="fas fa-plus mr-2 text-gray-400"></i> New Stage
+                            </button>
+                            <button 
+                                onClick=${openAddProject}
+                                class="bg-gray-900 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center shadow-md"
+                            >
+                                <i class="fas fa-plus mr-2"></i> New Project
+                            </button>
+                        </div>
+                    </nav>
+
+                    <!-- Main Content -->
+                    <div class="flex-1 flex overflow-hidden relative">
+                        
+                        <!-- Left Side: Project Backlogs -->
+                        <div class="flex flex-col border-r border-gray-300 bg-gray-50" style="width: ${leftPanelWidth}%">
+                            <div class="p-4 border-b border-gray-200 bg-gray-100 flex justify-between items-center">
+                                <h2 class="font-bold text-gray-600 uppercase text-xs tracking-wider">
+                                    <i class="fas fa-list-ul mr-2"></i> Project Backlogs
+                                </h2>
+                                <span class="text-xs text-gray-400">Horizontal Scroll</span>
+                            </div>
+                            
+                            <div class="flex-1 overflow-x-auto overflow-y-hidden p-4 scrollbar-hide overscroll-x-none">
+                                <div class="flex h-full gap-4">
+                                    ${projects.map(project => html`
+                                        <div class="h-full w-80 shrink-0 flex flex-col relative group/col">
+                                            <${Column} 
+                                                key=${project.id}
+                                                id=${project.id}
+                                                title=${project.name}
+                                                type="project"
+                                                projectId=${project.id}
+                                                tasks=${getProjectTasks(project.id)}
+                                                projects=${projects}
+                                                onDropTask=${handleDropTask}
+                                                onAddTask=${openAddTask}
+                                                onEditTask=${openEditTask}
+                                                onDeleteTask=${requestDeleteTask}
+                                                onEditColumn=${handleEditColumn}
+                                                onColumnDrop=${handleColumnDrop}
+                                            />
+                                            <button 
+                                                onClick=${() => requestDeleteProject(project.id)}
+                                                class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover/col:opacity-100 transition-opacity shadow-md flex items-center justify-center z-10"
+                                                title="Delete Project"
+                                            >
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    `)}
+                                    
+                                    <!-- Add Project Placeholder -->
+                                    <div 
+                                        onClick=${openAddProject}
+                                        class="h-full w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 hover:bg-gray-100 cursor-pointer transition-all"
+                                    >
+                                        <div class="transform -rotate-90 whitespace-nowrap font-medium">Add Project</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Resize Handle -->
+                        <div 
+                            class="w-1 hover:w-2 bg-gray-300 hover:bg-indigo-400 cursor-col-resize transition-all z-50 flex flex-col justify-center items-center group absolute h-full"
+                            style="left: ${leftPanelWidth}%; transform: translateX(-50%);"
+                            onMouseDown=${() => setIsDragging(true)}
+                        >
+                            <div class="h-8 w-1 bg-gray-400 rounded-full group-hover:bg-indigo-600"></div>
+                        </div>
+
+                        <!-- Right Side: Execution Stages -->
+                        <div class="flex flex-col bg-white" style="width: ${100 - leftPanelWidth}%">
+                             <div class="p-4 border-b border-gray-200 bg-gray-50">
+                                <h2 class="font-bold text-gray-600 uppercase text-xs tracking-wider">
+                                    <i class="fas fa-running mr-2"></i> Execution Pipeline
+                                </h2>
+                            </div>
+                            
+                            <div class="flex-1 overflow-x-auto overflow-y-hidden p-4 scrollbar-hide bg-dots overscroll-x-none">
+                                <div class="flex h-full gap-4">
+                                    ${stages.map(stage => html`
+                                        <div class="h-full w-80 shrink-0 flex flex-col relative group/col">
+                                            <${Column} 
+                                                key=${stage.id}
+                                                title=${stage.name}
+                                                id=${stage.id}
+                                                type="stage" 
+                                                statusId=${stage.id} 
+                                                tasks=${getStageTasks(stage.id)} 
+                                                projects=${projects}
+                                                onDropTask=${handleDropTask}
+                                                onEditTask=${openEditTask}
+                                                onDeleteTask=${requestDeleteTask}
+                                                onEditColumn=${handleEditColumn}
+                                                onColumnDrop=${handleColumnDrop}
+                                            />
+                                            <button 
+                                                onClick=${() => requestDeleteStage(stage.id)}
+                                                class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover/col:opacity-100 transition-opacity shadow-md flex items-center justify-center z-10"
+                                                title="Delete Stage"
+                                            >
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    `)}
+
+                                     <!-- Add Stage Placeholder -->
+                                     <div 
+                                        onClick=${openAddStage}
+                                        class="h-full w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 hover:bg-gray-50 cursor-pointer transition-all bg-white/50"
+                                    >
+                                        <div class="transform -rotate-90 whitespace-nowrap font-medium">Add Stage</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Task Modal -->
+                    <${Modal} 
+                        isOpen=${isTaskModalOpen} 
+                        onClose=${() => setTaskModalOpen(false)} 
+                        title=${currentTask ? 'Edit Task' : 'New Task'}
+                    >
+                        <form onSubmit=${saveTask} class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                <textarea 
+                                    name="content" 
+                                    required 
+                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"
+                                    rows="3"
+                                    autoFocus=${true}
+                                >${currentTask ? currentTask.content : ''}</textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Deadline (Optional)</label>
+                                <input 
+                                    type="date" 
+                                    name="deadline" 
+                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"
+                                    value=${currentTask ? currentTask.deadline : ''}
+                                />
+                            </div>
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
+                                    ${currentTask ? 'Save Changes' : 'Create Task'}
+                                </button>
+                            </div>
+                        </form>
+                    <//>
+
+                    <!-- Project Modal (Create/Edit) -->
+                    <${Modal} 
+                        isOpen=${isProjectModalOpen} 
+                        onClose=${() => setProjectModalOpen(false)} 
+                        title=${editingProject ? 'Edit Project' : 'Add New Project'}
+                    >
+                        <form onSubmit=${saveProject} class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                <input 
+                                    type="text" 
+                                    value=${projectFormName}
+                                    onInput=${e => setProjectFormName(e.target.value)}
+                                    required 
+                                    placeholder="e.g. Q4 Marketing Campaign"
+                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"
+                                    autoFocus=${true}
+                                />
+                            </div>
+                            
+                            <!-- Color Picker -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Project Color</label>
+                                <div class="grid grid-cols-8 gap-2">
+                                    ${COLORS.map(color => html`
+                                        <div 
+                                            onClick=${() => setProjectFormColor(color)}
+                                            class="w-8 h-8 rounded-full cursor-pointer transition-transform hover:scale-110 ${color} ${projectFormColor === color ? 'ring-2 ring-offset-2 ring-gray-800' : ''}"
+                                        ></div>
+                                    `)}
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-700">
+                                    ${editingProject ? 'Save Changes' : 'Create Project'}
+                                </button>
+                            </div>
+                        </form>
+                    <//>
+
+                    <!-- Stage Modal (Create/Edit) -->
+                     <${Modal} 
+                        isOpen=${isStageModalOpen} 
+                        onClose=${() => setStageModalOpen(false)} 
+                        title=${editingStage ? 'Edit Stage' : 'Add New Stage'}
+                    >
+                        <form onSubmit=${saveStage} class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Stage Name</label>
+                                <input 
+                                    type="text" 
+                                    value=${stageFormName}
+                                    onInput=${e => setStageFormName(e.target.value)}
+                                    required 
+                                    placeholder="e.g. Testing"
+                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"
+                                    autoFocus=${true}
+                                />
+                            </div>
+
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-700">
+                                     ${editingStage ? 'Save Changes' : 'Create Stage'}
+                                </button>
+                            </div>
+                        </form>
+                    <//>
+
+                    <!-- Confirmation Modal -->
+                    <${Modal} 
+                        isOpen=${confirmState.isOpen} 
+                        onClose=${() => setConfirmState(prev => ({ ...prev, isOpen: false }))} 
+                        title=${confirmState.title}
+                        maxWidth="max-w-sm"
+                    >
+                        <div class="space-y-4">
+                            <p class="text-gray-600">${confirmState.message}</p>
+                            <div class="flex justify-end gap-3 pt-2">
+                                <button 
+                                    onClick=${() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+                                    class="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md text-sm font-medium transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick=${confirmState.action}
+                                    class="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-md text-sm font-medium transition-colors"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    <//>
+                </div>
+            `;
+        }
+
+        render(html`<${App} />`, document.getElementById('app'));
+    </script>
+    
+    <!-- Background pattern helper -->
+    <style>
+        .bg-dots {
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</body>
+</html>

@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Deep Day Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #0f1116;
+      --bg-elevated: #171a21;
+      --bg-elevated-soft: #1d2129;
+      --border-subtle: #262a33;
+      --accent: #4f9bff;
+      --accent-soft: rgba(79, 155, 255, 0.1);
+      --text-main: #f5f7fb;
+      --text-muted: #9aa0b5;
+      --text-soft: #6c7284;
+      --danger: #ff4d4d;
+      --hour-height: 48px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #202638 0, #0a0b10 55%, #050509 100%);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app-root {
+      display: flex;
+      height: 100vh;
+      max-height: 100vh;
+    }
+
+    .column {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-subtle);
+      background: rgba(8, 9, 14, 0.92);
+      backdrop-filter: blur(10px);
+    }
+
+    .column:last-child {
+      border-right: none;
+    }
+
+    .column-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      gap: 6px;
+    }
+
+    .column-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .column-header span.label-strong {
+      font-weight: 600;
+      color: var(--text-main);
+      text-transform: none;
+      letter-spacing: 0.01em;
+    }
+
+    .column-header .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: none;
+      letter-spacing: 0.01em;
+    }
+
+    .column-header-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dates-column {
+      width: 220px;
+      min-width: 180px;
+      max-width: 280px;
+    }
+
+    .plan-column,
+    .actual-column {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .column-body {
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .dates-list {
+      padding: 6px 0;
+    }
+
+    .date-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-left: 2px solid transparent;
+    }
+
+    .date-item:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .date-item.selected {
+      background: var(--accent-soft);
+      color: var(--text-main);
+      border-left-color: var(--accent);
+    }
+
+    .date-main {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .date-line1 {
+      font-weight: 500;
+    }
+
+    .date-line2 {
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+
+    .date-offset {
+      font-size: 11px;
+      color: var(--text-soft);
+      padding-left: 8px;
+      white-space: nowrap;
+    }
+
+    .today-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(79, 155, 255, 0.12);
+      color: var(--accent);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .summary-pill {
+      font-size: 11px;
+      color: var(--text-soft);
+      padding-top: 2px;
+    }
+
+    .timeline-wrapper {
+      height: 100%;
+      overflow-y: auto;
+    }
+
+    .timeline {
+      position: relative;
+      height: calc(24 * var(--hour-height));
+      padding-left: 52px;
+      padding-right: 6px;
+      background: radial-gradient(circle at top, #1d2130 0, #090b11 52%, #05060a 100%);
+      background-size: cover;
+    }
+
+    .hours-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .hour-row {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: var(--hour-height);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .hour-label {
+      position: absolute;
+      left: 4px;
+      top: 0;
+      transform: translateY(-50%);
+      font-size: 10px;
+      color: var(--text-soft);
+    }
+
+    .hour-row:nth-of-type(odd) {
+      background: rgba(255, 255, 255, 0.005);
+    }
+
+    .blocks-layer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .time-block {
+      position: absolute;
+      left: 60px;
+      right: 10px;
+      border-radius: 7px;
+      padding: 4px 12px 4px 6px;
+      font-size: 11px;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+      cursor: pointer;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .time-block-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .block-title {
+      font-weight: 600;
+      font-size: 11px;
+      word-break: break-word;
+    }
+
+    .block-time {
+      font-size: 10px;
+      opacity: 0.9;
+      white-space: nowrap;
+    }
+
+    .block-note {
+      font-size: 10px;
+      opacity: 0.9;
+      margin-top: 1px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
+    .block-crossed {
+      text-decoration: line-through;
+      opacity: 0.45;
+      background-image: repeating-linear-gradient(
+        135deg,
+        rgba(0, 0, 0, 0.12),
+        rgba(0, 0, 0, 0.12) 4px,
+        transparent 4px,
+        transparent 8px
+      );
+    }
+
+    .block-cross-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-radius: 999px;
+      padding: 1px 4px;
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      align-self: flex-start;
+      margin-top: 1px;
+    }
+
+    .block-drag-handle {
+      position: absolute;
+      right: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 60%;
+      cursor: grab;
+      border-radius: 4px;
+      background-image: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.35) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.35) 50%,
+        rgba(0, 0, 0, 0.35) 75%,
+        transparent 75%,
+        transparent 100%
+      );
+      background-size: 100% 6px;
+    }
+
+    .resize-handle {
+      position: absolute;
+      left: 4px;
+      right: 4px;
+      height: 4px;
+      cursor: ns-resize;
+    }
+
+    .resize-handle-top {
+      top: -2px;
+    }
+
+    .resize-handle-bottom {
+      bottom: -2px;
+    }
+
+    .legend {
+      padding: 4px 12px 6px;
+      font-size: 11px;
+      color: var(--text-soft);
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .legend-pill {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .legend-note {
+      font-size: 10px;
+      color: var(--text-soft);
+    }
+
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .dialog {
+      width: 360px;
+      max-width: 95vw;
+      background: var(--bg-elevated);
+      border-radius: 10px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
+      padding: 14px 14px 12px;
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .dialog-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .dialog-subtitle {
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+
+    .dialog-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+      align-items: center;
+    }
+
+    .dialog-row label {
+      font-size: 11px;
+      color: var(--text-muted);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .dialog-row label span {
+      margin-bottom: 1px;
+    }
+
+    .dialog-input,
+    .dialog-input-time,
+    .dialog-textarea {
+      width: 100%;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated-soft);
+      color: var(--text-main);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .dialog-input-time {
+      padding-right: 0;
+    }
+
+    .dialog-input:focus,
+    .dialog-input-time:focus,
+    .dialog-textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(79, 155, 255, 0.4);
+    }
+
+    .dialog-textarea {
+      resize: vertical;
+      min-height: 44px;
+      max-height: 120px;
+      font-family: inherit;
+    }
+
+    .color-swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .color-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+
+    .color-swatch.selected {
+      border-color: #ffffff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+    }
+
+    .dialog-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      gap: 6px;
+    }
+
+    .dialog-buttons-right {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn {
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid transparent;
+      font-size: 11px;
+      cursor: pointer;
+      background: #202431;
+      color: var(--text-main);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn:hover {
+      background: #262b3b;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: rgba(0, 0, 0, 0.6);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.08);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--border-subtle);
+      color: var(--text-soft);
+    }
+
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .btn-danger {
+      border-color: rgba(0, 0, 0, 0.6);
+      background: linear-gradient(135deg, #ff4d4d, #c41b3b);
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      filter: brightness(1.05);
+    }
+
+    .btn-reset {
+      padding: 2px 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .badge-mode {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-radius: 999px;
+      padding: 2px 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    @media (max-width: 960px) {
+      .dates-column {
+        display: none;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .app-root {
+        flex-direction: column;
+      }
+
+      .plan-column,
+      .actual-column {
+        min-height: 50vh;
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .actual-column:last-child {
+        border-bottom: none;
+      }
+
+      .column-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: rgba(8, 9, 14, 0.98);
+        backdrop-filter: blur(10px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { h, render } from "https://esm.sh/preact@10.24.3";
+    import { useState, useEffect, useRef } from "https://esm.sh/preact@10.24.3/hooks";
+    import htm from "https://esm.sh/htm@3.1.1";
+
+    const html = htm.bind(h);
+
+    const HOUR_HEIGHT = 48;
+    const DAY_HEIGHT = 24 * HOUR_HEIGHT;
+
+    const COLOR_PALETTE = [
+      "#ff595e", "#ff924c", "#ffca3a", "#8ac926",
+      "#52b788", "#1982c4", "#6a4c93", "#f72585",
+      "#f94144", "#f3722c", "#f9c74f", "#43aa8b",
+      "#577590", "#4cc9f0", "#ff6f91", "#9b5de5"
+    ];
+
+    function toDateKey(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function offsetDate(date, offsetDays) {
+      const d = new Date(date);
+      d.setDate(d.getDate() + offsetDays);
+      return d;
+    }
+
+    function formatDateLabel(date) {
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const d = date.getDate();
+      return `${dayNames[date.getDay()]} • ${monthNames[date.getMonth()]} ${d}`;
+    }
+
+    function relativeLabel(offset) {
+      if (offset === 0) return "Today";
+      if (offset === 1) return "Tomorrow";
+      if (offset === -1) return "Yesterday";
+      if (offset > 1) return `+${offset}d`;
+      return `${offset}d`;
+    }
+
+    function minutesToTime(minutes) {
+      minutes = Math.max(0, Math.min(24 * 60, minutes));
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+
+    function timeToMinutes(timeStr) {
+      if (!timeStr) return 0;
+      const [h, m] = timeStr.split(":").map(Number);
+      return h * 60 + (m || 0);
+    }
+
+    function cloneBlocks(blocks) {
+      return blocks.map(b => ({ ...b }));
+    }
+
+    function generateId() {
+      return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function DayColumn(props) {
+      const {
+        dateKey,
+        blocks,
+        title,
+        mode,
+        onBlankClick,
+        onResetDay,
+        onRevertDay,
+        onBlockMoveStart,
+        onBlockResizeStart,
+        suppressClickRef,
+        showNotes
+      } = props;
+
+      const hours = [];
+      for (let h = 0; h < 24; h++) {
+        const label = h === 0
+          ? "12a"
+          : h < 12
+            ? `${h}a`
+            : h === 12
+              ? "12p"
+              : `${h - 12}p`;
+        hours.push({ h, label });
+      }
+
+      const handleTimelineClick = (e) => {
+        if (suppressClickRef && suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+
+        if (e.target.closest(".time-block")) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        let y = e.clientY - rect.top;
+        y = Math.max(0, Math.min(DAY_HEIGHT, y));
+        const totalMinutes = 24 * 60;
+        const minutesRaw = (y / DAY_HEIGHT) * totalMinutes;
+        const minutes = Math.round(minutesRaw / 15) * 15;
+        if (onBlankClick) onBlankClick(minutes);
+      };
+
+      const sortedBlocks = [...blocks].sort((a, b) => {
+        return timeToMinutes(a.start) - timeToMinutes(b.start);
+      });
+
+      return html`
+        <div class="column ${mode === "plan" ? "plan-column" : "actual-column"}">
+          <div class="column-header">
+            <div class="column-header-left">
+              <span class="label-strong">${title}</span>
+              <div class="sub">
+                ${mode === "plan"
+                  ? "Design your ideal day"
+                  : "Record what actually happened"}
+              </div>
+            </div>
+            <div class="column-header-right">
+              ${mode === "plan" && onResetDay ? html`
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-reset"
+                  onClick=${(e) => {
+                    e.stopPropagation();
+                    onResetDay();
+                  }}
+                >
+                  Reset
+                </button>
+              ` : null}
+              ${mode === "actual" && onRevertDay ? html`
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-reset"
+                  onClick=${(e) => {
+                    e.stopPropagation();
+                    onRevertDay();
+                  }}
+                >
+                  Revert
+                </button>
+              ` : null}
+              <div class="badge-mode">${mode === "plan" ? "Plan" : "Actual"}</div>
+            </div>
+          </div>
+          <div class="legend">
+            <span class="legend-pill">
+              <span class="legend-dot"></span>
+              <span>${mode === "plan" ? "Click to add planned block" : "Click to add actual block"}</span>
+            </span>
+            ${mode === "actual" ? html`
+              <span class="legend-note">Edit, add notes, or cross out blocks as your day unfolds.</span>
+            ` : html`
+              <span class="legend-note">Lay out focused work and meetings for the day ahead.</span>
+            `}
+          </div>
+          <div class="column-body">
+            <div class="timeline-wrapper">
+              <div class="timeline" onClick=${handleTimelineClick}>
+                <div class="hours-layer">
+                  ${hours.map((hour, idx) => html`
+                    <div
+                      class="hour-row"
+                      style=${{ top: `${idx * HOUR_HEIGHT}px` }}
+                    >
+                      <div class="hour-label">${hour.label}</div>
+                    </div>
+                  `)}
+                </div>
+                <div class="blocks-layer">
+                  ${sortedBlocks.map(block => {
+                    const startMin = timeToMinutes(block.start);
+                    const endMin = Math.max(startMin + 15, timeToMinutes(block.end) || startMin + 60);
+                    const top = (startMin / (24 * 60)) * DAY_HEIGHT;
+                    const height = Math.max(18, ((endMin - startMin) / (24 * 60)) * DAY_HEIGHT);
+                    const style = {
+                      top: `${top}px`,
+                      height: `${height}px`,
+                      background: block.color || COLOR_PALETTE[0],
+                    };
+                    const classes = [
+                      "time-block",
+                      block.crossed ? "block-crossed" : ""
+                    ].join(" ");
+                    return html`
+                      <div
+                        class=${classes}
+                        style=${style}
+                        onMouseDown=${(event) => {
+                          if (event.button !== 0) return;
+                          event.preventDefault();
+                          onBlockMoveStart && onBlockMoveStart(mode, block, event.clientY);
+                        }}
+                      >
+                        <div
+                          class="resize-handle resize-handle-top"
+                          onMouseDown=${(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onBlockResizeStart && onBlockResizeStart(mode, block, "top", e.clientY);
+                          }}
+                        ></div>
+                        <div
+                          class="resize-handle resize-handle-bottom"
+                          onMouseDown=${(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onBlockResizeStart && onBlockResizeStart(mode, block, "bottom", e.clientY);
+                          }}
+                        ></div>
+                        <div class="block-drag-handle"></div>
+                        <div class="time-block-inner">
+                          <div class="block-title">${block.title || "(untitled)"}</div>
+                          <div class="block-time">${block.start}–${block.end}</div>
+                        </div>
+                        ${showNotes && block.note ? html`
+                          <div class="block-note">${block.note}</div>
+                        ` : null}
+                        ${block.crossed ? html`
+                          <div class="block-cross-label">Crossed out</div>
+                        ` : null}
+                      </div>
+                    `;
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function BlockDialog(props) {
+      const {
+        open,
+        mode,
+        dateKey,
+        initialTitle,
+        initialStart,
+        initialEnd,
+        initialColor,
+        initialNote,
+        canCrossOut,
+        crossed,
+        onSave,
+        onDelete,
+        onCrossToggle,
+        onCancel
+      } = props;
+
+      const [title, setTitle] = useState(initialTitle || "");
+      const [start, setStart] = useState(initialStart || "09:00");
+      const [end, setEnd] = useState(initialEnd || "10:00");
+      const [color, setColor] = useState(initialColor || COLOR_PALETTE[0]);
+      const [note, setNote] = useState(initialNote || "");
+
+      const firstInputRef = useRef(null);
+
+      useEffect(() => {
+        if (open) {
+          setTitle(initialTitle || "");
+          setStart(initialStart || "09:00");
+          setEnd(initialEnd || "10:00");
+          setColor(initialColor || COLOR_PALETTE[0]);
+          setNote(initialNote || "");
+          setTimeout(() => {
+            if (firstInputRef.current) firstInputRef.current.focus();
+          }, 10);
+        }
+      }, [open, initialTitle, initialStart, initialEnd, initialColor, initialNote]);
+
+      if (!open) return null;
+
+      const isActual = mode === "actual";
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const startMin = timeToMinutes(start);
+        let endMin = timeToMinutes(end);
+        if (!end || endMin <= startMin) {
+          endMin = startMin + 60;
+        }
+        const normalizedEnd = minutesToTime(endMin);
+        onSave({
+          title: title.trim() || "(untitled)",
+          start,
+          end: normalizedEnd,
+          color,
+          note: isActual ? note.trim() : "",
+        });
+      };
+
+      const dateLabel = dateKey || "";
+
+      return html`
+        <div class="dialog-backdrop" onClick=${onCancel}>
+          <div class="dialog" onClick=${e => e.stopPropagation()}>
+            <div>
+              <div class="dialog-title">
+                ${initialTitle ? "Edit block" : "Add block"}
+              </div>
+              <div class="dialog-subtitle">
+                ${isActual
+                  ? "Record what you actually did during this time."
+                  : "Plan a focused block for this part of your day."}
+                <br />
+                <span style=${{ opacity: 0.8 }}>Date: ${dateLabel}</span>
+              </div>
+            </div>
+
+            <form onSubmit=${handleSubmit}>
+              <div class="dialog-row">
+                <label>
+                  <span>Label</span>
+                  <input
+                    ref=${firstInputRef}
+                    type="text"
+                    class="dialog-input"
+                    value=${title}
+                    onInput=${e => setTitle(e.target.value)}
+                    placeholder="Deep work, meeting, lunch, etc."
+                  />
+                </label>
+              </div>
+
+              <div class="dialog-row">
+                <label>
+                  <span>Start</span>
+                  <input
+                    type="time"
+                    class="dialog-input-time"
+                    value=${start}
+                    onInput=${e => setStart(e.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>End</span>
+                  <input
+                    type="time"
+                    class="dialog-input-time"
+                    value=${end}
+                    onInput=${e => setEnd(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div class="dialog-row">
+                <label style=${{ flexDirection: "column" }}>
+                  <span>Color</span>
+                  <div class="color-swatch-grid">
+                    ${COLOR_PALETTE.map(c => html`
+                      <div
+                        class=${"color-swatch" + (c === color ? " selected" : "")}
+                        style=${{ background: c }}
+                        onClick=${() => setColor(c)}
+                      ></div>
+                    `)}
+                  </div>
+                </label>
+              </div>
+
+              ${isActual ? html`
+                <div class="dialog-row">
+                  <label>
+                    <span>Notes (e.g. what changed)</span>
+                    <textarea
+                      class="dialog-textarea"
+                      value=${note}
+                      onInput=${e => setNote(e.target.value)}
+                      placeholder="Did this block drift? What did you actually focus on?"
+                    ></textarea>
+                  </label>
+                </div>
+              ` : null}
+
+              <div class="dialog-footer">
+                <div style=${{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  ${isActual && typeof crossed === "boolean" && canCrossOut ? html`
+                    <button
+                      type="button"
+                      class="btn btn-ghost"
+                      onClick=${onCrossToggle}
+                    >
+                      ${crossed ? "Uncross" : "Cross out"}
+                    </button>
+                  ` : null}
+                  ${onDelete ? html`
+                    <button
+                      type="button"
+                      class="btn btn-danger"
+                      onClick=${onDelete}
+                    >
+                      Delete
+                    </button>
+                  ` : null}
+                </div>
+                <div class="dialog-buttons-right">
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    onClick=${onCancel}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="btn btn-primary"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    function App() {
+      const today = new Date();
+      const todayKey = toDateKey(today);
+
+      const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
+      const [days, setDays] = useState(() => {
+        try {
+          const stored = localStorage.getItem("deep-day-planner-days");
+          if (stored) {
+            return JSON.parse(stored);
+          }
+        } catch (e) {}
+        return {};
+      });
+
+      const [dialogState, setDialogState] = useState({
+        open: false,
+        mode: "plan",
+        dateKey: todayKey,
+        blockId: null,
+        title: "",
+        start: "09:00",
+        end: "10:00",
+        color: COLOR_PALETTE[0],
+        note: "",
+        crossed: false
+      });
+
+      const dragRef = useRef(null);
+      const suppressClickRef = useRef(false);
+
+      const datesRef = useRef(null);
+      const todayRef = useRef(null);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem("deep-day-planner-days", JSON.stringify(days));
+        } catch (e) {}
+      }, [days]);
+
+      useEffect(() => {
+        if (datesRef.current && todayRef.current) {
+          const container = datesRef.current;
+          const item = todayRef.current;
+          const offsetTop = item.offsetTop;
+          container.scrollTop = Math.max(0, offsetTop - 8);
+        }
+      }, []);
+
+      function ensureDay(dateKey, prevDays) {
+        const existing = prevDays[dateKey];
+        if (existing) {
+          const plan = existing.plan || [];
+          const actual = existing.actual || [];
+          let actualLocked = existing.actualLocked;
+          if (actualLocked == null) {
+            if (actual.length === 0) {
+              actualLocked = false;
+            } else {
+              const same = JSON.stringify(plan) === JSON.stringify(actual);
+              actualLocked = !same;
+            }
+          }
+          return { plan, actual, actualLocked };
+        }
+        return { plan: [], actual: [], actualLocked: false };
+      }
+
+      const planBlocks = (days[selectedDateKey]?.plan) || [];
+      const actualBlocks = (days[selectedDateKey]?.actual) || [];
+
+      function openBlankDialog(mode, minutes) {
+        const start = minutesToTime(minutes);
+        const end = minutesToTime(minutes + 60);
+        setDialogState({
+          open: true,
+          mode,
+          dateKey: selectedDateKey,
+          blockId: null,
+          title: "",
+          start,
+          end,
+          color: COLOR_PALETTE[0],
+          note: "",
+          crossed: false
+        });
+      }
+
+      function closeDialog() {
+        setDialogState(prev => ({ ...prev, open: false }));
+      }
+
+      function handleSaveDialog(data) {
+        const { mode, dateKey, blockId } = dialogState;
+        setDays(prev => {
+          const day = ensureDay(dateKey, prev);
+          const baseBlocks = mode === "plan" ? day.plan : day.actual;
+          const blocks = [...baseBlocks];
+
+          if (blockId) {
+            const idx = blocks.findIndex(b => b.id === blockId);
+            if (idx !== -1) {
+              blocks[idx] = {
+                ...blocks[idx],
+                ...data,
+              };
+            }
+          } else {
+            blocks.push({
+              id: generateId(),
+              ...data,
+              crossed: false
+            });
+          }
+
+          blocks.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+
+          let newDay = {
+            plan: day.plan,
+            actual: day.actual,
+            actualLocked: day.actualLocked || false
+          };
+
+          if (mode === "plan") {
+            newDay.plan = blocks;
+            if (!newDay.actualLocked) {
+              newDay.actual = cloneBlocks(blocks);
+            }
+          } else {
+            newDay.actual = blocks;
+            newDay.actualLocked = true;
+          }
+
+          return {
+            ...prev,
+            [dateKey]: newDay
+          };
+        });
+        closeDialog();
+      }
+
+      function handleDelete() {
+        const { mode, dateKey, blockId } = dialogState;
+        if (!blockId) return;
+        setDays(prev => {
+          const day = ensureDay(dateKey, prev);
+          const baseBlocks = mode === "plan" ? day.plan : day.actual;
+          const filtered = baseBlocks.filter(b => b.id !== blockId);
+
+          let newDay = {
+            plan: day.plan,
+            actual: day.actual,
+            actualLocked: day.actualLocked || false
+          };
+
+          if (mode === "plan") {
+            newDay.plan = filtered;
+            if (!newDay.actualLocked) {
+              newDay.actual = cloneBlocks(filtered);
+            }
+          } else {
+            newDay.actual = filtered;
+            newDay.actualLocked = true;
+          }
+
+          return { ...prev, [dateKey]: newDay };
+        });
+        closeDialog();
+      }
+
+      function handleCrossToggle() {
+        const { mode, dateKey, blockId, crossed } = dialogState;
+        if (!blockId) return;
+        if (mode !== "actual") return;
+        setDays(prev => {
+          const day = ensureDay(dateKey, prev);
+          const blocks = [...day.actual];
+          const idx = blocks.findIndex(b => b.id === blockId);
+          if (idx !== -1) {
+            blocks[idx] = { ...blocks[idx], crossed: !crossed };
+          }
+          return {
+            ...prev,
+            [dateKey]: {
+              ...day,
+              actual: blocks,
+              actualLocked: true
+            }
+          };
+        });
+        setDialogState(prev => ({ ...prev, crossed: !prev.crossed }));
+      }
+
+      function handleResetPlannedDay() {
+        const dateKey = selectedDateKey;
+        setDays(prev => {
+          const newDay = {
+            plan: [],
+            actual: [],
+            actualLocked: false
+          };
+          return {
+            ...prev,
+            [dateKey]: newDay
+          };
+        });
+      }
+
+      function handleRevertActualDay() {
+        const dateKey = selectedDateKey;
+        setDays(prev => {
+          const day = ensureDay(dateKey, prev);
+          const planClone = cloneBlocks(day.plan);
+          return {
+            ...prev,
+            [dateKey]: {
+              plan: day.plan,
+              actual: planClone,
+              actualLocked: false
+            }
+          };
+        });
+      }
+
+      function startDrag(dragType, mode, block, clientY) {
+        dragRef.current = {
+          dragType,
+          mode,
+          dateKey: selectedDateKey,
+          blockId: block.id,
+          startClientY: clientY,
+          initialStartMin: timeToMinutes(block.start),
+          initialEndMin: timeToMinutes(block.end),
+          moved: false,
+          blockSnapshot: { ...block }
+        };
+        suppressClickRef.current = true;
+      }
+
+      function handleBlockMoveStart(mode, block, startClientY) {
+        startDrag("move", mode, block, startClientY);
+      }
+
+      function handleBlockResizeStart(mode, block, edge, startClientY) {
+        startDrag(edge === "top" ? "resize-top" : "resize-bottom", mode, block, startClientY);
+      }
+
+      useEffect(() => {
+        const totalMinutes = 24 * 60;
+
+        function handleMove(e) {
+          const drag = dragRef.current;
+          if (!drag) return;
+
+          const dy = e.clientY - drag.startClientY;
+          let deltaMinutes = (dy / DAY_HEIGHT) * totalMinutes;
+          deltaMinutes = Math.round(deltaMinutes / 15) * 15;
+
+          if (Math.abs(deltaMinutes) >= 1) {
+            drag.moved = true;
+          }
+
+          setDays(prev => {
+            const day = ensureDay(drag.dateKey, prev);
+            const baseBlocks = drag.mode === "plan" ? day.plan : day.actual;
+            const blocks = [...baseBlocks];
+            const idx = blocks.findIndex(b => b.id === drag.blockId);
+            if (idx === -1) return prev;
+
+            const block = blocks[idx];
+            let startMin = drag.initialStartMin;
+            let endMin = drag.initialEndMin;
+
+            if (drag.dragType === "move") {
+              startMin = drag.initialStartMin + deltaMinutes;
+              endMin = drag.initialEndMin + deltaMinutes;
+              if (endMin - startMin < 15) endMin = startMin + 15;
+              if (startMin < 0) {
+                endMin -= startMin;
+                startMin = 0;
+              }
+              if (endMin > totalMinutes) {
+                const shift = endMin - totalMinutes;
+                startMin -= shift;
+                endMin = totalMinutes;
+                if (startMin < 0) startMin = 0;
+              }
+            } else if (drag.dragType === "resize-top") {
+              startMin = drag.initialStartMin + deltaMinutes;
+              const maxStart = drag.initialEndMin - 15;
+              if (startMin < 0) startMin = 0;
+              if (startMin > maxStart) startMin = maxStart;
+            } else if (drag.dragType === "resize-bottom") {
+              endMin = drag.initialEndMin + deltaMinutes;
+              const minEnd = drag.initialStartMin + 15;
+              if (endMin < minEnd) endMin = minEnd;
+              if (endMin > totalMinutes) endMin = totalMinutes;
+            }
+
+            blocks[idx] = {
+              ...block,
+              start: minutesToTime(startMin),
+              end: minutesToTime(endMin)
+            };
+
+            blocks.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+
+            let newDay = {
+              plan: day.plan,
+              actual: day.actual,
+              actualLocked: day.actualLocked || false
+            };
+
+            if (drag.mode === "plan") {
+              newDay.plan = blocks;
+              if (!newDay.actualLocked) {
+                newDay.actual = cloneBlocks(blocks);
+              }
+            } else {
+              newDay.actual = blocks;
+              newDay.actualLocked = true;
+            }
+
+            return {
+              ...prev,
+              [drag.dateKey]: newDay
+            };
+          });
+        }
+
+        function handleUp() {
+          const drag = dragRef.current;
+          if (!drag) return;
+
+          if (!drag.moved && drag.dragType === "move") {
+            const b = drag.blockSnapshot;
+            setDialogState({
+              open: true,
+              mode: drag.mode,
+              dateKey: drag.dateKey,
+              blockId: b.id,
+              title: b.title,
+              start: b.start,
+              end: b.end,
+              color: b.color || COLOR_PALETTE[0],
+              note: b.note || "",
+              crossed: !!b.crossed
+            });
+          }
+
+          dragRef.current = null;
+        }
+
+        window.addEventListener("mousemove", handleMove);
+        window.addEventListener("mouseup", handleUp);
+
+        return () => {
+          window.removeEventListener("mousemove", handleMove);
+          window.removeEventListener("mouseup", handleUp);
+        };
+      }, []);
+
+      const dateRange = (() => {
+        const range = [];
+        const before = 14;
+        const after = 30;
+        for (let offset = -before; offset <= after; offset++) {
+          const d = offsetDate(today, offset);
+          range.push({ date: d, offset });
+        }
+        return range;
+      })();
+
+      return html`
+        <div class="app-root">
+          <div class="column dates-column">
+            <div class="column-header">
+              <span class="label-strong">Days</span>
+              <span class="sub">Scroll to browse</span>
+            </div>
+            <div class="column-body" ref=${datesRef}>
+              <div class="dates-list">
+                ${dateRange.map(({ date, offset }) => {
+                  const key = toDateKey(date);
+                  const isSelected = key === selectedDateKey;
+                  const isToday = key === todayKey;
+                  const dayData = days[key];
+                  const planCount = dayData?.plan?.length || 0;
+                  const actualCount = dayData?.actual?.length || 0;
+                  return html`
+                    <div
+                      key=${key}
+                      class=${"date-item" + (isSelected ? " selected" : "")}
+                      onClick=${() => setSelectedDateKey(key)}
+                      ref=${isToday ? todayRef : null}
+                    >
+                      <div class="date-main">
+                        <div class="date-line1">
+                          ${formatDateLabel(date)}
+                          ${isToday ? html`<span class="today-pill" style=${{ marginLeft: "6px" }}>Today</span>` : null}
+                        </div>
+                        <div class="date-line2">
+                          ${planCount || actualCount
+                            ? html`<span class="summary-pill">
+                                  Plan: ${planCount} • Actual: ${actualCount}
+                                </span>`
+                            : html`<span class="summary-pill">No blocks yet</span>`}
+                        </div>
+                      </div>
+                      <div class="date-offset">
+                        ${relativeLabel(offset)}
+                      </div>
+                    </div>
+                  `;
+                })}
+              </div>
+            </div>
+          </div>
+
+          <${DayColumn}
+            dateKey=${selectedDateKey}
+            blocks=${planBlocks}
+            title="Planned day"
+            mode="plan"
+            onBlankClick=${minutes => openBlankDialog("plan", minutes)}
+            onResetDay=${handleResetPlannedDay}
+            onRevertDay=${null}
+            onBlockMoveStart=${handleBlockMoveStart}
+            onBlockResizeStart=${handleBlockResizeStart}
+            suppressClickRef=${suppressClickRef}
+            showNotes=${false}
+          />
+
+          <${DayColumn}
+            dateKey=${selectedDateKey}
+            blocks=${actualBlocks}
+            title="Actual day"
+            mode="actual"
+            onBlankClick=${minutes => openBlankDialog("actual", minutes)}
+            onResetDay=${null}
+            onRevertDay=${handleRevertActualDay}
+            onBlockMoveStart=${handleBlockMoveStart}
+            onBlockResizeStart=${handleBlockResizeStart}
+            suppressClickRef=${suppressClickRef}
+            showNotes=${true}
+          />
+
+          <${BlockDialog}
+            open=${dialogState.open}
+            mode=${dialogState.mode}
+            dateKey=${dialogState.dateKey}
+            initialTitle=${dialogState.title}
+            initialStart=${dialogState.start}
+            initialEnd=${dialogState.end}
+            initialColor=${dialogState.color}
+            initialNote=${dialogState.note}
+            crossed=${dialogState.crossed}
+            canCrossOut=${dialogState.mode === "actual"}
+            onSave=${handleSaveDialog}
+            onDelete=${dialogState.blockId ? handleDelete : null}
+            onCrossToggle=${dialogState.blockId ? handleCrossToggle : null}
+            onCancel=${closeDialog}
+          />
+        </div>
+      `;
+    }
+
+    render(html`<${App} />`, document.getElementById("app"));
+  </script>
+</body>
+</html>
