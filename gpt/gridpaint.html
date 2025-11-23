@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Grid Painting Program</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #ffffff;
+      color: #222;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #imageCanvas { z-index: 1; }
+    #paintCanvas { z-index: 2; }
+    #gridCanvas  { z-index: 3; }
+
+    #toolbar {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
+      background: rgba(20, 20, 20, 0.95);
+      border-radius: 8px;
+      padding: 8px 10px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      display: none;
+      max-width: 280px;
+      font-size: 12px;
+      cursor: move;
+      color: #eee;
+    }
+
+    #toolbar h2 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: move;
+    }
+
+    .palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 6px;
+      cursor: default;
+    }
+
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .color-swatch.selected {
+      border-color: #fff;
+      box-shadow: 0 0 0 1px #000;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      cursor: default;
+      margin-bottom: 6px;
+    }
+
+    .slider-row input[type="range"] {
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .toolbar-buttons {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .toolbar-buttons button {
+      flex: 1;
+      font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      background: #444;
+      color: #eee;
+    }
+
+    .toolbar-buttons button.primary {
+      background: #3498db;
+      color: #fff;
+    }
+
+    #setupDialog {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    #setupDialog .dialog-content {
+      background: #181818;
+      padding: 16px 18px 14px;
+      border-radius: 8px;
+      width: 320px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.8);
+      box-sizing: border-box;
+      color: #eee;
+    }
+
+    #setupDialog h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    #setupDialog label {
+      display: block;
+      margin-top: 8px;
+      margin-bottom: 2px;
+      font-size: 13px;
+    }
+
+    #setupDialog input[type="file"],
+    #setupDialog select {
+      width: 100%;
+      margin-bottom: 4px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    #setupDialog .actions {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    #setupDialog button {
+      font-size: 13px;
+      padding: 5px 12px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+    }
+
+    #setupDialog button.primary {
+      background: #3498db;
+      color: #fff;
+    }
+
+    #setupDialog button.secondary {
+      background: #444;
+      color: #eee;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="imageCanvas"></canvas>
+    <canvas id="paintCanvas"></canvas>
+    <canvas id="gridCanvas"></canvas>
+  </div>
+
+  <div id="toolbar">
+    <h2>Grid Painter</h2>
+    <div class="palette" id="palette"></div>
+    <div class="slider-row">
+      <span>Image opacity</span>
+      <input id="opacitySlider" type="range" min="0" max="100" value="25" />
+      <span id="opacityValue">25%</span>
+    </div>
+    <div class="toolbar-buttons">
+      <button id="clearBtn">Clear</button>
+      <button id="shareBtn" class="primary">Share</button>
+    </div>
+  </div>
+
+  <div id="setupDialog">
+    <div class="dialog-content">
+      <h1>Setup Grid</h1>
+      <label for="imageInput">Image</label>
+      <input id="imageInput" type="file" accept="image/*" />
+
+      <label for="patternSelect">Grid pattern</label>
+      <select id="patternSelect">
+        <option value="square" selected>Square</option>
+        <option value="triangle">Triangle</option>
+        <option value="hex">Hexagon</option>
+      </select>
+
+      <label for="sizeSelect">Grid size</label>
+      <select id="sizeSelect">
+        <option value="10">10 px</option>
+        <option value="20" selected>20 px</option>
+        <option value="40">40 px</option>
+      </select>
+
+      <div class="actions">
+        <button class="secondary" id="cancelBtn">Cancel</button>
+        <button class="primary" id="okBtn">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      image: new Image(),
+      pattern: 'square',
+      cellSize: 20,
+      currentColor: '#e63946',
+      colors: [
+        '#e63946',
+        '#f1c40f',
+        '#2ecc71',
+        '#1abc9c',
+        '#3498db',
+        '#9b59b6',
+        '#e67e22',
+        '#2c3e50'
+      ]
+    };
+
+    const imageCanvas = document.getElementById('imageCanvas');
+    const paintCanvas = document.getElementById('paintCanvas');
+    const gridCanvas = document.getElementById('gridCanvas');
+    const imageCtx = imageCanvas.getContext('2d');
+    const paintCtx = paintCanvas.getContext('2d');
+    const gridCtx = gridCanvas.getContext('2d');
+
+    const toolbar = document.getElementById('toolbar');
+    const paletteContainer = document.getElementById('palette');
+    const opacitySlider = document.getElementById('opacitySlider');
+    const opacityValue = document.getElementById('opacityValue');
+    const clearBtn = document.getElementById('clearBtn');
+    const shareBtn = document.getElementById('shareBtn');
+
+    const setupDialog = document.getElementById('setupDialog');
+    const imageInput = document.getElementById('imageInput');
+    const patternSelect = document.getElementById('patternSelect');
+    const sizeSelect = document.getElementById('sizeSelect');
+    const okBtn = document.getElementById('okBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+
+    let isPainting = false;
+    let eraseMode = false;
+
+    let isDraggingToolbar = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    let activeColorPicker = null;
+
+    const occupancy = {
+      square: new Map(),
+      triangle: new Map(),
+      hex: new Map()
+    };
+
+    function clearOccupancy() {
+      occupancy.square.clear();
+      occupancy.triangle.clear();
+      occupancy.hex.clear();
+    }
+
+    function resizeCanvases() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      imageCanvas.width = w;
+      imageCanvas.height = h;
+      paintCanvas.width = w;
+      paintCanvas.height = h;
+      gridCanvas.width = w;
+      gridCanvas.height = h;
+    }
+
+    function drawImageToCanvas() {
+      const img = state.image;
+      const w = imageCanvas.width;
+      const h = imageCanvas.height;
+
+      imageCtx.clearRect(0, 0, w, h);
+
+      const imgW = img.width;
+      const imgH = img.height;
+      if (!imgW || !imgH) return;
+
+      const scale = Math.max(w / imgW, h / imgH);
+      const drawW = imgW * scale;
+      const drawH = imgH * scale;
+      const offsetX = (w - drawW) / 2;
+      const offsetY = (h - drawH) / 2;
+
+      imageCtx.save();
+      imageCtx.clearRect(0, 0, w, h);
+      imageCtx.drawImage(img, offsetX, offsetY, drawW, drawH);
+      imageCtx.restore();
+    }
+
+    function drawSquareGrid() {
+      const size = state.cellSize;
+      const w = gridCanvas.width;
+      const h = gridCanvas.height;
+
+      gridCtx.clearRect(0, 0, w, h);
+      gridCtx.strokeStyle = '#888888';
+      gridCtx.lineWidth = 1;
+
+      for (let y = 0; y <= h; y += size) {
+        gridCtx.beginPath();
+        gridCtx.moveTo(0, y + 0.5);
+        gridCtx.lineTo(w, y + 0.5);
+        gridCtx.stroke();
+      }
+
+      for (let x = 0; x <= w; x += size) {
+        gridCtx.beginPath();
+        gridCtx.moveTo(x + 0.5, 0);
+        gridCtx.lineTo(x + 0.5, h);
+        gridCtx.stroke();
+      }
+    }
+
+    function drawTriangleGrid() {
+      const s = state.cellSize;
+      const hTri = s * Math.sqrt(3) / 2;
+      const W = gridCanvas.width;
+      const H = gridCanvas.height;
+
+      gridCtx.clearRect(0, 0, W, H);
+      gridCtx.strokeStyle = '#888888';
+      gridCtx.lineWidth = 1;
+
+      const jSpan = Math.ceil(H / hTri) + 4;
+      const jMin = -jSpan;
+      const jMax = jSpan;
+      const iSpan = Math.ceil(W / s) + jSpan + 4;
+      const iMin = -iSpan;
+      const iMax = iSpan;
+
+      for (let j = jMin; j <= jMax; j++) {
+        for (let i = iMin; i <= iMax; i++) {
+          const baseX = i * s + j * (s / 2);
+          const baseY = j * hTri;
+
+          const P0x = baseX;
+          const P0y = baseY;
+          const P1x = baseX + s;
+          const P1y = baseY;
+          const P2x = baseX + s / 2;
+          const P2y = baseY + hTri;
+          const P3x = baseX + 1.5 * s;
+          const P3y = baseY + hTri;
+
+          const minX = Math.min(P0x, P1x, P2x, P3x);
+          const maxX = Math.max(P0x, P1x, P2x, P3x);
+          const minY = Math.min(P0y, P1y, P2y, P3y);
+          const maxY = Math.max(P0y, P1y, P2y, P3y);
+
+          if (maxX < 0 || minX > W || maxY < 0 || minY > H) continue;
+
+          gridCtx.beginPath();
+          gridCtx.moveTo(P0x, P0y);
+          gridCtx.lineTo(P1x, P1y);
+          gridCtx.lineTo(P2x, P2y);
+          gridCtx.closePath();
+          gridCtx.stroke();
+
+          gridCtx.beginPath();
+          gridCtx.moveTo(P1x, P1y);
+          gridCtx.lineTo(P3x, P3y);
+          gridCtx.lineTo(P2x, P2y);
+          gridCtx.closePath();
+          gridCtx.stroke();
+        }
+      }
+    }
+
+    function hexToPixel(q, r, s) {
+      const x = s * 3 / 2 * q;
+      const y = s * Math.sqrt(3) * (r + q / 2);
+      return { x, y };
+    }
+
+    function pixelToHex(px, py, s) {
+      const q = (2 / 3 * px) / s;
+      const r = (-1 / 3 * px + Math.sqrt(3) / 3 * py) / s;
+      return hexRound(q, r);
+    }
+
+    function hexRound(q, r) {
+      let x = q;
+      let z = r;
+      let y = -x - z;
+
+      let rx = Math.round(x);
+      let ry = Math.round(y);
+      let rz = Math.round(z);
+
+      const xDiff = Math.abs(rx - x);
+      const yDiff = Math.abs(ry - y);
+      const zDiff = Math.abs(rz - z);
+
+      if (xDiff > yDiff && xDiff > zDiff) {
+        rx = -ry - rz;
+      } else if (yDiff > zDiff) {
+        ry = -rx - rz;
+      } else {
+        rz = -rx - ry;
+      }
+
+      return { q: rx, r: rz };
+    }
+
+    function drawHexPath(ctx, centerX, centerY, s) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 180 * (60 * i);
+        const x = centerX + s * Math.cos(angle);
+        const y = centerY + s * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+    }
+
+    function drawHexGrid() {
+      const s = state.cellSize;
+      const w = gridCanvas.width;
+      const h = gridCanvas.height;
+
+      gridCtx.clearRect(0, 0, w, h);
+      gridCtx.strokeStyle = '#888888';
+      gridCtx.lineWidth = 1;
+
+      const Q = Math.ceil(w / (1.5 * s)) + 2;
+      const R = Math.ceil(h / (Math.sqrt(3) * s)) + 2;
+
+      for (let q = -Q; q <= Q; q++) {
+        for (let r = -R; r <= R; r++) {
+          const { x, y } = hexToPixel(q, r, s);
+          if (x < -2 * s || x > w + 2 * s || y < -2 * s || y > h + 2 * s) continue;
+          drawHexPath(gridCtx, x, y, s);
+          gridCtx.stroke();
+        }
+      }
+    }
+
+    function drawGrid() {
+      if (state.pattern === 'square') {
+        drawSquareGrid();
+      } else if (state.pattern === 'triangle') {
+        drawTriangleGrid();
+      } else if (state.pattern === 'hex') {
+        drawHexGrid();
+      }
+    }
+
+    function fillSquareCellCell(row, col) {
+      const size = state.cellSize;
+      const x0 = col * size;
+      const y0 = row * size;
+      const padding = 1;
+      paintCtx.fillRect(
+        x0 + padding,
+        y0 + padding,
+        size - padding * 2,
+        size - padding * 2
+      );
+    }
+
+    function pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
+      const v0x = cx - ax;
+      const v0y = cy - ay;
+      const v1x = bx - ax;
+      const v1y = by - ay;
+      const v2x = px - ax;
+      const v2y = py - ay;
+
+      const dot00 = v0x * v0x + v0y * v0y;
+      const dot01 = v0x * v1x + v0y * v1y;
+      const dot02 = v0x * v2x + v0y * v2y;
+      const dot11 = v1x * v1x + v1y * v1y;
+      const dot12 = v1x * v2x + v1y * v2y;
+
+      const denom = dot00 * dot11 - dot01 * dot01;
+      if (denom === 0) return false;
+      const invDenom = 1 / denom;
+
+      const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+      const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+      return u >= 0 && v >= 0 && (u + v) <= 1;
+    }
+
+    function triangleCellForPoint(px, py) {
+      const s = state.cellSize;
+      const hTri = s * Math.sqrt(3) / 2;
+      const jGuess = Math.floor(py / hTri);
+
+      for (let j = jGuess - 2; j <= jGuess + 2; j++) {
+        const baseXOffset = j * (s / 2);
+        const iGuess = Math.floor((px - baseXOffset) / s);
+
+        for (let i = iGuess - 2; i <= iGuess + 2; i++) {
+          const baseX = i * s + j * (s / 2);
+          const baseY = j * hTri;
+
+          const P0x = baseX;
+          const P0y = baseY;
+          const P1x = baseX + s;
+          const P1y = baseY;
+          const P2x = baseX + s / 2;
+          const P2y = baseY + hTri;
+          const P3x = baseX + 1.5 * s;
+          const P3y = baseY + hTri;
+
+          if (pointInTriangle(px, py, P0x, P0y, P1x, P1y, P2x, P2y)) {
+            return {
+              i,
+              j,
+              dir: 'up',
+              vertices: [P0x, P0y, P1x, P1y, P2x, P2y]
+            };
+          }
+          if (pointInTriangle(px, py, P1x, P1y, P3x, P3y, P2x, P2y)) {
+            return {
+              i,
+              j,
+              dir: 'down',
+              vertices: [P1x, P1y, P3x, P3y, P2x, P2y]
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    function fillTriangleCell(cell) {
+      const v = cell.vertices;
+      paintCtx.beginPath();
+      paintCtx.moveTo(v[0], v[1]);
+      paintCtx.lineTo(v[2], v[3]);
+      paintCtx.lineTo(v[4], v[5]);
+      paintCtx.closePath();
+      paintCtx.fill();
+    }
+
+    function fillHexCellAxial(axial) {
+      const s = state.cellSize;
+      const center = hexToPixel(axial.q, axial.r, s);
+      drawHexPath(paintCtx, center.x, center.y, s * 0.98);
+      paintCtx.fill();
+    }
+
+    function paintAtCanvasCoords(x, y) {
+      paintCtx.save();
+      if (eraseMode) {
+        paintCtx.globalCompositeOperation = 'destination-out';
+      } else {
+        paintCtx.globalCompositeOperation = 'source-over';
+        paintCtx.fillStyle = state.currentColor;
+      }
+
+      const s = state.cellSize;
+
+      if (state.pattern === 'square') {
+        const col = Math.floor(x / s);
+        const row = Math.floor(y / s);
+        const key = row + ',' + col;
+
+        if (eraseMode) {
+          occupancy.square.delete(key);
+        } else {
+          occupancy.square.set(key, { row, col });
+        }
+        fillSquareCellCell(row, col);
+
+      } else if (state.pattern === 'triangle') {
+        const cell = triangleCellForPoint(x, y);
+        if (cell) {
+          const key = cell.j + ',' + cell.i + ',' + cell.dir;
+          if (eraseMode) {
+            occupancy.triangle.delete(key);
+          } else {
+            occupancy.triangle.set(key, cell);
+          }
+          fillTriangleCell(cell);
+        }
+      } else if (state.pattern === 'hex') {
+        const axial = pixelToHex(x, y, s);
+        const key = axial.q + ',' + axial.r;
+        if (eraseMode) {
+          occupancy.hex.delete(key);
+        } else {
+          occupancy.hex.set(key, axial);
+        }
+        fillHexCellAxial(axial);
+      }
+
+      paintCtx.restore();
+    }
+
+    function handlePaintEvent(ev) {
+      const rect = gridCanvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      paintAtCanvasCoords(x, y);
+    }
+
+    function buildShareCanvas() {
+      const s = state.cellSize;
+      let hasAny = false;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      function expand(x0, y0, x1, y1) {
+        hasAny = true;
+        if (x0 < minX) minX = x0;
+        if (y0 < minY) minY = y0;
+        if (x1 > maxX) maxX = x1;
+        if (y1 > maxY) maxY = y1;
+      }
+
+      occupancy.square.forEach(({ row, col }) => {
+        const x0 = col * s;
+        const y0 = row * s;
+        const x1 = x0 + s;
+        const y1 = y0 + s;
+        expand(x0, y0, x1, y1);
+      });
+
+      occupancy.triangle.forEach(cell => {
+        const v = cell.vertices;
+        let tMinX = Infinity, tMinY = Infinity, tMaxX = -Infinity, tMaxY = -Infinity;
+        for (let i = 0; i < 6; i += 2) {
+          const vx = v[i];
+          const vy = v[i + 1];
+          if (vx < tMinX) tMinX = vx;
+          if (vy < tMinY) tMinY = vy;
+          if (vx > tMaxX) tMaxX = vx;
+          if (vy > tMaxY) tMaxY = vy;
+        }
+        expand(tMinX, tMinY, tMaxX, tMaxY);
+      });
+
+      occupancy.hex.forEach(({ q, r }) => {
+        const center = hexToPixel(q, r, s);
+        const x0 = center.x - s;
+        const y0 = center.y - s;
+        const x1 = center.x + s;
+        const y1 = center.y + s;
+        expand(x0, y0, x1, y1);
+      });
+
+      if (!hasAny) {
+        alert('Nothing to share yet. Paint some cells first.');
+        return null;
+      }
+
+      const padding = Math.max(6, Math.round(s * 0.3));
+
+      const cropMinX = Math.max(0, Math.floor(minX - padding));
+      const cropMinY = Math.max(0, Math.floor(minY - padding));
+      const cropMaxX = Math.min(paintCanvas.width, Math.ceil(maxX + padding));
+      const cropMaxY = Math.min(paintCanvas.height, Math.ceil(maxY + padding));
+
+      const cropWidth = Math.max(1, cropMaxX - cropMinX);
+      const cropHeight = Math.max(1, cropMaxY - cropMinY);
+
+      const shareCanvas = document.createElement('canvas');
+      shareCanvas.width = cropWidth;
+      shareCanvas.height = cropHeight;
+      const ctx = shareCanvas.getContext('2d');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cropWidth, cropHeight);
+
+      ctx.drawImage(
+        paintCanvas,
+        cropMinX, cropMinY, cropWidth, cropHeight,
+        0, 0, cropWidth, cropHeight
+      );
+
+      ctx.strokeStyle = '#888888';
+      ctx.lineWidth = 1;
+
+      occupancy.square.forEach(({ row, col }) => {
+        const x0 = col * s + 0.5 - cropMinX;
+        const y0 = row * s + 0.5 - cropMinY;
+        const size = s - 1;
+        ctx.strokeRect(x0, y0, size, size);
+      });
+
+      occupancy.triangle.forEach(cell => {
+        const v = cell.vertices;
+        ctx.beginPath();
+        ctx.moveTo(v[0] - cropMinX, v[1] - cropMinY);
+        ctx.lineTo(v[2] - cropMinX, v[3] - cropMinY);
+        ctx.lineTo(v[4] - cropMinX, v[5] - cropMinY);
+        ctx.closePath();
+        ctx.stroke();
+      });
+
+      occupancy.hex.forEach(({ q, r }) => {
+        const center = hexToPixel(q, r, s);
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = Math.PI / 180 * (60 * i);
+          const x = center.x + s * Math.cos(angle) - cropMinX;
+          const y = center.y + s * Math.sin(angle) - cropMinY;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      });
+
+      return shareCanvas;
+    }
+
+    function shareImage() {
+      const shareCanvas = buildShareCanvas();
+      if (!shareCanvas) return;
+
+      if (navigator.share && navigator.canShare) {
+        shareCanvas.toBlob(blob => {
+          if (!blob) return;
+          const file = new File([blob], 'grid-painting.png', { type: 'image/png' });
+
+          if (navigator.canShare({ files: [file] })) {
+            navigator.share({
+              files: [file]
+            }).catch(() => {});
+          } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'grid-painting.png';
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        }, 'image/png');
+      } else {
+        const dataUrl = shareCanvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'grid-painting.png';
+        a.click();
+      }
+    }
+
+    function closeActiveColorPicker() {
+      if (activeColorPicker && document.body.contains(activeColorPicker)) {
+        document.body.removeChild(activeColorPicker);
+      }
+      activeColorPicker = null;
+    }
+
+    function openInlineColorPicker(index, swatchEl) {
+      closeActiveColorPicker();
+
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = state.colors[index];
+
+      const rect = swatchEl.getBoundingClientRect();
+
+      input.style.position = 'fixed';
+      input.style.left = rect.left + 'px';
+      input.style.top = (rect.bottom + 4) + 'px';
+      input.style.width = '1px';
+      input.style.height = '1px';
+      input.style.opacity = '0';
+      input.style.border = 'none';
+      input.style.padding = '0';
+      input.style.margin = '0';
+      input.style.zIndex = 25;
+
+      document.body.appendChild(input);
+      activeColorPicker = input;
+
+      input.addEventListener('change', () => {
+        const newColor = input.value;
+        state.colors[index] = newColor;
+        swatchEl.style.background = newColor;
+        if (swatchEl.classList.contains('selected')) {
+          state.currentColor = newColor;
+        }
+      });
+
+      input.addEventListener('blur', () => {
+        closeActiveColorPicker();
+      });
+
+      input.focus();
+      input.click();
+    }
+
+    function setupPalette() {
+      paletteContainer.innerHTML = '';
+      state.colors.forEach((color, index) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'color-swatch';
+        btn.style.background = color;
+        btn.dataset.index = index;
+
+        if (index === 0) {
+          btn.classList.add('selected');
+          state.currentColor = color;
+        }
+
+        btn.addEventListener('click', () => {
+          state.currentColor = state.colors[index];
+          document
+            .querySelectorAll('.color-swatch')
+            .forEach(el => el.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+
+        btn.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          openInlineColorPicker(index, btn);
+        });
+
+        paletteContainer.appendChild(btn);
+      });
+    }
+
+    function setupOpacitySlider() {
+      const value = parseInt(opacitySlider.value, 10);
+      opacityValue.textContent = value + '%';
+      imageCanvas.style.opacity = value / 100;
+
+      opacitySlider.addEventListener('input', () => {
+        const v = parseInt(opacitySlider.value, 10);
+        opacityValue.textContent = v + '%';
+        imageCanvas.style.opacity = v / 100;
+      });
+    }
+
+    function startToolbarDrag(ev) {
+      const target = ev.target;
+      if (
+        target.closest('input[type="range"]') ||
+        target.closest('.palette') ||
+        target.classList.contains('color-swatch') ||
+        target.closest('.toolbar-buttons')
+      ) {
+        return;
+      }
+
+      isDraggingToolbar = true;
+      const rect = toolbar.getBoundingClientRect();
+
+      toolbar.style.left = rect.left + 'px';
+      toolbar.style.top = rect.top + 'px';
+      toolbar.style.right = 'auto';
+      toolbar.style.bottom = 'auto';
+
+      dragOffsetX = ev.clientX - rect.left;
+      dragOffsetY = ev.clientY - rect.top;
+
+      ev.preventDefault();
+    }
+
+    function onToolbarDrag(ev) {
+      if (!isDraggingToolbar) return;
+      const newLeft = ev.clientX - dragOffsetX;
+      const newTop = ev.clientY - dragOffsetY;
+      toolbar.style.left = newLeft + 'px';
+      toolbar.style.top = newTop + 'px';
+    }
+
+    function endToolbarDrag() {
+      isDraggingToolbar = false;
+    }
+
+    okBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const file = imageInput.files[0];
+      if (!file) {
+        alert('Please select an image first.');
+        return;
+      }
+
+      state.pattern = patternSelect.value;
+      state.cellSize = parseInt(sizeSelect.value, 10);
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        state.image.onload = function() {
+          resizeCanvases();
+          paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+          clearOccupancy();
+          drawImageToCanvas();
+          drawGrid();
+
+          const v = parseInt(opacitySlider.value, 10);
+          opacityValue.textContent = v + '%';
+          imageCanvas.style.opacity = v / 100;
+
+          toolbar.style.display = 'block';
+          setupDialog.style.display = 'none';
+        };
+        state.image.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    cancelBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+      clearOccupancy();
+    });
+
+    shareBtn.addEventListener('click', () => {
+      shareImage();
+    });
+
+    gridCanvas.addEventListener('mousedown', (ev) => {
+      if (ev.button !== 0 && ev.button !== 2) return;
+
+      eraseMode =
+        ev.button === 2 ||
+        (ev.button === 0 && (ev.ctrlKey || ev.metaKey));
+
+      ev.preventDefault();
+      isPainting = true;
+      handlePaintEvent(ev);
+    });
+
+    gridCanvas.addEventListener('mousemove', (ev) => {
+      if (!isPainting) return;
+      handlePaintEvent(ev);
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPainting = false;
+    });
+
+    gridCanvas.addEventListener('mouseleave', () => {
+      isPainting = false;
+    });
+
+    gridCanvas.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+    });
+
+    toolbar.addEventListener('mousedown', startToolbarDrag);
+    window.addEventListener('mousemove', onToolbarDrag);
+    window.addEventListener('mouseup', endToolbarDrag);
+
+    window.addEventListener('load', () => {
+      resizeCanvases();
+      setupPalette();
+      setupOpacitySlider();
+    });
+
+    window.addEventListener('resize', () => {
+      // No dynamic redraw to preserve artwork.
+    });
+  </script>
+</body>
+</html>
