@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polyiamond Playground</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #app {
+    display: flex;
+    height: 100%;
+    width: 100%;
+  }
+  #sidebar {
+    width: 220px;
+    background: #f5f5f5;
+    border-right: 1px solid #ccc;
+    box-sizing: border-box;
+    padding: 8px;
+    overflow-y: auto;
+    position: relative;
+    z-index: 5;
+  }
+  #sidebar h2 {
+    font-size: 16px;
+    margin: 4px 0 8px;
+    letter-spacing: 0.12em;
+  }
+  .family {
+    margin-bottom: 12px;
+  }
+  .family-title {
+    display: none;
+  }
+  .family-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tool-piece {
+    position: relative;
+    background: #fff;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    padding: 4px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool-piece:hover {
+    border-color: #888;
+  }
+  .tool-piece canvas {
+    display: block;
+    background: #fafafa;
+    border-radius: 2px;
+  }
+  .tool-piece .delete-btn {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: none;
+    background: rgba(220, 0, 0, 0.85);
+    color: #fff;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    cursor: pointer;
+    display: none;
+  }
+  .tool-piece:hover .delete-btn {
+    display: block;
+  }
+
+  #canvas-container {
+    flex: 1;
+    position: relative;
+    background: #ffffff;
+  }
+  #mainCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  #toolbar {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    border: 1px solid #ccc;
+    padding: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    z-index: 10;
+    touch-action: none;
+  }
+  #color-swatches {
+    display: flex;
+    gap: 4px;
+  }
+  .color-swatch {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    border: 2px solid transparent;
+    box-sizing: border-box;
+    cursor: pointer;
+  }
+  .color-swatch.selected {
+    border-color: #000;
+  }
+  #toolbar button {
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid #aaa;
+    background: #f3f3f3;
+    cursor: pointer;
+  }
+  #toolbar button:hover {
+    background: #e3e3e3;
+  }
+  #toolbar button:active {
+    background: #d3d3d3;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <h2>POLYIAMONDS</h2>
+  </div>
+  <div id="canvas-container">
+    <canvas id="mainCanvas"></canvas>
+    <div id="toolbar">
+      <div id="color-swatches"></div>
+      <button id="rotate-left" title="Rotate left (⌘←)">⟲</button>
+      <button id="rotate-right" title="Rotate right (⌘→)">⟳</button>
+      <button id="flip-h" title="Flip horizontal (⌘↑)">⇋</button>
+      <button id="flip-v" title="Flip vertical (⌘↓)">⇵</button>
+      <button id="group-pieces" title="Group (⌘G)">Group</button>
+      <button id="ungroup-pieces" title="Ungroup (⌘U)">Ungroup</button>
+      <button id="delete-piece" title="Delete (⌘X)">✕</button>
+      <button id="clear-canvas" title="Clear canvas">Clear</button>
+      <button id="share-canvas" title="Share image of canvas">Share</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const TRI_SIZE = 40;
+  const TRI_H = TRI_SIZE * Math.sqrt(3) / 2;
+  const STORAGE_KEY = 'polyiamonds_state_v1';
+  const COLORS = [
+    '#F44336', '#E91E63', '#9C27B0', '#3F51B5',
+    '#2196F3', '#009688', '#4CAF50', '#FFC107'
+  ];
+
+  const canvas = document.getElementById('mainCanvas');
+  const ctx = canvas.getContext('2d');
+  const toolbarEl = document.getElementById('toolbar');
+  const sidebarEl = document.getElementById('sidebar');
+
+  let panX = 0;
+  let panY = 0;
+
+  let pieces = [];
+  const selectedPieces = new Set();
+  let currentColor = COLORS[0];
+  let nextPieceId = 1;
+  let customTemplateCounter = 0;
+
+  let isDraggingPiece = false;
+  let isPanning = false;
+  let dragPiece = null;
+  let dragOffsetWorld = { x: 0, y: 0 };
+  let panStart = { x: 0, y: 0 };
+  let panStartOffset = { x: 0, y: 0 };
+  let activePointerId = null;
+
+  let toolbarDragging = false;
+  let toolbarPointerId = null;
+  let toolbarDragOffsetX = 0;
+  let toolbarDragOffsetY = 0;
+
+  let dragOverSidebar = false;
+  let sidebarPreviewEl = null;
+
+  const toolboxShapeKeys = new Set();
+
+  function latticeVertex(i, j) {
+    return { x: (i + j * 0.5) * TRI_SIZE, y: j * TRI_H };
+  }
+  function upTriangle(i, j) {
+    const a = latticeVertex(i, j);
+    const b = latticeVertex(i + 1, j);
+    const c = latticeVertex(i, j + 1);
+    return [a, b, c];
+  }
+  function nearestVertexIndex(worldX, worldY) {
+    const j = Math.round(worldY / TRI_H);
+    const i = Math.round(worldX / TRI_SIZE - j * 0.5);
+    return { i, j };
+  }
+  function nearestVertex(worldX, worldY) {
+    const ij = nearestVertexIndex(worldX, worldY);
+    return latticeVertex(ij.i, ij.j);
+  }
+
+  function shapeKeyFromTriangles(tris) {
+    const normTris = tris.map(tri => {
+      const vs = tri.map(v => [
+        Number(v.x.toFixed(4)),
+        Number(v.y.toFixed(4))
+      ]);
+      vs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+      return vs;
+    });
+    normTris.sort((t1, t2) => {
+      for (let k = 0; k < 3; k++) {
+        const dx = t1[k][0] - t2[k][0];
+        if (Math.abs(dx) > 1e-4) return dx;
+        const dy = t1[k][1] - t2[k][1];
+        if (Math.abs(dy) > 1e-4) return dy;
+      }
+      return 0;
+    });
+    return JSON.stringify(normTris);
+  }
+
+  const pieceTemplates = [
+    {
+      id: 'moni_1',
+      name: 'Moniamond',
+      family: 'Moniamonds',
+      triangles: [ upTriangle(0, 0) ]
+    }
+  ];
+  const templatesById = {};
+  pieceTemplates.forEach(t => {
+    t._shapeKey = shapeKeyFromTriangles(t.triangles);
+    templatesById[t.id] = t;
+  });
+
+  const familiesOrder = ['Moniamonds'];
+  const familyLists = {};
+
+  function edgeKey(a, b) {
+    if (a.x < b.x || (a.x === b.x && a.y <= b.y)) {
+      return a.x + ',' + a.y + '|' + b.x + ',' + b.y;
+    } else {
+      return b.x + ',' + b.y + '|' + a.x + ',' + a.y;
+    }
+  }
+
+  function getOrCreateFamilyList(familyName) {
+    let list = familyLists[familyName];
+    if (list) return list;
+
+    const famDiv = document.createElement('div');
+    famDiv.className = 'family';
+    const title = document.createElement('div');
+    title.className = 'family-title';
+    title.textContent = familyName;
+    famDiv.appendChild(title);
+    list = document.createElement('div');
+    list.className = 'family-list';
+    famDiv.appendChild(list);
+    sidebarEl.appendChild(famDiv);
+    familyLists[familyName] = list;
+    return list;
+  }
+
+  function renderTemplatePreview(template, canvasEl) {
+    const ctx2 = canvasEl.getContext('2d');
+    ctx2.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    ctx2.save();
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    template.triangles.forEach(tri => {
+      tri.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      });
+    });
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const padding = 6;
+    const scale = Math.min(
+      (canvasEl.width - padding * 2) / (width || 1),
+      (canvasEl.height - padding * 2) / (height || 1)
+    );
+
+    const offsetX = (canvasEl.width - width * scale) / 2 - minX * scale;
+    const offsetY = (canvasEl.height - height * scale) / 2 - minY * scale;
+
+    ctx2.strokeStyle = '#aaa';
+    ctx2.fillStyle = '#ddd';
+    ctx2.lineWidth = 1;
+
+    template.triangles.forEach(tri => {
+      ctx2.beginPath();
+      tri.forEach((p, idx) => {
+        const x = p.x * scale + offsetX;
+        const y = p.y * scale + offsetY;
+        if (idx === 0) ctx2.moveTo(x, y);
+        else ctx2.lineTo(x, y);
+      });
+      ctx2.closePath();
+      ctx2.fill();
+      ctx2.stroke();
+    });
+
+    ctx2.restore();
+  }
+
+  function addTemplateToToolbox(template) {
+    const list = getOrCreateFamilyList(template.family || 'Custom');
+
+    if (!template._shapeKey) {
+      template._shapeKey = shapeKeyFromTriangles(template.triangles);
+    }
+    if (toolboxShapeKeys.has(template._shapeKey)) {
+      return;
+    }
+    toolboxShapeKeys.add(template._shapeKey);
+
+    const item = document.createElement('div');
+    item.className = 'tool-piece';
+    item.dataset.templateId = template.id;
+    item.title = template.name;
+
+    const preview = document.createElement('canvas');
+    preview.width = 60;
+    preview.height = 60;
+    renderTemplatePreview(template, preview);
+    item.appendChild(preview);
+
+    if (template.id !== 'moni_1') {
+      const del = document.createElement('button');
+      del.className = 'delete-btn';
+      del.textContent = '×';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (item.parentNode) {
+          item.parentNode.removeChild(item);
+        }
+        toolboxShapeKeys.delete(template._shapeKey);
+        saveState();
+      });
+      item.appendChild(del);
+    }
+
+    item.addEventListener('pointerdown', onToolPiecePointerDown);
+    list.appendChild(item);
+  }
+
+  function buildToolbox() {
+    familiesOrder.forEach(famName => {
+      const familyTemplates = pieceTemplates.filter(t => t.family === famName);
+      if (!familyTemplates.length) return;
+      getOrCreateFamilyList(famName);
+      familyTemplates.forEach(t => addTemplateToToolbox(t));
+    });
+  }
+
+  function buildToolboxFromIds(ids) {
+    document.querySelectorAll('#sidebar .family').forEach(el => el.remove());
+    for (const k in familyLists) delete familyLists[k];
+
+    if (!templatesById['moni_1']) {
+      const moni = {
+        id: 'moni_1',
+        name: 'Moniamond',
+        family: 'Moniamonds',
+        triangles: [ upTriangle(0,0) ]
+      };
+      moni._shapeKey = shapeKeyFromTriangles(moni.triangles);
+      pieceTemplates.unshift(moni);
+      templatesById['moni_1'] = moni;
+    }
+
+    if (ids && ids.length) {
+      ids.forEach(id => {
+        const t = templatesById[id];
+        if (t) addTemplateToToolbox(t);
+      });
+    } else {
+      buildToolbox();
+    }
+
+    if (!document.querySelector('#sidebar .tool-piece[data-template-id="moni_1"]')) {
+      addTemplateToToolbox(templatesById['moni_1']);
+    }
+  }
+
+  function buildLocalTrianglesFromPiece(piece) {
+    if (!piece || !piece.template) return null;
+    const { template, offsetX, offsetY, rotation, scaleX, scaleY } = piece;
+    const cosT = Math.cos(rotation);
+    const sinT = Math.sin(rotation);
+
+    const trisWorld = [];
+    let origin = null;
+
+    template.triangles.forEach(tri => {
+      const triWorld = tri.map(p => {
+        let xLocal = p.x * scaleX;
+        let yLocal = p.y * scaleY;
+        const xRot = xLocal * cosT - yLocal * sinT;
+        const yRot = xLocal * sinT + yLocal * cosT;
+        const xWorld = xRot + offsetX;
+        const yWorld = yRot + offsetY;
+        const snapped = nearestVertex(xWorld, yWorld);
+        if (!origin) origin = { x: snapped.x, y: snapped.y };
+        return snapped;
+      });
+      trisWorld.push(triWorld);
+    });
+
+    if (!origin) return null;
+
+    return trisWorld.map(tri =>
+      tri.map(v => ({ x: v.x - origin.x, y: v.y - origin.y }))
+    );
+  }
+
+  function createTemplateFromPiece(piece, familyName) {
+    const localTriangles = buildLocalTrianglesFromPiece(piece);
+    if (!localTriangles) return;
+
+    const key = shapeKeyFromTriangles(localTriangles);
+    if (toolboxShapeKeys.has(key)) {
+      return;
+    }
+
+    const id = 'tmpl_' + (++customTemplateCounter);
+    const tmpl = {
+      id,
+      name: 'Custom ' + customTemplateCounter,
+      family: familyName || 'Custom',
+      triangles: localTriangles,
+      _shapeKey: key
+    };
+    pieceTemplates.push(tmpl);
+    templatesById[id] = tmpl;
+    addTemplateToToolbox(tmpl);
+  }
+
+  function buildToolbar() {
+    const swatchContainer = document.getElementById('color-swatches');
+
+    COLORS.forEach((col, idx) => {
+      const sw = document.createElement('div');
+      sw.className = 'color-swatch';
+      sw.style.backgroundColor = col;
+      sw.dataset.color = col;
+      if (idx === 0) sw.classList.add('selected');
+      sw.addEventListener('click', () => {
+        selectColorByIndex(idx);
+      });
+      swatchContainer.appendChild(sw);
+    });
+
+    document.getElementById('rotate-left').addEventListener('click', () => {
+      applyTransformToSelection(() => {
+        selectedPieces.forEach(p => p.rotation -= Math.PI / 3);
+      });
+    });
+    document.getElementById('rotate-right').addEventListener('click', () => {
+      applyTransformToSelection(() => {
+        selectedPieces.forEach(p => p.rotation += Math.PI / 3);
+      });
+    });
+    document.getElementById('flip-h').addEventListener('click', () => {
+      applyTransformToSelection(() => {
+        selectedPieces.forEach(p => p.scaleX *= -1);
+      });
+    });
+    document.getElementById('flip-v').addEventListener('click', () => {
+      applyTransformToSelection(() => {
+        selectedPieces.forEach(p => p.scaleY *= -1);
+      });
+    });
+    document.getElementById('delete-piece').addEventListener('click', () => {
+      if (!selectedPieces.size) return;
+      pieces = pieces.filter(p => !selectedPieces.has(p));
+      selectedPieces.clear();
+      draw();
+      saveState();
+    });
+    document.getElementById('group-pieces').addEventListener('click', () => {
+      groupSelectedPieces();
+    });
+    document.getElementById('ungroup-pieces').addEventListener('click', () => {
+      ungroupSelectedPieces();
+    });
+    document.getElementById('clear-canvas').addEventListener('click', () => {
+      pieces = [];
+      selectedPieces.clear();
+      draw();
+      saveState();
+    });
+    document.getElementById('share-canvas').addEventListener('click', onShareCanvas);
+
+    toolbarEl.addEventListener('pointerdown', onToolbarPointerDown);
+  }
+
+  function selectColorByIndex(idx) {
+    const swatches = Array.from(document.querySelectorAll('.color-swatch'));
+    if (idx < 0 || idx >= swatches.length) return;
+    const sw = swatches[idx];
+    currentColor = sw.dataset.color;
+    swatches.forEach(el => el.classList.remove('selected'));
+    sw.classList.add('selected');
+    if (selectedPieces.size > 0) {
+      selectedPieces.forEach(p => p.color = currentColor);
+      draw();
+      saveState();
+    }
+  }
+
+  function positionToolbarInitially() {
+    const containerRect = canvas.parentElement.getBoundingClientRect();
+    const tbRect = toolbarEl.getBoundingClientRect();
+    toolbarEl.style.right = 'auto';
+    toolbarEl.style.bottom = 'auto';
+    toolbarEl.style.left = (containerRect.width - tbRect.width - 10) + 'px';
+    toolbarEl.style.top = '10px';
+  }
+
+  function onToolbarPointerDown(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.classList.contains('color-swatch')) return;
+    toolbarDragging = true;
+    toolbarPointerId = e.pointerId;
+    const rect = toolbarEl.getBoundingClientRect();
+    toolbarDragOffsetX = e.clientX - rect.left;
+    toolbarDragOffsetY = e.clientY - rect.top;
+    window.addEventListener('pointermove', onToolbarPointerMove);
+    window.addEventListener('pointerup', onToolbarPointerUp);
+    e.preventDefault();
+  }
+  function onToolbarPointerMove(e) {
+    if (!toolbarDragging || e.pointerId !== toolbarPointerId) return;
+    const containerRect = canvas.parentElement.getBoundingClientRect();
+    const tbRect = toolbarEl.getBoundingClientRect();
+    let left = e.clientX - toolbarDragOffsetX - containerRect.left;
+    let top = e.clientY - toolbarDragOffsetY - containerRect.top;
+    const maxLeft = containerRect.width - tbRect.width;
+    const maxTop = containerRect.height - tbRect.height;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (left > maxLeft) left = maxLeft;
+    if (top > maxTop) top = maxTop;
+    toolbarEl.style.left = left + 'px';
+    toolbarEl.style.top = top + 'px';
+  }
+  function onToolbarPointerUp(e) {
+    if (e.pointerId !== toolbarPointerId) return;
+    toolbarDragging = false;
+    toolbarPointerId = null;
+    window.removeEventListener('pointermove', onToolbarPointerMove);
+    window.removeEventListener('pointerup', onToolbarPointerUp);
+  }
+
+  function clearSelection() {
+    selectedPieces.clear();
+  }
+  function selectSingle(piece) {
+    selectedPieces.clear();
+    if (piece) selectedPieces.add(piece);
+  }
+  function toggleSelection(piece) {
+    if (selectedPieces.has(piece)) selectedPieces.delete(piece);
+    else selectedPieces.add(piece);
+  }
+
+  function resizeCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const prevWidth = canvas.width;
+    const prevHeight = canvas.height;
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    if (prevWidth === 0 && prevHeight === 0) {
+      panX = canvas.width / 2;
+      panY = canvas.height / 2;
+    }
+    draw();
+    positionToolbarInitially();
+  }
+
+  function screenToCanvasXY(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+  function screenToWorld(clientX, clientY) {
+    const c = screenToCanvasXY(clientX, clientY);
+    return { x: c.x - panX, y: c.y - panY };
+  }
+
+  function drawGrid() {
+    ctx.save();
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    const width = canvas.width;
+    const height = canvas.height;
+    const I_RANGE = 60;
+    const J_RANGE = 60;
+
+    ctx.beginPath();
+    for (let j = -J_RANGE; j <= J_RANGE; j++) {
+      for (let i = -I_RANGE; i <= I_RANGE; i++) {
+        const v = latticeVertex(i, j);
+        const x = v.x + panX;
+        const y = v.y + panY;
+        if (x < -TRI_SIZE || x > width + TRI_SIZE || y < -TRI_H || y > height + TRI_H) continue;
+
+        if (i < I_RANGE) {
+          const v2 = latticeVertex(i + 1, j);
+          ctx.moveTo(x, y);
+          ctx.lineTo(v2.x + panX, v2.y + panY);
+        }
+        if (j < J_RANGE) {
+          const v3 = latticeVertex(i, j + 1);
+          ctx.moveTo(x, y);
+          ctx.lineTo(v3.x + panX, v3.y + panY);
+        }
+        if (j > -J_RANGE && i < I_RANGE) {
+          const v4 = latticeVertex(i + 1, j - 1);
+          ctx.moveTo(x, y);
+          ctx.lineTo(v4.x + panX, v4.y + panY);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function getBoundaryEdges(tris) {
+    const edgeMap = new Map();
+    tris.forEach(tri => {
+      [[0,1],[1,2],[2,0]].forEach(([i1,i2]) => {
+        const a = tri[i1];
+        const b = tri[i2];
+        const key = edgeKey(a, b);
+        const rec = edgeMap.get(key);
+        if (rec) rec.count++;
+        else edgeMap.set(key, { a, b, count: 1 });
+      });
+    });
+    const result = [];
+    edgeMap.forEach(rec => { if (rec.count === 1) result.push({ a: rec.a, b: rec.b }); });
+    return result;
+  }
+
+  function drawPieces() {
+    pieces.forEach(piece => {
+      const { template, offsetX, offsetY, rotation, scaleX, scaleY, color } = piece;
+      const tris = template.triangles;
+      const cosT = Math.cos(rotation);
+      const sinT = Math.sin(rotation);
+
+      function localToScreen(p) {
+        let xLocal = p.x * scaleX;
+        let yLocal = p.y * scaleY;
+        const xRot = xLocal * cosT - yLocal * sinT;
+        const yRot = xLocal * sinT + yLocal * cosT;
+        const xWorld = xRot + offsetX;
+        const yWorld = yRot + offsetY;
+        return { x: xWorld + panX, y: yWorld + panY };
+      }
+
+      ctx.save();
+      ctx.fillStyle = color;
+
+      tris.forEach(tri => {
+        ctx.beginPath();
+        tri.forEach((p, idx) => {
+          const s = localToScreen(p);
+          if (idx === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.closePath();
+        ctx.fill();
+      });
+
+      const boundaryEdges = getBoundaryEdges(tris);
+      ctx.strokeStyle = '#bbbbbb';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      boundaryEdges.forEach(e => {
+        const a = localToScreen(e.a);
+        const b = localToScreen(e.b);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      });
+      ctx.stroke();
+
+      if (selectedPieces.has(piece)) {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        boundaryEdges.forEach(e => {
+          const a = localToScreen(e.a);
+          const b = localToScreen(e.b);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        });
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGrid();
+    drawPieces();
+  }
+
+  function pointInTriangleLocal(px, py, tri) {
+    const [a, b, c] = tri;
+    const v0x = c.x - a.x, v0y = c.y - a.y;
+    const v1x = b.x - a.x, v1y = b.y - a.y;
+    const v2x = px - a.x, v2y = py - a.y;
+    const dot00 = v0x*v0x + v0y*v0y;
+    const dot01 = v0x*v1x + v0y*v1y;
+    const dot02 = v0x*v2x + v0y*v2y;
+    const dot11 = v1x*v1x + v1y*v1y;
+    const dot12 = v1x*v2x + v1y*v2y;
+    const denom = dot00*dot11 - dot01*dot01;
+    if (denom === 0) return false;
+    const inv = 1/denom;
+    const u = (dot11*dot02 - dot01*dot12)*inv;
+    const v = (dot00*dot12 - dot01*dot02)*inv;
+    return u >= -0.0001 && v >= -0.0001 && (u+v) <= 1.0001;
+  }
+
+  function hitTestPieces(worldX, worldY) {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const piece = pieces[i];
+      const { template, offsetX, offsetY, rotation, scaleX, scaleY } = piece;
+      const cosT = Math.cos(rotation);
+      const sinT = Math.sin(rotation);
+      const dx = worldX - offsetX;
+      const dy = worldY - offsetY;
+      const xRotInv = dx * cosT + dy * sinT;
+      const yRotInv = -dx * sinT + dy * cosT;
+      const localX = xRotInv / scaleX;
+      const localY = yRotInv / scaleY;
+      for (const tri of template.triangles) {
+        if (pointInTriangleLocal(localX, localY, tri)) return piece;
+      }
+    }
+    return null;
+  }
+
+  function getPieceTriangleKeys(piece) {
+    const keys = [];
+    const { template, offsetX, offsetY, rotation, scaleX, scaleY } = piece;
+    const cosT = Math.cos(rotation);
+    const sinT = Math.sin(rotation);
+    template.triangles.forEach(tri => {
+      const verts = [];
+      tri.forEach(p => {
+        let xLocal = p.x * scaleX;
+        let yLocal = p.y * scaleY;
+        const xRot = xLocal * cosT - yLocal * sinT;
+        const yRot = xLocal * sinT + yLocal * cosT;
+        const xWorld = xRot + offsetX;
+        const yWorld = yRot + offsetY;
+        const idx = nearestVertexIndex(xWorld, yWorld);
+        verts.push(idx);
+      });
+      verts.sort((a,b) => (a.i-b.i) || (a.j-b.j));
+      keys.push(verts.map(v => v.i + ',' + v.j).join('|'));
+    });
+    return keys;
+  }
+
+  function pieceOverlapsAny(piece) {
+    const keysA = new Set(getPieceTriangleKeys(piece));
+    for (const other of pieces) {
+      if (other === piece) continue;
+      const keysB = getPieceTriangleKeys(other);
+      for (const k of keysB) if (keysA.has(k)) return true;
+    }
+    return false;
+  }
+
+  function applyTransformToSelection(transformFn) {
+    if (!selectedPieces.size) return;
+    const backup = [];
+    selectedPieces.forEach(p => {
+      backup.push({
+        piece: p,
+        offsetX: p.offsetX,
+        offsetY: p.offsetY,
+        rotation: p.rotation,
+        scaleX: p.scaleX,
+        scaleY: p.scaleY
+      });
+    });
+
+    transformFn();
+
+    let overlap = false;
+    selectedPieces.forEach(p => { if (pieceOverlapsAny(p)) overlap = true; });
+
+    if (overlap) {
+      backup.forEach(b => {
+        Object.assign(b.piece, {
+          offsetX: b.offsetX,
+          offsetY: b.offsetY,
+          rotation: b.rotation,
+          scaleX: b.scaleX,
+          scaleY: b.scaleY
+        });
+      });
+    }
+    draw();
+    saveState();
+  }
+
+  function groupSelectedPieces() {
+    if (selectedPieces.size < 2) return;
+
+    const selected = Array.from(selectedPieces);
+    const allVertsWorld = [];
+    const trisWorld = [];
+
+    selected.forEach(piece => {
+      const { template, offsetX, offsetY, rotation, scaleX, scaleY } = piece;
+      const cosT = Math.cos(rotation);
+      const sinT = Math.sin(rotation);
+      template.triangles.forEach(tri => {
+        const triWorld = tri.map(p => {
+          let xLocal = p.x * scaleX;
+          let yLocal = p.y * scaleY;
+          const xRot = xLocal * cosT - yLocal * sinT;
+          const yRot = xLocal * sinT + yLocal * cosT;
+          const xWorld = xRot + offsetX;
+          const yWorld = yRot + offsetY;
+          const snapped = nearestVertex(xWorld, yWorld);
+          allVertsWorld.push(snapped);
+          return snapped;
+        });
+        trisWorld.push(triWorld);
+      });
+    });
+
+    if (!allVertsWorld.length) return;
+    const origin = allVertsWorld[0];
+    const localTris = trisWorld.map(tri =>
+      tri.map(v => ({ x: v.x - origin.x, y: v.y - origin.y }))
+    );
+
+    const templateId = 'group_' + (++customTemplateCounter);
+    const template = {
+      id: templateId,
+      name: 'Group ' + customTemplateCounter,
+      family: 'Custom',
+      triangles: localTris
+    };
+    template._shapeKey = shapeKeyFromTriangles(template.triangles);
+    pieceTemplates.push(template);
+    templatesById[templateId] = template;
+
+    const groupPiece = {
+      id: nextPieceId++,
+      template,
+      offsetX: origin.x,
+      offsetY: origin.y,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      color: selected[0].color
+    };
+
+    pieces = pieces.filter(p => !selectedPieces.has(p));
+    pieces.push(groupPiece);
+    selectedPieces.clear();
+    selectedPieces.add(groupPiece);
+    draw();
+    saveState();
+  }
+
+  function ungroupSelectedPieces() {
+    if (!selectedPieces.size) return;
+    const toRemove = [];
+    const newPieces = [];
+
+    selectedPieces.forEach(piece => {
+      if (!piece.template || piece.template.triangles.length <= 1) return;
+      const trisLocal = piece.template.triangles;
+      const { offsetX, offsetY, rotation, scaleX, scaleY, color } = piece;
+
+      trisLocal.forEach(tri => {
+        const triClone = tri.map(p => ({ x: p.x, y: p.y }));
+        const tmplId = 'part_' + (++customTemplateCounter);
+        const tmpl = {
+          id: tmplId,
+          name: 'Part ' + customTemplateCounter,
+          family: 'Moniamonds',
+          triangles: [triClone]
+        };
+        tmpl._shapeKey = shapeKeyFromTriangles(tmpl.triangles);
+        pieceTemplates.push(tmpl);
+        templatesById[tmplId] = tmpl;
+
+        newPieces.push({
+          id: nextPieceId++,
+          template: tmpl,
+          offsetX,
+          offsetY,
+          rotation,
+          scaleX,
+          scaleY,
+          color
+        });
+      });
+
+      toRemove.push(piece);
+    });
+
+    if (!newPieces.length) return;
+    pieces = pieces.filter(p => !toRemove.includes(p));
+    pieces.push(...newPieces);
+    selectedPieces.clear();
+    newPieces.forEach(p => selectedPieces.add(p));
+    draw();
+    saveState();
+  }
+
+  function onToolPiecePointerDown(e) {
+    e.preventDefault();
+    const templateId = this.dataset.templateId;
+    const template = templatesById[templateId];
+    if (!template) return;
+
+    const world = screenToWorld(e.clientX, e.clientY);
+    const snapped = nearestVertex(world.x, world.y);
+
+    const piece = {
+      id: nextPieceId++,
+      template,
+      offsetX: snapped.x,
+      offsetY: snapped.y,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      color: currentColor,
+      _dragCreated: true,
+      origOffsetX: snapped.x,
+      origOffsetY: snapped.y
+    };
+
+    pieces.push(piece);
+    selectSingle(piece);
+    dragPiece = piece;
+    isDraggingPiece = true;
+    isPanning = false;
+    activePointerId = e.pointerId;
+
+    dragOffsetWorld.x = world.x - piece.offsetX;
+    dragOffsetWorld.y = world.y - piece.offsetY;
+
+    draw();
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
+
+  function onCanvasPointerDown(e) {
+    e.preventDefault();
+    const world = screenToWorld(e.clientX, e.clientY);
+    const piece = hitTestPieces(world.x, world.y);
+    activePointerId = e.pointerId;
+
+    if (piece) {
+      if (e.metaKey || e.ctrlKey) toggleSelection(piece);
+      else selectSingle(piece);
+
+      dragPiece = piece;
+      isDraggingPiece = true;
+      isPanning = false;
+
+      dragOffsetWorld.x = world.x - piece.offsetX;
+      dragOffsetWorld.y = world.y - piece.offsetY;
+
+      piece._dragCreated = false;
+      piece.origOffsetX = piece.offsetX;
+      piece.origOffsetY = piece.offsetY;
+
+      const idx = pieces.indexOf(piece);
+      if (idx !== -1 && idx !== pieces.length - 1) {
+        pieces.splice(idx, 1);
+        pieces.push(piece);
+      }
+    } else {
+      clearSelection();
+      isDraggingPiece = false;
+      dragPiece = null;
+      isPanning = true;
+      panStart.x = e.clientX;
+      panStart.y = e.clientY;
+      panStartOffset.x = panX;
+      panStartOffset.y = panY;
+    }
+
+    draw();
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
+
+  function removeSidebarPreview() {
+    dragOverSidebar = false;
+    if (sidebarPreviewEl && sidebarPreviewEl.parentNode) {
+      sidebarPreviewEl.parentNode.removeChild(sidebarPreviewEl);
+    }
+    sidebarPreviewEl = null;
+  }
+
+  function onPointerMove(e) {
+    if (e.pointerId !== activePointerId) return;
+
+    if (isDraggingPiece && dragPiece) {
+      const sbRect = sidebarEl.getBoundingClientRect();
+      const overSidebar =
+        e.clientX >= sbRect.left && e.clientX <= sbRect.right &&
+        e.clientY >= sbRect.top && e.clientY <= sbRect.bottom;
+
+      if (!overSidebar) {
+        const world = screenToWorld(e.clientX, e.clientY);
+        dragPiece.offsetX = world.x - dragOffsetWorld.x;
+        dragPiece.offsetY = world.y - dragOffsetWorld.y;
+      }
+
+      if (overSidebar && !dragOverSidebar) {
+        dragOverSidebar = true;
+        const localTriangles = buildLocalTrianglesFromPiece(dragPiece);
+        if (localTriangles) {
+          const list = getOrCreateFamilyList('Custom');
+          const div = document.createElement('div');
+          div.className = 'tool-piece';
+          div.style.opacity = '0.4';
+          const cv = document.createElement('canvas');
+          cv.width = 60;
+          cv.height = 60;
+          renderTemplatePreview({ triangles: localTriangles }, cv);
+          div.appendChild(cv);
+          list.appendChild(div);
+          sidebarPreviewEl = div;
+        }
+      } else if (!overSidebar && dragOverSidebar) {
+        removeSidebarPreview();
+      }
+
+      draw();
+    } else if (isPanning) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      panX = panStartOffset.x + dx;
+      panY = panStartOffset.y + dy;
+      draw();
+    }
+  }
+
+  function onPointerUp(e) {
+    if (e.pointerId !== activePointerId) return;
+
+    const droppedPiece = dragPiece;
+
+    if (isDraggingPiece && dragPiece) {
+      const snapped = nearestVertex(dragPiece.offsetX, dragPiece.offsetY);
+      dragPiece.offsetX = snapped.x;
+      dragPiece.offsetY = snapped.y;
+
+      if (pieceOverlapsAny(dragPiece)) {
+        if (dragPiece._dragCreated) {
+          const idx = pieces.indexOf(dragPiece);
+          if (idx !== -1) pieces.splice(idx, 1);
+          if (selectedPieces.has(dragPiece)) selectedPieces.delete(dragPiece);
+        } else {
+          dragPiece.offsetX = dragPiece.origOffsetX;
+          dragPiece.offsetY = dragPiece.origOffsetY;
+        }
+      }
+    }
+
+    const sbRect = sidebarEl.getBoundingClientRect();
+    const overSidebar =
+      e.clientX >= sbRect.left && e.clientX <= sbRect.right &&
+      e.clientY >= sbRect.top && e.clientY <= sbRect.bottom;
+
+    if (droppedPiece && pieces.includes(droppedPiece) && overSidebar) {
+      removeSidebarPreview();
+      createTemplateFromPiece(droppedPiece, 'Custom');
+      pieces = pieces.filter(p => p !== droppedPiece);
+      selectedPieces.delete(droppedPiece);
+    } else {
+      removeSidebarPreview();
+    }
+
+    isDraggingPiece = false;
+    dragPiece = null;
+    isPanning = false;
+    activePointerId = null;
+
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+
+    draw();
+    saveState();
+  }
+
+  function saveState() {
+    try {
+      const templatesForSave = pieceTemplates.map(t => ({
+        id: t.id,
+        name: t.name,
+        family: t.family,
+        triangles: t.triangles
+      }));
+      const toolboxTemplateIds = [];
+      document.querySelectorAll('#sidebar .tool-piece').forEach(el => {
+        const id = el.dataset.templateId;
+        if (id) toolboxTemplateIds.push(id);
+      });
+      const piecesForSave = pieces.map(p => ({
+        id: p.id,
+        templateId: p.template.id,
+        offsetX: p.offsetX,
+        offsetY: p.offsetY,
+        rotation: p.rotation,
+        scaleX: p.scaleX,
+        scaleY: p.scaleY,
+        color: p.color
+      }));
+      const data = {
+        templates: templatesForSave,
+        toolboxTemplateIds,
+        pieces: piecesForSave,
+        currentColor,
+        customTemplateCounter
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function loadState() {
+    let raw;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return null;
+    }
+    if (!raw) return null;
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { return null; }
+
+    pieceTemplates.length = 0;
+    for (const k in templatesById) delete templatesById[k];
+    toolboxShapeKeys.clear();
+    pieces = [];
+    selectedPieces.clear();
+
+    if (Array.isArray(data.templates)) {
+      data.templates.forEach(t => {
+        if (!t || !t.id || !Array.isArray(t.triangles)) return;
+        const tmpl = {
+          id: t.id,
+          name: t.name || t.id,
+          family: t.family || 'Custom',
+          triangles: t.triangles
+        };
+        tmpl._shapeKey = shapeKeyFromTriangles(tmpl.triangles);
+        pieceTemplates.push(tmpl);
+        templatesById[tmpl.id] = tmpl;
+      });
+    }
+
+    if (!templatesById['moni_1']) {
+      const moni = {
+        id: 'moni_1',
+        name: 'Moniamond',
+        family: 'Moniamonds',
+        triangles: [ upTriangle(0,0) ]
+      };
+      moni._shapeKey = shapeKeyFromTriangles(moni.triangles);
+      pieceTemplates.unshift(moni);
+      templatesById['moni_1'] = moni;
+    }
+
+    if (Array.isArray(data.pieces)) {
+      data.pieces.forEach(p => {
+        const tmpl = templatesById[p.templateId];
+        if (!tmpl) return;
+        pieces.push({
+          id: p.id,
+          template: tmpl,
+          offsetX: p.offsetX,
+          offsetY: p.offsetY,
+          rotation: p.rotation,
+          scaleX: p.scaleX,
+          scaleY: p.scaleY,
+          color: p.color || currentColor
+        });
+      });
+    }
+
+    nextPieceId = (pieces.reduce((m, p) => p.id > m ? p.id : m, 0) || 0) + 1;
+    customTemplateCounter = data.customTemplateCounter || 0;
+    if (data.currentColor) currentColor = data.currentColor;
+
+    return {
+      toolboxTemplateIds: Array.isArray(data.toolboxTemplateIds) ? data.toolboxTemplateIds : null
+    };
+  }
+
+  function setupKeyboardShortcuts() {
+    window.addEventListener('keydown', (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+
+      const key = e.key;
+      if (key >= '1' && key <= '8') {
+        e.preventDefault();
+        const idx = parseInt(key, 10) - 1;
+        selectColorByIndex(idx);
+        return;
+      }
+
+      if (key === 'ArrowLeft') {
+        e.preventDefault();
+        applyTransformToSelection(() => {
+          selectedPieces.forEach(p => p.rotation -= Math.PI / 3);
+        });
+        return;
+      }
+      if (key === 'ArrowRight') {
+        e.preventDefault();
+        applyTransformToSelection(() => {
+          selectedPieces.forEach(p => p.rotation += Math.PI / 3);
+        });
+        return;
+      }
+      if (key === 'ArrowUp') {
+        e.preventDefault();
+        applyTransformToSelection(() => {
+          selectedPieces.forEach(p => p.scaleX *= -1);
+        });
+        return;
+      }
+      if (key === 'ArrowDown') {
+        e.preventDefault();
+        applyTransformToSelection(() => {
+          selectedPieces.forEach(p => p.scaleY *= -1);
+        });
+        return;
+      }
+      if (key === 'g' || key === 'G') {
+        e.preventDefault();
+        groupSelectedPieces();
+        return;
+      }
+      if (key === 'u' || key === 'U') {
+        e.preventDefault();
+        ungroupSelectedPieces();
+        return;
+      }
+      if (key === 'x' || key === 'X') {
+        e.preventDefault();
+        if (!selectedPieces.size) return;
+        pieces = pieces.filter(p => !selectedPieces.has(p));
+        selectedPieces.clear();
+        draw();
+        saveState();
+        return;
+      }
+    });
+  }
+
+  async function onShareCanvas() {
+    if (!pieces.length) return;
+
+    // compute tight bounding box around all pieces in world coords
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    pieces.forEach(piece => {
+      const { template, offsetX, offsetY, rotation, scaleX, scaleY } = piece;
+      const cosT = Math.cos(rotation);
+      const sinT = Math.sin(rotation);
+      template.triangles.forEach(tri => {
+        tri.forEach(p => {
+          let xLocal = p.x * scaleX;
+          let yLocal = p.y * scaleY;
+          const xRot = xLocal * cosT - yLocal * sinT;
+          const yRot = xLocal * sinT + yLocal * cosT;
+          const xWorld = xRot + offsetX;
+          const yWorld = yRot + offsetY;
+          if (xWorld < minX) minX = xWorld;
+          if (xWorld > maxX) maxX = xWorld;
+          if (yWorld < minY) minY = yWorld;
+          if (yWorld > maxY) maxY = yWorld;
+        });
+      });
+    });
+
+    if (!isFinite(minX) || !isFinite(minY)) return;
+
+    const padding = 20;
+    const width = Math.max(1, Math.ceil(maxX - minX + 2 * padding));
+    const height = Math.max(1, Math.ceil(maxY - minY + 2 * padding));
+
+    const off = document.createElement('canvas');
+    off.width = width;
+    off.height = height;
+    const offCtx = off.getContext('2d');
+
+    // white background, no grid
+    offCtx.fillStyle = '#ffffff';
+    offCtx.fillRect(0, 0, width, height);
+
+    // draw only pieces (with inner borders), no selection outline
+    pieces.forEach(piece => {
+      const { template, offsetX, offsetY, rotation, scaleX, scaleY, color } = piece;
+      const tris = template.triangles;
+      const cosT = Math.cos(rotation);
+      const sinT = Math.sin(rotation);
+
+      function localToImg(p) {
+        let xLocal = p.x * scaleX;
+        let yLocal = p.y * scaleY;
+        const xRot = xLocal * cosT - yLocal * sinT;
+        const yRot = xLocal * sinT + yLocal * cosT;
+        const xWorld = xRot + offsetX;
+        const yWorld = yRot + offsetY;
+        return {
+          x: xWorld - minX + padding,
+          y: yWorld - minY + padding
+        };
+      }
+
+      offCtx.save();
+      offCtx.fillStyle = color;
+
+      tris.forEach(tri => {
+        offCtx.beginPath();
+        tri.forEach((p, idx) => {
+          const s = localToImg(p);
+          if (idx === 0) offCtx.moveTo(s.x, s.y);
+          else offCtx.lineTo(s.x, s.y);
+        });
+        offCtx.closePath();
+        offCtx.fill();
+      });
+
+      const boundaryEdges = getBoundaryEdges(tris);
+      offCtx.strokeStyle = '#bbbbbb';
+      offCtx.lineWidth = 1;
+      offCtx.beginPath();
+      boundaryEdges.forEach(e => {
+        const a = localToImg(e.a);
+        const b = localToImg(e.b);
+        offCtx.moveTo(a.x, a.y);
+        offCtx.lineTo(b.x, b.y);
+      });
+      offCtx.stroke();
+
+      offCtx.restore();
+    });
+
+    try {
+      off.toBlob(async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], 'polyiamonds.png', { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file] }); // image only, no text/title
+          } catch (err) {
+            // user cancelled or failed; ignore
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const win = window.open();
+          if (win) {
+            win.document.body.style.margin = '0';
+            win.document.body.style.background = '#fff';
+            const img = win.document.createElement('img');
+            img.src = url;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100vh';
+            img.style.display = 'block';
+            img.style.margin = '0 auto';
+            win.document.body.appendChild(img);
+          } else {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'polyiamonds.png';
+            a.click();
+          }
+        }
+      }, 'image/png');
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function init() {
+    const loaded = loadState();
+    buildToolbar();
+    if (loaded && loaded.toolboxTemplateIds) {
+      buildToolboxFromIds(loaded.toolboxTemplateIds);
+    } else {
+      buildToolbox();
+    }
+    resizeCanvas();
+    canvas.addEventListener('pointerdown', onCanvasPointerDown);
+    window.addEventListener('resize', resizeCanvas);
+    setupKeyboardShortcuts();
+  }
+
+  window.addEventListener('load', init);
+})();
+</script>
+</body>
+</html>
