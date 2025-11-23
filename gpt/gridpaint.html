@@ -73,6 +73,7 @@
       padding: 0;
       outline: none;
       box-sizing: border-box;
+      background: #000;
     }
 
     .color-swatch.selected {
@@ -247,7 +248,8 @@
         '#9b59b6',
         '#e67e22',
         '#2c3e50'
-      ]
+      ],
+      selectedIndex: 0
     };
 
     const imageCanvas = document.getElementById('imageCanvas');
@@ -278,7 +280,18 @@
     let dragOffsetX = 0;
     let dragOffsetY = 0;
 
-    let activeColorPicker = null;
+    // Single overlay color input used for the currently selected swatch
+    const swatchColorInput = document.createElement('input');
+    swatchColorInput.type = 'color';
+    swatchColorInput.style.position = 'fixed';
+    swatchColorInput.style.border = 'none';
+    swatchColorInput.style.padding = '0';
+    swatchColorInput.style.margin = '0';
+    swatchColorInput.style.opacity = '0'; // invisible; click still opens picker
+    swatchColorInput.style.cursor = 'pointer';
+    swatchColorInput.style.zIndex = '30';
+    swatchColorInput.style.display = 'none';
+    document.body.appendChild(swatchColorInput);
 
     const occupancy = {
       square: new Map(),
@@ -433,9 +446,9 @@
       if (xDiff > yDiff && xDiff > zDiff) {
         rx = -ry - rz;
       } else if (yDiff > zDiff) {
-        ry = -rx - rz;
+        ry = -rx -rz;
       } else {
-        rz = -rx - ry;
+        rz = -rx -ry;
       }
 
       return { q: rx, r: rz };
@@ -778,51 +791,23 @@
       }
     }
 
-    function closeActiveColorPicker() {
-      if (activeColorPicker && document.body.contains(activeColorPicker)) {
-        document.body.removeChild(activeColorPicker);
+    // Position the shared color input over the current selected swatch
+    function positionSwatchColorInput() {
+      const idx = state.selectedIndex;
+      const swatches = document.querySelectorAll('.color-swatch');
+      if (!swatches[idx]) {
+        swatchColorInput.style.display = 'none';
+        return;
       }
-      activeColorPicker = null;
-    }
-
-    function openInlineColorPicker(index, swatchEl) {
-      closeActiveColorPicker();
-
-      const input = document.createElement('input');
-      input.type = 'color';
-      input.value = state.colors[index];
-
-      const rect = swatchEl.getBoundingClientRect();
-
-      input.style.position = 'fixed';
-      input.style.left = rect.left + 'px';
-      input.style.top = (rect.bottom + 4) + 'px';
-      input.style.width = '1px';
-      input.style.height = '1px';
-      input.style.opacity = '0';
-      input.style.border = 'none';
-      input.style.padding = '0';
-      input.style.margin = '0';
-      input.style.zIndex = 25;
-
-      document.body.appendChild(input);
-      activeColorPicker = input;
-
-      input.addEventListener('change', () => {
-        const newColor = input.value;
-        state.colors[index] = newColor;
-        swatchEl.style.background = newColor;
-        if (swatchEl.classList.contains('selected')) {
-          state.currentColor = newColor;
-        }
-      });
-
-      input.addEventListener('blur', () => {
-        closeActiveColorPicker();
-      });
-
-      input.focus();
-      input.click();
+      const btn = swatches[idx];
+      const rect = btn.getBoundingClientRect();
+      swatchColorInput.style.left = rect.left + 'px';
+      swatchColorInput.style.top = rect.top + 'px';
+      swatchColorInput.style.width = rect.width + 'px';
+      swatchColorInput.style.height = rect.height + 'px';
+      swatchColorInput.style.display = 'block';
+      swatchColorInput.value = state.colors[idx];
+      swatchColorInput.dataset.index = String(idx);
     }
 
     function setupPalette() {
@@ -834,27 +819,44 @@
         btn.style.background = color;
         btn.dataset.index = index;
 
-        if (index === 0) {
+        if (index === state.selectedIndex) {
           btn.classList.add('selected');
           state.currentColor = color;
         }
 
         btn.addEventListener('click', () => {
-          state.currentColor = state.colors[index];
-          document
-            .querySelectorAll('.color-swatch')
+          // Select this swatch
+          document.querySelectorAll('.color-swatch')
             .forEach(el => el.classList.remove('selected'));
           btn.classList.add('selected');
-        });
 
-        btn.addEventListener('dblclick', (e) => {
-          e.preventDefault();
-          openInlineColorPicker(index, btn);
+          state.selectedIndex = index;
+          state.currentColor = state.colors[index];
+
+          // Move the single color input on top of this swatch
+          positionSwatchColorInput();
         });
 
         paletteContainer.appendChild(btn);
       });
+
+      // We start with a default selected swatch but don't place the color input yet.
+      // It will be positioned after the first explicit click.
     }
+
+    // When the overlaid color input changes, update the palette color
+    swatchColorInput.addEventListener('input', () => {
+      const idx = parseInt(swatchColorInput.dataset.index || '0', 10);
+      const newColor = swatchColorInput.value;
+      state.colors[idx] = newColor;
+      const swatches = document.querySelectorAll('.color-swatch');
+      if (swatches[idx]) {
+        swatches[idx].style.background = newColor;
+      }
+      if (idx === state.selectedIndex) {
+        state.currentColor = newColor;
+      }
+    });
 
     function setupOpacitySlider() {
       const value = parseInt(opacitySlider.value, 10);
@@ -899,6 +901,11 @@
       const newTop = ev.clientY - dragOffsetY;
       toolbar.style.left = newLeft + 'px';
       toolbar.style.top = newTop + 'px';
+
+      // Keep the color input aligned with the selected swatch while dragging
+      if (swatchColorInput.style.display === 'block') {
+        positionSwatchColorInput();
+      }
     }
 
     function endToolbarDrag() {
