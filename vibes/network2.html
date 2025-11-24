@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Social Network Canvas</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0d10;
+      color: #eee;
+      user-select: none;
+    }
+    #app {
+      height: 100%;
+      width: 100%;
+    }
+    .canvas {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at top, #1a2333 0, #050608 60%);
+      cursor: grab;
+    }
+    .canvas.grabbing {
+      cursor: grabbing;
+    }
+    .edges-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .nodes-layer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .node {
+      position: absolute;
+      background: #161b22;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.08);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .node.selected {
+      border-color: #4da3ff;
+      box-shadow: 0 0 0 1px rgba(77,163,255,0.7), 0 8px 20px rgba(0,0,0,0.7);
+    }
+
+    /* Person node visuals */
+    .node-person .node-header {
+      position: relative;
+      padding: 6px 22px 6px 22px; /* symmetric padding; text centered, handle overlays */
+      background: linear-gradient(to right, #222b3a, #1e2633);
+      font-weight: 600;
+      font-size: 14px;
+      color: #f7fafc;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+    }
+    .node-person .node-title {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+    }
+    .node-person .node-body {
+      padding: 6px 10px 8px 10px;
+      font-size: 12px;
+      color: #cbd5f5;
+      line-height: 1.4;
+      cursor: crosshair;
+      white-space: pre-line;
+    }
+
+    /* Entity node visuals: center text vertically and horizontally */
+    .node-entity {
+      display: flex;
+      align-items: center;     /* vertical center container */
+      justify-content: center; /* horizontal center container */
+      padding: 0 22px;         /* no vertical padding */
+      height: 28px;            /* matches computed height */
+      font-size: 13px;
+      font-weight: 500;
+      color: #e5e7eb;
+      white-space: nowrap;
+      cursor: move;
+      position: absolute;
+    }
+    .node-entity span {
+      flex: 1;
+      text-align: center;
+      display: flex;           /* make inner span a flexbox as well */
+      align-items: center;     /* vertical center text inside span */
+      justify-content: center; /* horizontal center text inside span */
+    }
+
+    /* Move handle (left side, two vertical dot columns, absolutely positioned) */
+    .node-handle {
+      width: 10px;
+      height: 18px;
+      border-radius: 4px;
+      background-image: radial-gradient(#38bdf8 1px, transparent 1px);
+      background-size: 4px 4px;
+      background-position: center;
+      opacity: 0;
+      transition: opacity 0.15s;
+      cursor: grab;
+      position: absolute;
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .node:hover .node-handle {
+      opacity: 1;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .modal {
+      background: #111827;
+      border-radius: 8px;
+      padding: 14px 16px 16px 16px;
+      min-width: 280px;
+      max-width: 360px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+      border: 1px solid rgba(148,163,184,0.5);
+    }
+    .modal h2 {
+      margin: 0 0 8px 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: #e5e7eb;
+    }
+    .modal label {
+      display: block;
+      font-size: 12px;
+      margin-top: 8px;
+      margin-bottom: 4px;
+      color: #9ca3af;
+    }
+    .modal input,
+    .modal textarea,
+    .modal select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      font-size: 13px;
+      border-radius: 4px;
+      border: 1px solid #4b5563;
+      background: #020617;
+      color: #e5e7eb;
+      outline: none;
+    }
+    .modal textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    .modal input:focus,
+    .modal textarea:focus,
+    .modal select:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.5);
+    }
+    .modal-actions {
+      margin-top: 12px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .btn {
+      border: none;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      background: #374151;
+      color: #e5e7eb;
+    }
+    .btn.primary {
+      background: #2563eb;
+    }
+    .btn.danger {
+      background: #b91c1c;
+    }
+    .btn:hover {
+      filter: brightness(1.08);
+    }
+    .btn:active {
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="module">
+  import { h, render, Component } from 'https://unpkg.com/preact@10.24.3/dist/preact.mjs';
+  import htm from 'https://unpkg.com/htm@3.1.1/dist/htm.module.js';
+  const html = htm.bind(h);
+
+  const HEADER_HEIGHT = 28;
+
+  function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (dx === 0 && dy === 0) {
+      const ddx = px - x1;
+      const ddy = py - y1;
+      return Math.hypot(ddx, ddy);
+    }
+    const t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+    const clamped = Math.max(0, Math.min(1, t));
+    const cx = x1 + clamped * dx;
+    const cy = y1 + clamped * dy;
+    return Math.hypot(px - cx, py - cy);
+  }
+
+  function computeNodeSize(type, name, info) {
+    if (type === 'entity') {
+      const text = (name || '').trim() || 'Entity';
+      const baseWidth = 30;
+      const charWidth = 8;
+      const minWidth = 60;
+      const maxWidth = 260;
+      const width = Math.max(minWidth, Math.min(maxWidth, baseWidth + charWidth * text.length));
+      const height = 28;
+      return { width, height };
+    }
+    const title = (name || 'Person').trim() || 'Person';
+    const infoText = (info || '').trim();
+    const infoLines = infoText.length ? infoText.split('\n') : [];
+    const maxInfoLen = infoLines.reduce((m, l) => Math.max(m, l.length), 0);
+
+    const charWidth = 7;
+    const baseWidth = 80;
+    const minWidth = 140;
+    const maxWidth = 320;
+    const width = Math.max(
+      minWidth,
+           Math.min(maxWidth, baseWidth + charWidth * Math.max(title.length, maxInfoLen))
+    );
+
+    const bodyLineHeight = 16;
+    const bodyPaddingTop = 4;
+    const bodyPaddingBottom = 8;
+    let bodyHeight = 0;
+    if (infoLines.length) {
+      bodyHeight = bodyPaddingTop + bodyLineHeight * infoLines.length + bodyPaddingBottom;
+    } else {
+      bodyHeight = 14;
+    }
+    const height = HEADER_HEIGHT + bodyHeight;
+    return { width, height };
+  }
+
+  class App extends Component {
+    constructor(props) {
+      super(props);
+      this.state = {
+        nodes: [],
+        edges: [],
+        panX: 0,
+        panY: 0,
+        isPanning: false,
+        panLastX: 0,
+        panLastY: 0,
+        draggingNodeId: null,
+        dragNodeOffsetX: 0,
+        dragNodeOffsetY: 0,
+        draggingEdge: null,
+        selectedNodeId: null,
+        selectedEdgeId: null,
+        nodeModal: {
+          visible: false,
+          mode: 'create',
+          nodeId: null,
+          type: 'person',
+          x: 0,
+          y: 0,
+          name: '',
+          info: ''
+        },
+        edgeModal: {
+          visible: false,
+          mode: 'create',
+          edgeId: null,
+          fromId: null,
+          toId: null,
+          label: ''
+        }
+      };
+      this.nextNodeId = 1;
+      this.nextEdgeId = 1;
+
+      this.nodeNameInput = null;
+      this.edgeLabelInput = null;
+    }
+
+    componentDidMount() {
+      window.addEventListener('mousemove', this.handleWindowMouseMove);
+      window.addEventListener('mouseup', this.handleWindowMouseUp);
+    }
+
+    componentWillUnmount() {
+      window.removeEventListener('mousemove', this.handleWindowMouseMove);
+      window.removeEventListener('mouseup', this.handleWindowMouseUp);
+    }
+
+    componentDidUpdate(prevProps, prevState) {
+      if (!prevState.nodeModal.visible && this.state.nodeModal.visible && this.nodeNameInput) {
+        this.nodeNameInput.focus();
+      }
+      if (!prevState.edgeModal.visible && this.state.edgeModal.visible && this.edgeLabelInput) {
+        this.edgeLabelInput.focus();
+      }
+    }
+
+    worldFromScreen(clientX, clientY) {
+      const { panX, panY } = this.state;
+      return { x: clientX - panX, y: clientY - panY };
+    }
+
+    screenFromWorld(x, y) {
+      const { panX, panY } = this.state;
+      return { x: x + panX, y: y + panY };
+    }
+
+    getNodeSize(node) {
+      if (node.width && node.height) return { width: node.width, height: node.height };
+      return computeNodeSize(node.type || 'person', node.name, node.info);
+    }
+
+    findNodeAtScreenPosition(clientX, clientY) {
+      const { nodes, panX, panY } = this.state;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        const { width, height } = this.getNodeSize(n);
+        const left = n.x + panX;
+        const top = n.y + panY;
+        const right = left + width;
+        const bottom = top + height;
+        if (clientX >= left && clientX <= right && clientY >= top && clientY <= bottom) {
+          return { node: n, rect: { left, top, width, height } };
+        }
+      }
+      return null;
+    }
+
+    findEdgeAtScreenPosition(clientX, clientY) {
+      const { edges, nodes, panX, panY } = this.state;
+      let best = null;
+      let bestDist = Infinity;
+
+      const findNode = id => nodes.find(n => n.id === id);
+
+      for (const edge of edges) {
+        const fromNode = findNode(edge.fromId);
+        const toNode = findNode(edge.toId);
+        if (!fromNode || !toNode) continue;
+
+        const fromSize = this.getNodeSize(fromNode);
+        const toSize = this.getNodeSize(toNode);
+
+        const x1 = fromNode.x + fromSize.width / 2 + panX;
+        const y1 = fromNode.y + fromSize.height / 2 + panY;
+        const x2 = toNode.x + toSize.width / 2 + panX;
+        const y2 = toNode.y + toSize.height / 2 + panY;
+
+        let dist = pointToSegmentDistance(clientX, clientY, x1, y1, x2, y2);
+
+        const label = edge.label || '';
+        if (label.length) {
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          const rectWidth = label.length * 7 + 10;
+          const rectHeight = 18;
+          const left = midX - rectWidth / 2;
+          const right = midX + rectWidth / 2;
+          const top = midY - rectHeight / 2;
+          const bottom = midY + rectHeight / 2;
+          const inLabel =
+            clientX >= left && clientX <= right &&
+            clientY >= top && clientY <= bottom;
+          if (inLabel) {
+            dist = 0;
+          }
+        }
+
+        const threshold = 8;
+        if (dist <= threshold && dist < bestDist) {
+          bestDist = dist;
+          best = edge;
+        }
+      }
+
+      return best;
+    }
+
+    deleteNodeById = (id) => {
+      this.setState(prev => {
+        const newNodes = prev.nodes.filter(n => n.id !== id);
+        const newEdges = prev.edges.filter(e => e.fromId !== id && e.toId !== id);
+        const selectedNodeId = prev.selectedNodeId === id ? null : prev.selectedNodeId;
+        let selectedEdgeId = prev.selectedEdgeId;
+        if (selectedEdgeId != null && !newEdges.some(e => e.id === selectedEdgeId)) {
+          selectedEdgeId = null;
+        }
+        return {
+          nodes: newNodes,
+          edges: newEdges,
+          selectedNodeId,
+          selectedEdgeId
+        };
+      });
+    };
+
+    deleteEdgeById = (id) => {
+      this.setState(prev => {
+        const newEdges = prev.edges.filter(e => e.id !== id);
+        const selectedEdgeId = prev.selectedEdgeId === id ? null : prev.selectedEdgeId;
+        return { edges: newEdges, selectedEdgeId };
+      });
+    };
+
+    handleCanvasMouseDown = (e) => {
+      if (e.button !== 0) return;
+
+      const nodeHit = this.findNodeAtScreenPosition(e.clientX, e.clientY);
+      const edgeHit = this.findEdgeAtScreenPosition(e.clientX, e.clientY);
+
+      if (nodeHit || edgeHit) return;
+
+      this.setState({
+        isPanning: true,
+        panLastX: e.clientX,
+        panLastY: e.clientY,
+        selectedNodeId: null,
+        selectedEdgeId: null
+      });
+    };
+
+    handleCanvasClick = (e) => {
+      const nodeHit = this.findNodeAtScreenPosition(e.clientX, e.clientY);
+      if (nodeHit) {
+        this.setState({
+          selectedNodeId: nodeHit.node.id,
+          selectedEdgeId: null
+        });
+        return;
+      }
+
+      const edgeHit = this.findEdgeAtScreenPosition(e.clientX, e.clientY);
+      if (edgeHit) {
+        this.setState({
+          selectedEdgeId: edgeHit.id,
+          selectedNodeId: null
+        });
+        return;
+      }
+
+      this.setState({
+        selectedNodeId: null,
+        selectedEdgeId: null
+      });
+    };
+
+    handleCanvasDblClick = (e) => {
+      const nodeHit = this.findNodeAtScreenPosition(e.clientX, e.clientY);
+      if (nodeHit) {
+        const node = nodeHit.node;
+        this.setState({
+          selectedNodeId: node.id,
+          selectedEdgeId: null,
+          nodeModal: {
+            visible: true,
+            mode: 'edit',
+            nodeId: node.id,
+            type: node.type || 'person',
+            x: node.x,
+            y: node.y,
+            name: node.name,
+            info: node.info || ''
+          }
+        });
+        return;
+      }
+
+      const edgeHit = this.findEdgeAtScreenPosition(e.clientX, e.clientY);
+      if (edgeHit) {
+        this.setState({
+          selectedEdgeId: edgeHit.id,
+          selectedNodeId: null,
+          edgeModal: {
+            visible: true,
+            mode: 'edit',
+            edgeId: edgeHit.id,
+            fromId: edgeHit.fromId,
+            toId: edgeHit.toId,
+            label: edgeHit.label || ''
+          }
+        });
+        return;
+      }
+
+      const world = this.worldFromScreen(e.clientX, e.clientY);
+      this.setState({
+        nodeModal: {
+          visible: true,
+          mode: 'create',
+          nodeId: null,
+          type: 'person',
+          x: world.x - 100,
+          y: world.y - (HEADER_HEIGHT + 20) / 2,
+          name: '',
+          info: ''
+        }
+      });
+    };
+
+    handleWindowMouseMove = (e) => {
+      const {
+        isPanning,
+        panLastX,
+        panLastY,
+        draggingNodeId,
+        dragNodeOffsetX,
+        dragNodeOffsetY,
+        draggingEdge
+      } = this.state;
+
+      if (isPanning) {
+        const dx = e.clientX - panLastX;
+        const dy = e.clientY - panLastY;
+        this.setState(prev => ({
+          panX: prev.panX + dx,
+          panY: prev.panY + dy,
+          panLastX: e.clientX,
+          panLastY: e.clientY
+        }));
+        e.preventDefault();
+      }
+
+      if (draggingNodeId != null) {
+        this.setState(prev => {
+          const nodes = prev.nodes.map(n => {
+            if (n.id !== draggingNodeId) return n;
+            const newX = e.clientX - prev.panX - dragNodeOffsetX;
+            const newY = e.clientY - prev.panY - dragNodeOffsetY;
+            return { ...n, x: newX, y: newY };
+          });
+          return { nodes };
+        });
+        e.preventDefault();
+      }
+
+      if (draggingEdge) {
+        const world = this.worldFromScreen(e.clientX, e.clientY);
+        this.setState({
+          draggingEdge: {
+            ...draggingEdge,
+            toX: world.x,
+            toY: world.y
+          }
+        });
+        e.preventDefault();
+      }
+    };
+
+    handleWindowMouseUp = (e) => {
+      const { draggingEdge } = this.state;
+
+      if (this.state.isPanning) {
+        this.setState({ isPanning: false });
+      }
+
+      if (this.state.draggingNodeId != null) {
+        this.setState({ draggingNodeId: null });
+      }
+
+      if (draggingEdge) {
+        const hit = this.findNodeAtScreenPosition(e.clientX, e.clientY);
+        if (hit && hit.node.id !== draggingEdge.fromId) {
+          this.setState({
+            draggingEdge: null,
+            edgeModal: {
+              visible: true,
+              mode: 'create',
+              edgeId: null,
+              fromId: draggingEdge.fromId,
+              toId: hit.node.id,
+              label: ''
+            }
+          });
+        } else {
+          this.setState({ draggingEdge: null });
+        }
+      }
+    };
+
+    handleNodeMouseDown = (id, e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      this.startEdgeDragFromNodeBody(id, e);
+    };
+
+    handleHandleMouseDown = (id, e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      this.startNodeDrag(id, e);
+    };
+
+    startNodeDrag(id, e) {
+      const { nodes, panX, panY } = this.state;
+      const node = nodes.find(n => n.id === id);
+      if (!node) return;
+      const { x, y } = node;
+      const offsetX = e.clientX - (x + panX);
+      const offsetY = e.clientY - (y + panY);
+      this.setState({
+        draggingNodeId: id,
+        dragNodeOffsetX: offsetX,
+        dragNodeOffsetY: offsetY,
+        isPanning: false,
+        selectedNodeId: id,
+        selectedEdgeId: null
+      });
+    }
+
+    startEdgeDragFromNodeBody(id, e) {
+      const { nodes } = this.state;
+      const node = nodes.find(n => n.id === id);
+      if (!node) return;
+      const { width, height } = this.getNodeSize(node);
+      const centerWorldX = node.x + width / 2;
+      const centerWorldY = node.y + height / 2;
+      const pointerWorld = this.worldFromScreen(e.clientX, e.clientY);
+      this.setState({
+        draggingEdge: {
+          fromId: id,
+          fromX: centerWorldX,
+          fromY: centerWorldY,
+          toX: pointerWorld.x,
+          toY: pointerWorld.y
+        },
+        selectedNodeId: id,
+        selectedEdgeId: null
+      });
+    }
+
+    handleNodeModalChange = (field, e) => {
+      const value = e.target.value;
+      this.setState(prev => ({
+        nodeModal: { ...prev.nodeModal, [field]: value }
+      }));
+    };
+
+    closeNodeModal = () => {
+      this.setState(prev => ({
+        nodeModal: { ...prev.nodeModal, visible: false }
+      }));
+    };
+
+    submitNodeModal = (e) => {
+      e.preventDefault();
+      const { nodeModal } = this.state;
+      const type = (nodeModal.type || 'person').toLowerCase();
+      const name = nodeModal.name.trim();
+      const info = type === 'person' ? nodeModal.info.trim() : '';
+      if (!name) return;
+
+      const { width, height } = computeNodeSize(type, name, info);
+
+      if (nodeModal.mode === 'create') {
+        const newNode = {
+          id: this.nextNodeId++,
+          type,
+          name,
+          info,
+          x: nodeModal.x,
+          y: nodeModal.y,
+          width,
+          height
+        };
+        this.setState(prev => ({
+          nodes: [...prev.nodes, newNode],
+          nodeModal: { ...prev.nodeModal, visible: false },
+          selectedNodeId: newNode.id,
+          selectedEdgeId: null
+        }));
+      } else {
+        this.setState(prev => ({
+          nodes: prev.nodes.map(n =>
+            n.id === nodeModal.nodeId
+              ? {
+                  ...n,
+                  type,
+                  name,
+                  info,
+                  width,
+                  height
+                }
+              : n
+          ),
+          nodeModal: { ...prev.nodeModal, visible: false }
+        }));
+      }
+    };
+
+    deleteFromNodeModal = () => {
+      const { nodeModal } = this.state;
+      if (nodeModal.mode === 'edit' && nodeModal.nodeId != null) {
+        this.deleteNodeById(nodeModal.nodeId);
+      }
+      this.closeNodeModal();
+    };
+
+    handleEdgeModalChange = (e) => {
+      const value = e.target.value;
+      this.setState(prev => ({
+        edgeModal: { ...prev.edgeModal, label: value }
+      }));
+    };
+
+    closeEdgeModal = () => {
+      this.setState(prev => ({
+        edgeModal: { ...prev.edgeModal, visible: false }
+      }));
+    };
+
+    submitEdgeModal = (e) => {
+      e.preventDefault();
+      const { edgeModal } = this.state;
+      if (!edgeModal.fromId || !edgeModal.toId) {
+        this.closeEdgeModal();
+        return;
+      }
+      const label = edgeModal.label.trim();
+
+      if (edgeModal.mode === 'create') {
+        const newEdge = {
+          id: this.nextEdgeId++,
+          fromId: edgeModal.fromId,
+          toId: edgeModal.toId,
+          label
+        };
+        this.setState(prev => ({
+          edges: [...prev.edges, newEdge],
+          edgeModal: { ...prev.edgeModal, visible: false },
+          selectedEdgeId: newEdge.id,
+          selectedNodeId: null
+        }));
+      } else {
+        this.setState(prev => ({
+          edges: prev.edges.map(ed =>
+            ed.id === edgeModal.edgeId ? { ...ed, label } : ed
+          ),
+          edgeModal: { ...prev.edgeModal, visible: false }
+        }));
+      }
+    };
+
+    deleteFromEdgeModal = () => {
+      const { edgeModal } = this.state;
+      if (edgeModal.mode === 'edit' && edgeModal.edgeId != null) {
+        this.deleteEdgeById(edgeModal.edgeId);
+      }
+      this.closeEdgeModal();
+    };
+
+    renderNodes() {
+      const { nodes, panX, panY, selectedNodeId } = this.state;
+      return nodes.map(node => {
+        const { width, height } = this.getNodeSize(node);
+        const screenX = node.x + panX;
+        const screenY = node.y + panY;
+        const isSelected = node.id === selectedNodeId;
+        const type = node.type || 'person';
+
+        const baseClass = 'node node-' + type + (isSelected ? ' selected' : '');
+
+        if (type === 'entity') {
+          const label = (node.name || '').trim() || 'Entity';
+          return html`
+            <div
+              key=${node.id}
+              class=${baseClass}
+              style=${{
+                left: screenX + 'px',
+                top: screenY + 'px',
+                width: width + 'px',
+                height: height + 'px'
+              }}
+              onMouseDown=${(e) => this.handleNodeMouseDown(node.id, e)}
+            >
+              <div
+                class="node-handle"
+                onMouseDown=${(e) => this.handleHandleMouseDown(node.id, e)}
+              ></div>
+              <span>${label}</span>
+            </div>
+          `;
+        }
+
+        const infoText = node.info ? node.info : '';
+        return html`
+          <div
+            key=${node.id}
+            class=${baseClass}
+            style=${{
+              left: screenX + 'px',
+              top: screenY + 'px',
+              width: width + 'px',
+              height: height + 'px'
+            }}
+            onMouseDown=${(e) => this.handleNodeMouseDown(node.id, e)}
+          >
+            <div class="node-header">
+              <div
+                class="node-handle"
+                onMouseDown=${(e) => this.handleHandleMouseDown(node.id, e)}
+              ></div>
+              <span class="node-title">
+                ${node.name || 'Unnamed'}
+              </span>
+            </div>
+            <div class="node-body">
+              ${infoText}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    renderEdges() {
+      const { edges, nodes, panX, panY, selectedEdgeId, draggingEdge } = this.state;
+
+      const findNode = (id) => nodes.find(n => n.id === id);
+
+      const edgeElements = edges.map(edge => {
+        const fromNode = findNode(edge.fromId);
+        const toNode = findNode(edge.toId);
+        if (!fromNode || !toNode) return null;
+
+        const fromSize = this.getNodeSize(fromNode);
+        const toSize = this.getNodeSize(toNode);
+
+        const fromWorldX = fromNode.x + fromSize.width / 2;
+        const fromWorldY = fromNode.y + fromSize.height / 2;
+        const toWorldX = toNode.x + toSize.width / 2;
+        const toWorldY = toNode.y + toSize.height / 2;
+
+        const fromScreen = { x: fromWorldX + panX, y: fromWorldY + panY };
+        const toScreen = { x: toWorldX + panX, y: toWorldY + panY };
+
+        const midX = (fromScreen.x + toScreen.x) / 2;
+        const midY = (fromScreen.y + toScreen.y) / 2;
+        const isSelected = edge.id === selectedEdgeId;
+        const color = isSelected ? '#4da3ff' : '#94a3b8';
+
+        const label = edge.label || '';
+
+        const labelGroup = label.length
+          ? (() => {
+              const rectWidth = label.length * 7 + 10;
+              const rectHeight = 18;
+              const rectX = midX - rectWidth / 2;
+              const rectY = midY - rectHeight / 2;
+              return html`
+                <g>
+                  <rect
+                    x=${rectX}
+                    y=${rectY}
+                    rx="4"
+                    ry="4"
+                    width=${rectWidth}
+                    height=${rectHeight}
+                    fill="rgba(15,23,42,0.9)"
+                    stroke=${isSelected ? '#4da3ff' : 'rgba(148,163,184,0.7)'}
+                    stroke-width="1"
+                  />
+                  <text
+                    x=${midX}
+                    y=${midY}
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    font-size="11"
+                    fill="#e5e7eb"
+                  >
+                    ${label}
+                  </text>
+                </g>
+              `;
+            })()
+          : null;
+
+        return html`
+          <g key=${edge.id}>
+            <line
+              x1=${fromScreen.x}
+              y1=${fromScreen.y}
+              x2=${toScreen.x}
+              y2=${toScreen.y}
+              stroke="transparent"
+              stroke-width="12"
+            />
+            <line
+              x1=${fromScreen.x}
+              y1=${fromScreen.y}
+              x2=${toScreen.x}
+              y2=${toScreen.y}
+              stroke=${color}
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            ${labelGroup}
+          </g>
+        `;
+      });
+
+      let draftElement = null;
+      if (draggingEdge) {
+        const fromScreen = this.screenFromWorld(draggingEdge.fromX, draggingEdge.fromY);
+        const toScreen   = this.screenFromWorld(draggingEdge.toX, draggingEdge.toY);
+        draftElement = html`
+          <g>
+            <line
+              x1=${fromScreen.x}
+              y1=${fromScreen.y}
+              x2=${toScreen.x}
+              y2=${toScreen.y}
+              stroke="#38bdf8"
+              stroke-width="2"
+              stroke-dasharray="4 4"
+              stroke-linecap="round"
+            />
+          </g>
+        `;
+      }
+
+      return html`${edgeElements}${draftElement}`;
+    }
+
+    renderNodeModal() {
+      const { nodeModal } = this.state;
+      if (!nodeModal.visible) return null;
+
+      const title = nodeModal.mode === 'create' ? 'Add Node' : 'Edit Node';
+      const type = nodeModal.type || 'person';
+      const isPerson = type === 'person';
+
+      return html`
+        <div class="modal-backdrop" onMouseDown=${this.closeNodeModal}>
+          <div class="modal" onMouseDown=${(e) => e.stopPropagation()}>
+            <h2>${title}</h2>
+            <form onSubmit=${this.submitNodeModal}>
+              <label>Type</label>
+              <select
+                value=${type}
+                onChange=${(e) => this.handleNodeModalChange('type', e)}
+              >
+                <option value="person">Person</option>
+                <option value="entity">Entity</option>
+              </select>
+
+              <label>Name</label>
+              <input
+                type="text"
+                value=${nodeModal.name}
+                onInput=${(e) => this.handleNodeModalChange('name', e)}
+                placeholder=${isPerson ? "Person's name" : "Entity name"}
+                ref=${el => (this.nodeNameInput = el)}
+              />
+
+              ${isPerson
+                ? html`
+                    <label>Company / Title</label>
+                    <textarea
+                      value=${nodeModal.info}
+                      onInput=${(e) => this.handleNodeModalChange('info', e)}
+                      placeholder="Company, role, notes…"
+                    ></textarea>
+                  `
+                : null}
+
+              <div class="modal-actions">
+                ${nodeModal.mode === 'edit'
+                  ? html`
+                      <button
+                        type="button"
+                        class="btn danger"
+                        onClick=${this.deleteFromNodeModal}
+                      >
+                        Delete
+                      </button>
+                    `
+                  : null}
+                <button
+                  type="button"
+                  class="btn"
+                  onClick=${this.closeNodeModal}
+                >
+                  Cancel
+                </button>
+                <button type="submit" class="btn primary">
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    renderEdgeModal() {
+      const { edgeModal } = this.state;
+      if (!edgeModal.visible) return null;
+
+      const title =
+        edgeModal.mode === 'create'
+          ? 'Label Connection'
+          : 'Edit Connection';
+
+      return html`
+        <div class="modal-backdrop" onMouseDown=${this.closeEdgeModal}>
+          <div class="modal" onMouseDown=${(e) => e.stopPropagation()}>
+            <h2>${title}</h2>
+            <form onSubmit=${this.submitEdgeModal}>
+              <label>Relationship</label>
+              <input
+                type="text"
+                value=${edgeModal.label}
+                onInput=${this.handleEdgeModalChange}
+                placeholder="e.g. Colleague, Mentor, Customer, Owns…"
+                ref=${el => (this.edgeLabelInput = el)}
+              />
+              <div class="modal-actions">
+                ${edgeModal.mode === 'edit'
+                  ? html`
+                      <button
+                        type="button"
+                        class="btn danger"
+                        onClick=${this.deleteFromEdgeModal}
+                      >
+                        Delete
+                      </button>
+                    `
+                  : null}
+                <button
+                  type="button"
+                  class="btn"
+                  onClick=${this.closeEdgeModal}
+                >
+                  Cancel
+                </button>
+                <button type="submit" class="btn primary">
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    render() {
+      const { isPanning } = this.state;
+      return html`
+        <div
+          class=${'canvas' + (isPanning ? ' grabbing' : '')}
+          onMouseDown=${this.handleCanvasMouseDown}
+          onClick=${this.handleCanvasClick}
+          onDblClick=${this.handleCanvasDblClick}
+        >
+          <svg class="edges-layer" width="100%" height="100%">
+            ${this.renderEdges()}
+          </svg>
+          <div class="nodes-layer">
+            ${this.renderNodes()}
+          </div>
+          ${this.renderNodeModal()}
+          ${this.renderEdgeModal()}
+        </div>
+      `;
+    }
+  }
+
+  render(html`<${App} />`, document.getElementById('app'));
+</script>
+</body>
+</html>
