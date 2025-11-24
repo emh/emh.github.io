@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Volume Explorer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Helvetica Neue', sans-serif; color: #eee; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(20, 20, 20, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            display: flex;
+            gap: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 10;
+        }
+        .control-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #aaa; font-weight: 600; }
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 120px;
+            height: 4px;
+            background: #444;
+            border-radius: 2px;
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            border: 2px solid #000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        #header {
+            position: absolute;
+            top: 30px;
+            left: 40px;
+            pointer-events: none;
+        }
+        h1 { margin: 0; font-weight: 300; letter-spacing: -1px; font-size: 2rem; }
+        p { margin: 5px 0 0 0; color: #888; font-size: 0.9rem; }
+        .highlight { color: #88ccff; font-weight: bold; }
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-weight: bold; pointer-events: none; transition: opacity 0.5s;
+        }
+        #generation-info {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            text-align: right;
+            pointer-events: none;
+        }
+        .gen-badge {
+            background: #333;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        #reset-btn {
+            position: absolute;
+            bottom: 30px;
+            right: 40px;
+            background: transparent;
+            border: 1px solid #555;
+            color: #888;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+        #reset-btn:hover { border-color: #fff; color: #fff; }
+    </style>
+    
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="header">
+        <h1>Generative Volumes</h1>
+        <p>Click a house to <span class="highlight">evolve</span> its traits.</p>
+    </div>
+
+    <div id="generation-info">
+        <div class="gen-badge" id="gen-counter">Generation 0</div>
+    </div>
+
+    <div id="loading">GENERATING ARCHITECTURE...</div>
+
+    <div id="ui">
+        <div class="control-group">
+            <label>Rotate Y (Orientation)</label>
+            <input type="range" id="rotY" min="0" max="6.28" step="0.01" value="0.7">
+        </div>
+        <div class="control-group">
+            <label>Sun Altitude</label>
+            <input type="range" id="sunY" min="0" max="1" step="0.01" value="0.5">
+        </div>
+    </div>
+
+    <button id="reset-btn">RESET GENOME</button>
+
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Configuration ---
+        const GRID_SIZE = 4;
+        const SPACING = 12;
+        let HOUSES = []; // Stores mesh groups
+        let GENERATION = 0;
+        
+        // --- Helper Functions ---
+        const rng = () => Math.random();
+        const randRange = (min, max) => min + rng() * (max - min);
+        const choice = (arr) => arr[Math.floor(rng() * arr.length)];
+
+        // --- Genome / Specification System ---
+        
+        function generateRandomSpec() {
+            // Increased base volume ranges for more variety
+            const main = {
+                width: randRange(2.0, 4.5),
+                height: randRange(2.0, 5.0),
+                depth: randRange(2.0, 4.5)
+            };
+
+            // Allow 0 to 4 extensions (volumes)
+            const extCount = Math.floor(randRange(0, 5));
+            const extensions = [];
+            
+            for(let i=0; i<extCount; i++) {
+                extensions.push({
+                    w: randRange(0.8, 3.0),
+                    h: randRange(1.0, 4.0),
+                    d: randRange(0.8, 3.0),
+                    // 0: right, 1: left, 2: front, 3: back
+                    face: choice([0, 1, 2, 3]), 
+                    // Normalized offset along the face (-0.5 to 0.5)
+                    align: randRange(-0.4, 0.4), 
+                    // Vertical position: 0 = ground, >0 = cantilever
+                    y: Math.random() > 0.7 ? randRange(1.0, 3.0) : 0 
+                });
+            }
+
+            return {
+                main,
+                extensions,
+                roofType: choice(['gable', 'pyramid', 'flat', 'slant']),
+                roofHeight: randRange(0.5, 3.0),
+                windowCount: Math.floor(randRange(2, 10)),
+                seed: Math.random() // For random placements
+            };
+        }
+
+        function mutateSpec(parent) {
+            const s = JSON.parse(JSON.stringify(parent));
+            const drift = (val, amount) => val + (Math.random() - 0.5) * amount;
+
+            // 1. Aggressive Structural Drift
+            s.main.width = Math.max(1.5, drift(s.main.width, 1.2));
+            s.main.height = Math.max(1.5, drift(s.main.height, 1.2));
+            s.main.depth = Math.max(1.5, drift(s.main.depth, 1.2));
+            s.roofHeight = Math.max(0.2, drift(s.roofHeight, 1.0));
+
+            // 2. Extension Mutation
+            // Modify existing
+            s.extensions.forEach(ext => {
+                ext.w = Math.max(0.5, drift(ext.w, 0.8));
+                ext.h = Math.max(0.5, drift(ext.h, 0.8));
+                ext.d = Math.max(0.5, drift(ext.d, 0.8));
+                if(Math.random() < 0.3) ext.face = choice([0, 1, 2, 3]);
+                if(Math.random() < 0.3) ext.y = Math.max(0, drift(ext.y, 1.0));
+            });
+
+            // Add or Remove Extension (Higher probability for variety)
+            if(Math.random() < 0.4) {
+                if(s.extensions.length > 0 && Math.random() > 0.5) {
+                    s.extensions.pop();
+                } else if (s.extensions.length < 5) {
+                    s.extensions.push({
+                        w: randRange(0.8, 2.5), h: randRange(1.0, 3.5), d: randRange(0.8, 2.5),
+                        face: choice([0, 1, 2, 3]), align: randRange(-0.4, 0.4), y: 0
+                    });
+                }
+            }
+
+            // 3. Discrete Changes
+            if (Math.random() < 0.25) s.roofType = choice(['gable', 'pyramid', 'flat', 'slant']);
+            if (Math.random() < 0.30) s.windowCount = Math.max(1, Math.min(12, s.windowCount + choice([-2, 2])));
+            
+            s.seed = Math.random(); // Reroll superficial details
+            return s;
+        }
+
+        // --- Texture Generation (Procedural) ---
+        function createProceduralTextures() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            canvas.width = size;
+            canvas.height = size;
+
+            const noise = (opacity = 0.1) => {
+                for(let i=0; i<100000; i++) {
+                    ctx.fillStyle = `rgba(0,0,0,${Math.random() * opacity})`;
+                    ctx.fillRect(Math.random()*size, Math.random()*size, 2, 2);
+                }
+            };
+
+            // Wall
+            ctx.fillStyle = '#e0e0e0';
+            ctx.fillRect(0,0,size,size);
+            noise(0.15);
+            const wallTexture = new THREE.CanvasTexture(canvas);
+            wallTexture.colorSpace = THREE.SRGBColorSpace;
+
+            // Roof
+            ctx.fillStyle = '#8a5a44'; 
+            ctx.fillRect(0,0,size,size);
+            ctx.fillStyle = '#6d4230';
+            for(let y=0; y<size; y+=20) {
+                for(let x=0; x<size; x+=30) {
+                    if((y/20)%2===0) ctx.fillRect(x, y, 28, 18);
+                    else ctx.fillRect(x+15, y, 28, 18);
+                }
+            }
+            noise(0.2);
+            const roofTexture = new THREE.CanvasTexture(canvas);
+            roofTexture.wrapS = THREE.RepeatWrapping;
+            roofTexture.wrapT = THREE.RepeatWrapping;
+            roofTexture.colorSpace = THREE.SRGBColorSpace;
+
+            return { wallTexture, roofTexture };
+        }
+
+        const textures = createProceduralTextures();
+
+        // --- Materials ---
+        const materials = {
+            wall: new THREE.MeshStandardMaterial({ 
+                map: textures.wallTexture,
+                roughness: 0.9, metalness: 0.1 
+            }),
+            roof: new THREE.MeshStandardMaterial({ 
+                map: textures.roofTexture,
+                roughness: 0.8, bumpMap: textures.roofTexture, bumpScale: 0.02
+            }),
+            glass: new THREE.MeshStandardMaterial({ 
+                color: 0x88ccff, roughness: 0.1, metalness: 0.9,
+                emissive: 0x112233, emissiveIntensity: 0.2
+            }),
+            wood: new THREE.MeshStandardMaterial({
+                color: 0x5d4037, roughness: 0.9
+            }),
+            ground: new THREE.MeshStandardMaterial({
+                color: 0x222222, roughness: 1, metalness: 0
+            })
+        };
+
+        // --- Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x8cc2d9);
+        scene.fog = new THREE.FogExp2(0x8cc2d9, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 15, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // --- Lighting ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfff0dd, 1.5);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.1;
+        dirLight.shadow.camera.far = 50;
+        const d = 20;
+        dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
+        scene.add(dirLight);
+
+        // --- Architecture Builder ---
+
+        function createWindow(w, h, d) {
+            const geometry = new THREE.BoxGeometry(w, h, d/2);
+            const mesh = new THREE.Mesh(geometry, materials.glass);
+            mesh.castShadow = true;
+            return mesh;
+        }
+
+        // This replaces the old createHouse but takes a "Specification" object
+        function buildHouseFromSpec(spec) {
+            const houseGroup = new THREE.Group();
+            houseGroup.userData.spec = spec;
+            
+            let localSeed = spec.seed;
+            const random = () => {
+                localSeed = (localSeed * 9301 + 49297) % 233280;
+                return localSeed / 233280;
+            };
+            const localRandRange = (min, max) => min + random() * (max - min);
+
+            // 1. Main Body
+            const m = spec.main;
+            const bodyGeo = new THREE.BoxGeometry(m.width, m.height, m.depth);
+            const body = new THREE.Mesh(bodyGeo, materials.wall);
+            body.position.y = m.height / 2;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            houseGroup.add(body);
+
+            // 2. Roof Generation
+            let roof;
+            const rw = m.width; const rh = spec.roofHeight; const rd = m.depth;
+            const ry = m.height; // Base Y for roof
+
+            if (spec.roofType === 'gable') {
+                const shape = new THREE.Shape();
+                shape.moveTo(0,0);
+                shape.lineTo(rw/2 + 0.4, 0);
+                shape.lineTo(0, rh);
+                shape.lineTo(-(rw/2 + 0.4), 0);
+                shape.lineTo(0,0);
+                
+                const extrudeSettings = { depth: rd + 0.6, bevelEnabled: false };
+                const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                geo.translate(0, ry, -(rd+0.6)/2);
+                roof = new THREE.Mesh(geo, materials.roof);
+
+            } else if (spec.roofType === 'pyramid') {
+                const roofGeo = new THREE.ConeGeometry(Math.max(rw, rd) * 0.8, rh, 4);
+                roofGeo.rotateY(Math.PI / 4);
+                roof = new THREE.Mesh(roofGeo, materials.roof);
+                roof.position.y = ry + rh / 2;
+
+            } else if (spec.roofType === 'flat') {
+                const roofGeo = new THREE.BoxGeometry(rw + 0.4, 0.3, rd + 0.4);
+                roof = new THREE.Mesh(roofGeo, materials.wall);
+                roof.position.y = ry + 0.15;
+
+            } else {
+                // Slant
+                const shape = new THREE.Shape();
+                shape.moveTo(-rw/2 - 0.3, 0);
+                shape.lineTo(rw/2 + 0.3, 0);
+                shape.lineTo(rw/2 + 0.3, rh);
+                shape.lineTo(-rw/2 - 0.3, 0.3);
+                
+                const extrudeSettings = { depth: rd + 0.6, bevelEnabled: false };
+                const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                geo.translate(0, ry, -(rd+0.6)/2);
+                roof = new THREE.Mesh(geo, materials.roof);
+            }
+
+            if(roof) {
+                roof.castShadow = true;
+                roof.receiveShadow = true;
+                houseGroup.add(roof);
+            }
+
+            // 3. Extensions (Multiple Volumes)
+            spec.extensions.forEach(ext => {
+                const eMesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(ext.w, ext.h, ext.d), 
+                    materials.wall
+                );
+                
+                let ex=0, ez=0;
+                
+                // Positioning logic
+                if (ext.face === 0) { // Right
+                    ex = m.width/2 + ext.w/2 - 0.1;
+                    ez = ext.align * m.depth; 
+                } else if (ext.face === 1) { // Left
+                    ex = -(m.width/2 + ext.w/2 - 0.1);
+                    ez = ext.align * m.depth;
+                } else if (ext.face === 2) { // Front
+                    ez = m.depth/2 + ext.d/2 - 0.1;
+                    ex = ext.align * m.width;
+                } else { // Back
+                    ez = -(m.depth/2 + ext.d/2 - 0.1);
+                    ex = ext.align * m.width;
+                }
+
+                eMesh.position.set(ex, ext.h/2 + ext.y, ez);
+                eMesh.castShadow = true;
+                eMesh.receiveShadow = true;
+                houseGroup.add(eMesh);
+                
+                // Optional: Roof for extension? Simple flat roof for now
+                const eRoof = new THREE.Mesh(
+                    new THREE.BoxGeometry(ext.w + 0.2, 0.1, ext.d + 0.2),
+                    materials.wall
+                );
+                eRoof.position.set(ex, ext.h + ext.y + 0.05, ez);
+                houseGroup.add(eRoof);
+            });
+
+            // 4. Windows
+            // Add windows to main body
+            for(let i=0; i<spec.windowCount; i++) {
+                const win = createWindow(0.5, 0.8, 0.1);
+                // Random face 
+                const face = Math.floor(localRandRange(0, 4));
+                const offset = localRandRange(-0.4, 0.4);
+                const y = localRandRange(1, m.height - 0.5);
+                
+                if(face === 0) { win.position.set(m.width/2+0.05, y, offset * m.depth); win.rotation.y = Math.PI/2; }
+                else if(face === 1) { win.position.set(-m.width/2-0.05, y, offset * m.depth); win.rotation.y = -Math.PI/2; }
+                else if(face === 2) { win.position.set(offset * m.width, y, m.depth/2+0.05); }
+                else { win.position.set(offset * m.width, y, -m.depth/2-0.05); win.rotation.y = Math.PI; }
+
+                houseGroup.add(win);
+            }
+
+            // 5. Door (Always on front for main body)
+            const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.5, 0.1), materials.wood);
+            door.position.set(0, 0.75, m.depth/2 + 0.05);
+            houseGroup.add(door);
+
+            return houseGroup;
+        }
+
+        // --- Grid Management ---
+        const pivotGroup = new THREE.Group(); 
+        scene.add(pivotGroup);
+
+        function populateGrid(specs) {
+            // Clear existing
+            HOUSES.forEach(h => {
+                // Clean memory for geometries? (Optional for small app, but good practice)
+                h.traverse(c => { if(c.geometry) c.geometry.dispose(); });
+                pivotGroup.remove(h.parent);
+            });
+            HOUSES = [];
+            pivotGroup.clear();
+
+            let offset = (GRID_SIZE * SPACING) / 2 - SPACING / 2;
+            
+            specs.forEach((spec, index) => {
+                const x = Math.floor(index / GRID_SIZE);
+                const z = index % GRID_SIZE;
+                
+                const house = buildHouseFromSpec(spec);
+                
+                const px = (x * SPACING) - offset;
+                const pz = (z * SPACING) - offset;
+                
+                const container = new THREE.Group();
+                container.position.set(px, 0, pz);
+                container.add(house);
+                
+                // Add collision mesh for clearer raycasting if needed, but group works if recursive
+                HOUSES.push(house); 
+                pivotGroup.add(container);
+            });
+        }
+
+        // --- Initialization ---
+        // Ground Plane
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), materials.ground);
+        plane.rotation.x = -Math.PI / 2;
+        plane.receiveShadow = true;
+        scene.add(plane);
+        scene.add(new THREE.GridHelper(80, 80, 0x444444, 0x222222));
+
+        // Start Gen 0
+        const initialSpecs = Array.from({length: 16}, generateRandomSpec);
+        populateGrid(initialSpecs);
+        document.getElementById('loading').style.opacity = 0;
+
+
+        // --- Evolution Interaction ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // Track mouse down to distinguish between click and drag
+        let mouseDownPos = new THREE.Vector2();
+        
+        window.addEventListener('mousedown', (event) => {
+            mouseDownPos.set(event.clientX, event.clientY);
+        });
+
+        window.addEventListener('click', (event) => {
+            // Check if clicking UI
+            if (event.target.closest('#ui') || event.target.closest('#reset-btn')) return;
+
+            // Check if mouse moved significantly (drag vs click)
+            const mouseUpPos = new THREE.Vector2(event.clientX, event.clientY);
+            if (mouseDownPos.distanceTo(mouseUpPos) > 5) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Intersect with houses
+            // We need to intersect the children of the pivot groups
+            const intersects = raycaster.intersectObjects(HOUSES, true);
+
+            if (intersects.length > 0) {
+                // Find the root house group from the clicked mesh
+                let target = intersects[0].object;
+                while(target.parent && target.parent.type !== 'Scene' && !target.userData.spec) {
+                    target = target.parent;
+                }
+
+                if (target.userData.spec) {
+                    evolveGeneration(target.userData.spec);
+                }
+            }
+        });
+
+        function evolveGeneration(parentSpec) {
+            GENERATION++;
+            document.getElementById('gen-counter').innerText = `Generation ${GENERATION}`;
+            
+            // Create 16 mutants
+            const newSpecs = Array.from({length: 16}, () => mutateSpec(parentSpec));
+            populateGrid(newSpecs);
+        }
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            GENERATION = 0;
+            document.getElementById('gen-counter').innerText = `Generation 0`;
+            const specs = Array.from({length: 16}, generateRandomSpec);
+            populateGrid(specs);
+        });
+
+
+        // --- Animation Loop ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05;
+
+        const rotYInput = document.getElementById('rotY');
+        const sunYInput = document.getElementById('sunY');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Apply UI Rotation
+            const targetRotY = parseFloat(rotYInput.value);
+            HOUSES.forEach(h => {
+                h.rotation.y = THREE.MathUtils.lerp(h.rotation.y, targetRotY, 0.1);
+            });
+
+            // Update Sun
+            const sunH = parseFloat(sunYInput.value);
+            const time = Date.now() * 0.0001;
+            dirLight.position.x = Math.sin(time) * 10;
+            dirLight.position.z = Math.cos(time) * 10;
+            dirLight.position.y = 5 + sunH * 30;
+            dirLight.lookAt(0,0,0);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
