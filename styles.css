@@ -1,108 +1,85 @@
-:root {
-    --bg: #f4f4f4;
-    --border: #ccc;
-    --text: #555;
-    --link: #777;
-
-    --padd: 10px;
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-html {
-    height: 100%;
-    background-color: var(--border);
-}
-
-a, a:visited {
-    color: var(--link);
-    text-decoration: none;
-    border-bottom: dotted 1px var(--link);
-}
-
 body {
-    font-family: "Helvetica Neue", Arial, sans-serif;
-    background-color: var(--bg);
-    color: var(--text);
-    border-left: solid 1px var(--border);
-    border-right: solid 1px var(--border);
-    height: 100%;
     display: flex;
-    flex-direction: column;
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-main {
-    flex: 1;
-    overflow-y: auto;
-    padding-bottom: var(--padd);
-}
-
-h1 {
-    margin: 0;
-    padding: var(--padd);
-    border-bottom: solid 1px var(--border);
-    text-transform: uppercase;
-    font-size: x-large;
-    display: flex;
-    gap: var(--padd);
     align-items: center;
+    justify-content: center;
 }
 
-h2 {
-    margin: 0;
-    padding: var(--padd);
-    border-bottom: solid 1px var(--border);
+a,
+a:visited {
+    color: var(--text);
+    text-decoration: none;
+}
+
+.grid-container {
+    display: grid;
+    height: 100vh;
+    width: 100vw;
+    max-width: 600px;
+    max-height: 400px;
+
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: repeat(9, minmax(0, 1fr));
+    gap: var(--padd);
+}
+
+.cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eee;
     text-transform: uppercase;
+    gap: var(--padd);
 }
 
-.def {
-    font-size:x-small;
+.cell:hover {
+    background: #ddd;
+    color: white;
 }
 
-.vibe-container {
-    display: flex;
-    border-bottom: solid 1px var(--border);
+.cell:hover a {
+    color: white;
 }
 
-.vibe-description {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    border-left: solid 1px var(--border);
+.cell:hover path {
+    fill: white;
 }
 
-.vibe-description p {
-    flex: 1;
-    padding: var(--padd);
+.main {
+    grid-column: 3 / span 3;
+    grid-row: 2 / span 2;
+
+    font-size: 16px;
+    font-weight: bold;
 }
 
-.vibe-description .footer {
-    border-top: solid 1px var(--border);
-    padding: var(--padd);
-    display: flex;
-    justify-content: space-between;
+.vibes {
+    grid-column: 6 / span 8;
+    grid-row: 1 / span 4;
+
+    font-size: 64px;
+    font-weight: bold;
 }
 
-.screenshot {
-    border: solid 1px var(--border);
-    width: 200px;
-    height: 200px;
-    object-fit: cover;
-    object-position: center;
-    display: block;
-    margin: var(--padd);
-    filter: grayscale(100%);
+.work {
+    grid-column: 1 / span 5;
+    grid-row: 4 / span 4;
 }
 
-@media (max-width: 600px) {
-  .screenshot {
-    width: 100px;
-    height: 100px;
-  }
+.photography {
+    grid-column: 6 / span 3;
+    grid-row: 5 / span 4;
+}
+
+.writing {
+    grid-column: 9 / span 3;
+    grid-row: 5 / span 4;
+}
+
+.socials {
+    grid-column: 2 / span 4;
+    grid-row: 8 / span 3;
+}
+
+#x-logo {
+    fill: black;
 }

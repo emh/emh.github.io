@@ -1,0 +1,28 @@
+:root {
+    --bg: #f4f4f4;
+    --border: #ccc;
+    --text: #555;
+    --link: #777;
+
+    --padd: 10px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    height: 100%;
+    background-color: var(--border);
+}
+
+body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    border-left: solid 1px var(--border);
+    border-right: solid 1px var(--border);
+    height: 100%;
+}
