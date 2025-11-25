@@ -72,7 +72,6 @@ h2 {
     object-position: center;
     display: block;
     margin: var(--padd);
-    filter: grayscale(100%);
 }
 
 @media (max-width: 600px) {
