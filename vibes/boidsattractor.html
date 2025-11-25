@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Boids in 2D Canvas</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; color: #aaa; font-family: monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            /* Removed pointer-events: none so sliders work */
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            max-width: 250px;
+            user-select: none; /* Prevent text selection while dragging */
+        }
+        .control-group { margin-bottom: 8px; }
+        label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px; }
+        input[type=range] { width: 100%; cursor: pointer; display: block; }
+        hr { border: 0; border-top: 1px solid #333; margin: 10px 0; }
+        button {
+            width: 100%;
+            background: #222;
+            color: #ddd;
+            border: 1px solid #444;
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        button:hover { background: #333; }
+        input[type=checkbox] { width: auto; vertical-align: middle; margin-right: 5px; }
+        .checkbox-label { justify-content: flex-start; align-items: center; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h3>Lorenz Attractor Swarm</h3>
+        <p style="margin: 5px 0;">Red: Leader (Lorenz Math)</p>
+        <p style="margin: 5px 0;">Cyan: Boids (Flocking)</p>
+        
+        <hr>
+
+        <div class="control-group">
+            <label>Separation <span id="val_sep">4.0</span></label>
+            <input type="range" id="sep" min="0" max="10" step="0.1" value="4.0">
+        </div>
+        <div class="control-group">
+            <label>Alignment <span id="val_ali">1.0</span></label>
+            <input type="range" id="ali" min="0" max="10" step="0.1" value="1.0">
+        </div>
+        <div class="control-group">
+            <label>Cohesion <span id="val_coh">0.1</span></label>
+            <input type="range" id="coh" min="0" max="10" step="0.1" value="0.1">
+        </div>
+        <div class="control-group">
+            <label>Seek Leader <span id="val_seek">2.0</span></label>
+            <input type="range" id="seek" min="0" max="10" step="0.1" value="2.0">
+        </div>
+
+        <hr>
+
+        <div class="control-group">
+            <label>Leader Speed <span id="val_speed">1.0</span></label>
+            <input type="range" id="speed" min="0.1" max="3.0" step="0.1" value="1.0">
+        </div>
+        <div class="control-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="follow" checked> Follow Leader
+            </label>
+        </div>
+
+        <button id="restart">Restart Simulation</button>
+
+        <p style="font-size: 11px; color: #666; margin-top: 10px;"><em>Click & Drag to Rotate</em></p>
+        <p style="font-size: 11px; color: #666;"><em>Scroll to Zoom</em></p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- CONFIGURATION ---
+        const BOID_COUNT = 150;
+        // Increased Speed and Force limits so they can keep up with the leader
+        const SPEED_LIMIT = 10; 
+        const FORCE_LIMIT = 0.5;
+        
+        // Flocking Weights (Adjusted defaults to prevent clustering)
+        let W_SEP = 4.0;   // High separation
+        let W_ALI = 1.0;
+        let W_COH = 0.1;   // Very low cohesion to prevent balling up
+        let W_SEEK = 2.0;  // Moderate seeking
+        let LEADER_SPEED = 1.0;
+        let FOLLOW_LEADER = true;
+
+        // Distances
+        const NEIGHBOR_DIST = 60;
+        const SEPARATION_DIST = 40; // Larger personal bubble
+
+        // Lorenz Constants
+        const SIGMA = 10;
+        const RHO = 28;
+        const BETA = 8/3;
+        const DT = 0.015;
+        const LORENZ_SCALE = 40; // Increased scale from 15
+
+        // --- SETUP ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let cx, cy;
+
+        // Camera / Interaction
+        let angleX = 0;
+        let angleY = 0;
+        let zoom = 1.0; // Zoom factor
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // --- CLASSES ---
+
+        class Vector3 {
+            constructor(x, y, z) {
+                this.x = x || 0;
+                this.y = y || 0;
+                this.z = z || 0;
+            }
+            add(v) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
+            sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
+            mult(n) { this.x *= n; this.y *= n; this.z *= n; return this; }
+            div(n) { if(n!==0){this.x /= n; this.y /= n; this.z /= n;} return this; }
+            mag() { return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
+            normalize() {
+                let m = this.mag();
+                if (m > 0) this.div(m);
+                return this;
+            }
+            limit(max) {
+                if (this.mag() > max) {
+                    this.normalize();
+                    this.mult(max);
+                }
+                return this;
+            }
+            dist(v) {
+                let dx = this.x - v.x;
+                let dy = this.y - v.y;
+                let dz = this.z - v.z;
+                return Math.sqrt(dx*dx + dy*dy + dz*dz);
+            }
+            copy() { return new Vector3(this.x, this.y, this.z); }
+            static add(v1, v2) { return new Vector3(v1.x+v2.x, v1.y+v2.y, v1.z+v2.z); }
+            static sub(v1, v2) { return new Vector3(v1.x-v2.x, v1.y-v2.y, v1.z-v2.z); }
+        }
+
+        class Boid {
+            constructor(isLeader = false) {
+                this.isLeader = isLeader;
+                // Random start pos
+                this.pos = new Vector3(
+                    (Math.random() - 0.5) * 1000,
+                    (Math.random() - 0.5) * 1000,
+                    (Math.random() - 0.5) * 1000
+                );
+                this.vel = new Vector3(
+                    Math.random() - 0.5,
+                    Math.random() - 0.5,
+                    Math.random() - 0.5
+                ).normalize().mult(SPEED_LIMIT);
+                this.acc = new Vector3(0, 0, 0);
+
+                // Lorenz state
+                if (isLeader) {
+                    this.lorenz = { x: 0.1, y: 0, z: 0 };
+                    this.trail = [];
+                }
+            }
+
+            updateLorenz() {
+                let x = this.lorenz.x;
+                let y = this.lorenz.y;
+                let z = this.lorenz.z;
+
+                let dt = DT * LEADER_SPEED;
+
+                let dx = (SIGMA * (y - x)) * dt;
+                let dy = (x * (RHO - z) - y) * dt;
+                let dz = (x * y - BETA * z) * dt;
+
+                this.lorenz.x += dx;
+                this.lorenz.y += dy;
+                this.lorenz.z += dz;
+
+                // Scale up for visualization
+                let scale = LORENZ_SCALE;
+                this.pos.x = this.lorenz.x * scale;
+                this.pos.y = this.lorenz.y * scale;
+                this.pos.z = (this.lorenz.z - 25) * scale; // Center Z around 0
+
+                // Keep trail
+                this.trail.push({x: this.pos.x, y: this.pos.y, z: this.pos.z});
+                if (this.trail.length > 200) this.trail.shift();
+            }
+
+            flock(boids, leaderPos) {
+                let sep = new Vector3();
+                let ali = new Vector3();
+                let coh = new Vector3();
+                let count = 0;
+
+                for (let other of boids) {
+                    if (other === this || other.isLeader) continue;
+                    let d = this.pos.dist(other.pos);
+                    if (d > 0 && d < NEIGHBOR_DIST) {
+                        // Ali
+                        ali.add(other.vel);
+                        // Coh
+                        coh.add(other.pos);
+                        // Sep
+                        if (d < SEPARATION_DIST) {
+                            let diff = Vector3.sub(this.pos, other.pos);
+                            diff.normalize();
+                            diff.div(d);
+                            sep.add(diff);
+                        }
+                        count++;
+                    }
+                }
+
+                if (count > 0) {
+                    ali.div(count).normalize().mult(SPEED_LIMIT).sub(this.vel).limit(FORCE_LIMIT);
+                    coh.div(count).sub(this.pos).normalize().mult(SPEED_LIMIT).sub(this.vel).limit(FORCE_LIMIT);
+                    sep.div(count).normalize().mult(SPEED_LIMIT).sub(this.vel).limit(FORCE_LIMIT);
+                }
+
+                // Seek Leader
+                if (FOLLOW_LEADER) {
+                    let seek = Vector3.sub(leaderPos, this.pos);
+                    seek.normalize().mult(SPEED_LIMIT).sub(this.vel).limit(FORCE_LIMIT);
+                    seek.mult(W_SEEK);
+                    this.applyForce(seek);
+                }
+
+                sep.mult(W_SEP);
+                ali.mult(W_ALI);
+                coh.mult(W_COH);
+
+                this.applyForce(sep);
+                this.applyForce(ali);
+                this.applyForce(coh);
+            }
+
+            applyForce(f) {
+                this.acc.add(f);
+            }
+
+            update() {
+                this.vel.add(this.acc);
+                this.vel.limit(SPEED_LIMIT);
+                this.pos.add(this.vel);
+                this.acc.mult(0); // Reset acc
+            }
+        }
+
+        // --- MAIN LOGIC ---
+
+        let boids = [];
+        let leader;
+        let animationId;
+
+        function setupUI() {
+            // Stop mouse events on UI from affecting the camera
+            const ui = document.getElementById('ui');
+            ui.addEventListener('mousedown', e => e.stopPropagation());
+            ui.addEventListener('touchstart', e => e.stopPropagation());
+            ui.addEventListener('wheel', e => e.stopPropagation());
+
+            const bind = (id, setter) => {
+                const el = document.getElementById(id);
+                const valEl = document.getElementById('val_' + id);
+                el.addEventListener('input', e => {
+                    const v = parseFloat(e.target.value);
+                    setter(v);
+                    if (valEl) valEl.textContent = v.toFixed(1);
+                });
+            };
+
+            bind('sep', v => W_SEP = v);
+            bind('ali', v => W_ALI = v);
+            bind('coh', v => W_COH = v);
+            bind('seek', v => W_SEEK = v);
+            bind('speed', v => LEADER_SPEED = v);
+
+            document.getElementById('follow').addEventListener('change', e => {
+                FOLLOW_LEADER = e.target.checked;
+            });
+            
+            document.getElementById('restart').addEventListener('click', () => {
+                init();
+            });
+        }
+
+        function init() {
+            if (animationId) cancelAnimationFrame(animationId);
+            resize();
+            
+            boids = [];
+            leader = new Boid(true);
+            boids.push(leader);
+            for(let i=0; i<BOID_COUNT; i++) {
+                boids.push(new Boid(false));
+            }
+            animate();
+        }
+
+        function rotatePoint(x, y, z) {
+            // Rotate Y
+            let cosY = Math.cos(angleY);
+            let sinY = Math.sin(angleY);
+            let x1 = x * cosY - z * sinY;
+            let z1 = z * cosY + x * sinY;
+            // Rotate X
+            let cosX = Math.cos(angleX);
+            let sinX = Math.sin(angleX);
+            let y2 = y * cosX - z1 * sinX;
+            let z2 = z1 * cosX + y * sinX;
+            return { x: x1, y: y2, z: z2 };
+        }
+
+        function project(x, y, z) {
+            const fov = 800;
+            const viewerDist = 1200;
+            // Apply rotation
+            let r = rotatePoint(x, y, z);
+            // Project with zoom
+            let scale = (fov / (viewerDist + r.z)) * zoom;
+            let x2d = r.x * scale + cx;
+            let y2d = r.y * scale + cy;
+            return { x: x2d, y: y2d, scale: scale, z: r.z };
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.4)'; // Trails effect
+            ctx.fillRect(0, 0, width, height);
+
+            // 1. Logic
+            leader.updateLorenz();
+            for(let b of boids) {
+                if(!b.isLeader) {
+                    b.flock(boids, leader.pos);
+                    b.update();
+                }
+            }
+
+            // 2. Rendering (Painter's Algorithm: Sort by Z)
+            // We need a render list to sort without messing up simulation indices
+            let renderList = boids.map(b => {
+                let p = project(b.pos.x, b.pos.y, b.pos.z);
+                return { 
+                    boid: b, 
+                    x: p.x, 
+                    y: p.y, 
+                    scale: p.scale, 
+                    depth: p.z 
+                };
+            });
+
+            // Sort: far (high Z) to near (low Z)
+            renderList.sort((a, b) => b.depth - a.depth);
+
+            // Draw Leader Trail first
+            if (leader.trail.length > 1) {
+                ctx.beginPath();
+                for(let i=0; i<leader.trail.length; i++) {
+                    let t = leader.trail[i];
+                    let p = project(t.x, t.y, t.z);
+                    if(i==0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.strokeStyle = 'rgba(255, 50, 50, 0.2)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Draw Particles
+            for (let r of renderList) {
+                let size = 3 * r.scale;
+                
+                // Opacity based on depth for fog effect
+                let alpha = Math.max(0.1, Math.min(1, 800 / (r.depth + 1000)));
+                
+                if (r.boid.isLeader) {
+                    ctx.fillStyle = `rgba(255, 50, 50, ${alpha})`;
+                    size *= 2.5;
+                } else {
+                    ctx.fillStyle = `rgba(0, 255, 255, ${alpha})`;
+                }
+
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- UTILS ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            cx = width / 2;
+            cy = height / 2;
+        }
+
+        window.addEventListener('resize', resize);
+
+        // Mouse Controls
+        window.addEventListener('mousedown', e => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mousemove', e => {
+            if (isDragging) {
+                let dx = e.clientX - lastMouseX;
+                let dy = e.clientY - lastMouseY;
+                angleY += dx * 0.005;
+                angleX += dy * 0.005;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        // Zoom Control
+        window.addEventListener('wheel', e => {
+            e.preventDefault();
+            zoom -= e.deltaY * 0.001;
+            zoom = Math.max(0.1, Math.min(zoom, 5.0));
+        }, { passive: false });
+
+        // Touch Controls
+        window.addEventListener('touchstart', e => {
+            if(e.touches.length === 1) {
+                isDragging = true;
+                lastMouseX = e.touches[0].clientX;
+                lastMouseY = e.touches[0].clientY;
+            }
+        }, {passive: false});
+        window.addEventListener('touchend', () => isDragging = false);
+        window.addEventListener('touchmove', e => {
+            if (isDragging && e.touches.length === 1) {
+                e.preventDefault(); 
+                let dx = e.touches[0].clientX - lastMouseX;
+                let dy = e.touches[0].clientY - lastMouseY;
+                angleY += dx * 0.005;
+                angleX += dy * 0.005;
+                lastMouseX = e.touches[0].clientX;
+                lastMouseY = e.touches[0].clientY;
+            }
+        }, {passive: false});
+
+        setupUI();
+        init();
+
+    </script>
+</body>
+</html>
