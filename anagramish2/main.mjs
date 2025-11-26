@@ -84,7 +84,7 @@ const handleKey = (key) => {
             state.mistakes += 1;
             state.board.splice(state.position.y, 1, emptyRow());
             state.position.x = 0;
-        } else if (state.position.x === 4 && y === state.board.length - 2) { //} && compareWords(state.board[y], state.board[y + 1]) === 4) {
+        } else if (state.position.x === 4 && y === state.board.length - 2 && compareWords(state.board[y], state.board[y + 1]) === 4) {
             state.position = null;
             state.finishedAt = Date.now();
             state.state = STATES.FINISHED;
