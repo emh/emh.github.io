@@ -1,13 +1,25 @@
 import { get, set } from './html.mjs';
 import { compareWords, emptyBoard, emptyRow } from './utils.js';
 
+const STATES = {
+    WELCOME: 'welcome',
+    PLAYING: 'playing',
+    PRACTICE: 'practice',
+    FINISHED: 'finished'
+};
+
 const state = {
+    puzzleNumber: 1,
     pair: [[], []],
+    mistakes: 0,
     board: emptyBoard(),
     position: { x: 0, y: 1 },
-    isPlaying: false,
-    isPractice: false
+    state: STATES.WELCOME,
+    startedAt: null,
+    endedAt: null
 };
+
+const isPlaying = () => state.state === STATES.PLAYING || state.state === STATES.PRACTICE;
 
 const rnd = (n) => Math.floor(Math.random() * n);
 
@@ -64,21 +76,19 @@ const handleKey = (key) => {
 
         if (state.position.x === 4 && !dictionary.includes(state.board[y].join(''))) {
             renderMessage(`${state.board[y].join('')} is not in our dictionary`);
+            state.mistakes += 1;
             state.board.splice(state.position.y, 1, emptyRow());
             state.position.x = 0;
         } else if (state.position.x === 4 && compareWords(state.board[y], state.board[y - 1]) !== 4) {
             renderMessage(`${state.board[y].join('')} can only differ by one letter from ${state.board[y - 1].join('')}`);
+            state.mistakes += 1;
             state.board.splice(state.position.y, 1, emptyRow());
             state.position.x = 0;
-        } else if (state.position.x === 4 && y === state.board.length - 2 && compareWords(state.board[y], state.board[y + 1]) === 4) {
-            renderMessage('You win!');
-
+        } else if (state.position.x === 4 && y === state.board.length - 2) { //} && compareWords(state.board[y], state.board[y + 1]) === 4) {
             state.position = null;
-
-            setTimeout(() => {
-                state.isPlaying = false;
-                render();
-            }, 2000);
+            state.finishedAt = Date.now();
+            state.state = STATES.FINISHED;
+            render();
         } else {
             state.position.x += 1;
 
@@ -108,7 +118,7 @@ const renderKeyboard = () => {
     const footer = get('footer');
     footer.innerHTML = '';
 
-    if (!state.isPlaying) {
+    if (!isPlaying()) {
         return;
     }
 
@@ -124,7 +134,6 @@ const renderKeyboard = () => {
 const killKeyboard = () => {
     get('footer').innerHTML = '';
     get('footer').classList.remove('visible');
-    get('#back').style.display = 'none';
 };
 
 const renderWelcome = (app) => {
@@ -138,8 +147,8 @@ const renderWelcome = (app) => {
         state.pair = randomPair();
         state.board = resetBoard(state.pair);
         state.position = { x: 0, y: 1 };
-        state.isPlaying = true;
-        state.isPractice = false;
+        state.state = STATES.PLAYING;
+        state.startedAt = Date.now();
         renderKeyboard();
         render();
     });
@@ -148,27 +157,68 @@ const renderWelcome = (app) => {
         state.pair = randomPair();
         state.board = resetBoard(state.pair);
         state.position = { x: 0, y: 1 };
-        state.isPlaying = true;
-        state.isPractice = true;
+        state.state = STATES.PRACTICE;
+        state.startedAt = Date.now();
         renderKeyboard();
         render();
     });
 };
 
+const renderFinish = (app) => {
+    killKeyboard();
+
+    const template = get('#finish-template');
+    app.innerHTML = '';
+    app.appendChild(template.content.cloneNode(true));
+
+    get('#time').textContent = Math.floor((state.finishedAt - state.startedAt) / 1000);
+    get('#mistakes').textContent = state.mistakes;
+    get('#words').textContent = state.board.length - 2;
+
+    const boardEl = renderBoard(state.board);
+
+    get('#board-container').appendChild(boardEl);
+
+
+    get('#share').addEventListener('click', () => {
+        const share = [
+            `Anagramish #${state.puzzleNumber}`,
+            ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟨' : state.pair[1].includes(c) ? '🟧' : '🟦').join(''))
+        ];
+
+        const data = {
+            text: share.join('\n')
+        };
+
+        if (navigator.canShare && navigator.canShare(data)) {
+            navigator.share(data);
+        } else {
+            renderMessage('Share copied to clipboard');
+
+            navigator.clipboard.writeText(data.text);
+        }
+    });
+};
+
+const getPositionClass = (y, x) => state.position?.x === x && state.position?.y === y ? 'current' : '';
+const getCharClass = (char) => char === null ? 'normal' : state.pair[0].includes(char) ? 'start' : state.pair[1].includes(char) ? 'end' : 'misc';
+
+const renderCell = (char, y, x) => set(`div.${[getPositionClass(y, x), getCharClass(char), 'cell'].join('.')}`, {}, char);
+const renderRow = (chars, y) => chars.map((c, x) => renderCell(c, y, x));
+const renderBoard = (board) => set('div.board', {}, ...board.flatMap((row, y) => renderRow(row, y)));
+
 const render = () => {
     const app = get('main');
 
-    if (!state.isPlaying) {
+    if (state.state === STATES.WELCOME) {
+        get('#back').style.display = 'none';
         renderWelcome(app);
         return;
+    } else if (state.state === STATES.FINISHED) {
+        get('#back').style.display = 'inline-block';
+        renderFinish(app);
+        return;
     }
-
-    const getPositionClass = (y, x) => state.position?.x === x && state.position?.y === y ? 'current' : '';
-    const getCharClass = (char) => char === null ? 'normal' : state.pair[0].includes(char) ? 'start' : state.pair[1].includes(char) ? 'end' : 'misc';
-
-    const renderCell = (char, y, x) => set(`div.${[getPositionClass(y, x), getCharClass(char), 'cell'].join('.')}`, {}, char);
-    const renderRow = (chars, y) => chars.map((c, x) => renderCell(c, y, x));
-    const renderBoard = (board) => set('div.board', {}, ...board.flatMap((row, y) => renderRow(row, y)));
 
     app.innerHTML = '';
 
@@ -180,8 +230,7 @@ const render = () => {
 };
 
 get('#back').addEventListener('click', () => {
-    state.isPlaying = false;
-    killKeyboard();
+    state.state = STATES.WELCOME;
     render();
 });
 
