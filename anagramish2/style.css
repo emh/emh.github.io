@@ -1,4 +1,8 @@
 :root {
+    --start: rgb(107, 170, 232);
+    --end: rgb(230, 149, 56);
+    --misc: rgb(217, 217, 217);
+
     @media (prefers-color-scheme: dark) {
         --fg: #E0E0E0;
         --bg: #222222;
@@ -172,16 +176,16 @@ button#back.visible {
 }
 
 button#play {
-    background-color: yellow;
+    background-color: var(--start);
     display: none;
 }
 
 button#share {
-    background-color: yellow;
+    background-color: var(--start);
 }
 
 button#practice {
-    background-color: orange;
+    background-color: var(--end);
 }
 
 .board {
@@ -252,15 +256,15 @@ button:hover {
 }
 
 .start {
-    background: yellow;
+    background: var(--start)
 }
 
 .end {
-    background: orange;
+    background: var(--end);
 }
 
 .misc {
-    background: lightblue;
+    background: var(--misc);
 }
 
 h2 {

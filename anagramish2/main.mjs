@@ -183,7 +183,7 @@ const renderFinish = (app) => {
     get('#share').addEventListener('click', () => {
         const share = [
             `Anagramish #${state.puzzleNumber}`,
-            ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟨' : state.pair[1].includes(c) ? '🟧' : '🟦').join(''))
+            ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟦' : state.pair[1].includes(c) ? '🟧' : '⬜️').join(''))
         ];
 
         const data = {
