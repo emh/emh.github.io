@@ -51,7 +51,7 @@ const colorKeyboard = () => {
     get('.key').forEach((el) => {
         const key = el.dataset.key;
 
-        if (key === 'Backspace') {
+        if (key === 'Backspace' || key === 'Enter') {
             el.classList.add('special');
         } else if (state.pair[0].includes(key)) {
             el.classList.add('start');
@@ -69,40 +69,37 @@ const handleKey = (key) => {
             state.board[state.position.y][state.position.x - 1] = null;
             state.position.x -= 1;
         }
-    } else if (key >= 'a' && key <= 'z') {
+    } else if (key >= 'a' && key <= 'z' && state.position.x <= 4) {
         const { x, y } = state.position;
 
         state.board[y][x] = key;
+        state.position.x += 1;
+    } else if (key === 'Enter' && state.position.x === 5) {
+        const { y } = state.position;
 
-        if (state.position.x === 4 && !dictionary.includes(state.board[y].join(''))) {
+        if (!dictionary.includes(state.board[y].join(''))) {
             renderMessage(`${state.board[y].join('')} is not in our dictionary`);
             state.mistakes += 1;
             state.board.splice(state.position.y, 1, emptyRow());
             state.position.x = 0;
-        } else if (state.position.x === 4 && compareWords(state.board[y], state.board[y - 1]) !== 4) {
+        } else if (compareWords(state.board[y], state.board[y - 1]) !== 4) {
             renderMessage(`${state.board[y].join('')} can only differ by one letter from ${state.board[y - 1].join('')}`);
             state.mistakes += 1;
             state.board.splice(state.position.y, 1, emptyRow());
             state.position.x = 0;
-        } else if (state.position.x === 4 && y === state.board.length - 2 && compareWords(state.board[y], state.board[y + 1]) === 4) {
+        } else if (y === state.board.length - 2 && compareWords(state.board[y], state.board[y + 1]) === 4) {
             state.position = null;
             state.finishedAt = Date.now();
             state.state = STATES.FINISHED;
-            render();
         } else {
-            state.position.x += 1;
-
-            if (state.position.x >= 5) {
-                state.position.x = 0;
-                state.position.y += 1;
-            }
+            state.position.x = 0;
+            state.position.y += 1;
 
             if (state.position.y > state.board.length - 2) {
                 state.board.splice(state.board.length - 1, 0, emptyRow());
             }
         }
     }
-
     render();
 };
 
