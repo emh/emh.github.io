@@ -1,7 +1,7 @@
 :root {
     --start: rgb(107, 170, 232);
     --end: rgb(230, 149, 56);
-    --misc: rgb(217, 217, 217);
+    --misc: rgb(230, 230, 230);
 
     @media (prefers-color-scheme: dark) {
         --fg: #E0E0E0;
@@ -129,6 +129,7 @@ main {
     flex-direction: column;
     align-items: center;
     overscroll-behavior: contain;
+    padding-bottom: 20px;
 }
 
 main section {
@@ -146,6 +147,7 @@ main section {
 }
 
 #play, #share, #practice {
+    flex: 1;
     height: 32px;
     border: solid 1px var(--fg);
     border-radius: 8px;
@@ -177,7 +179,6 @@ button#back.visible {
 
 button#play {
     background-color: var(--start);
-    display: none;
 }
 
 button#share {

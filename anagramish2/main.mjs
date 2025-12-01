@@ -4,29 +4,102 @@ import { compareWords, emptyBoard, emptyRow } from './utils.js';
 const STATES = {
     WELCOME: 'welcome',
     PLAYING: 'playing',
-    PRACTICE: 'practice',
     FINISHED: 'finished'
 };
 
 const state = {
     puzzleNumber: 1,
     pair: [[], []],
+    isPractice: false,
     mistakes: 0,
     board: emptyBoard(),
     position: { x: 0, y: 1 },
     state: STATES.WELCOME,
-    startedAt: null,
-    endedAt: null
+    numSeconds: 0
 };
-
-const isPlaying = () => state.state === STATES.PLAYING || state.state === STATES.PRACTICE;
 
 const rnd = (n) => Math.floor(Math.random() * n);
 
 const dictionary = await fetch('./dictionary.txt').then((r) => r.text()).then((text) => text.split('\n'));
 const pairs = await fetch('./pairs.txt').then((r) => r.text()).then((text) => text.split('\n').map((line) => line.split(',')));
 
+const key = () => {
+    const d = new Date(); // local time
+
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const calcIndex = (seed, n) => {
+    const f = Math.PI - 3; // need a number > 0 and < 1
+    const s = seed.valueOf() / 1000;
+    const r = (s * f) - Math.floor(s * f);
+    const i = Math.floor(n * r);
+
+    return i;
+};
+
 const randomPair = () => pairs[rnd(pairs.length)];
+
+const todaysPair = () => pairs[calcIndex(new Date(key()), pairs.length)];
+
+export const getHistory = () => JSON.parse(localStorage.getItem('history')) ?? {};
+
+export const putHistory = (history) => localStorage.setItem('history', JSON.stringify(history));
+
+const loadGame = () => getHistory()[key()];
+
+const initTodaysGame = () => {
+    const pair = todaysPair();
+
+    return {
+        pair,
+        numSeconds: 0,
+        words: [],
+        mistakes: 0
+    };
+};
+
+const saveGame = (game) => {
+    const history = getHistory();
+
+    history[key()] = game;
+
+    putHistory(history);
+};
+
+const updateSavedGame = () => {
+    if (state.isPractice) {
+        return;
+    }
+
+    const game = loadGame();
+
+    game.pair = state.pair;
+    game.numSeconds = state.numSeconds;
+    game.state = state.state;
+
+    state.board.slice(1, -1).forEach((row, i) => {
+        if (state.position === null || i < state.position.y - 1) {
+            game.words[i] = row.join('');
+        }
+    });
+
+    game.mistakes = state.mistakes;
+
+    saveGame(game);
+};
+
+const startClock = () => {
+    const fn = () => {
+        state.numSeconds += 1;
+
+        updateSavedGame();
+    };
+
+    fn();
+
+    state.timer = setInterval(fn, 1000);
+};
 
 const resetBoard = (pair) => {
     const board = emptyBoard();
@@ -89,7 +162,6 @@ const handleKey = (key) => {
             state.position.x = 0;
         } else if (y === state.board.length - 2 && compareWords(state.board[y], state.board[y + 1]) === 4) {
             state.position = null;
-            state.finishedAt = Date.now();
             state.state = STATES.FINISHED;
         } else {
             state.position.x = 0;
@@ -99,7 +171,10 @@ const handleKey = (key) => {
                 state.board.splice(state.board.length - 1, 0, emptyRow());
             }
         }
+
+        updateSavedGame();
     }
+
     render();
 };
 
@@ -115,7 +190,7 @@ const renderKeyboard = () => {
     const footer = get('footer');
     footer.innerHTML = '';
 
-    if (!isPlaying()) {
+    if (state === STATES.PLAYING) {
         return;
     }
 
@@ -141,12 +216,37 @@ const renderWelcome = (app) => {
     app.appendChild(template.content.cloneNode(true));
 
     get('#play').addEventListener('click', () => {
-        state.pair = randomPair();
+        let game = loadGame();
+
+        if (!game) {
+            game = initTodaysGame();
+            saveGame(game);
+        }
+
+        state.pair = game.pair;
         state.board = resetBoard(state.pair);
-        state.position = { x: 0, y: 1 };
-        state.state = STATES.PLAYING;
-        state.startedAt = Date.now();
+
+        let i = game.words.length - 3;
+
+        if (game.state === STATES.FINISHED) i--;
+
+        while (i > 0) {
+            state.board.splice(state.board.length - 1, 0, emptyRow());
+            i -= 1;
+        }
+
+        game.words.forEach((word, i) => {
+            state.board[i + 1] = word.split('');
+        });
+
+        state.position = { x: 0, y: game.words.length + 1 };
+        state.state = game.state;
+        state.isPractice = false;
+        state.numSeconds = game.numSeconds;
+        state.mistakes = game.mistakes;
+
         renderKeyboard();
+        if (state.state === STATES.PLAYING) startClock();
         render();
     });
 
@@ -154,8 +254,8 @@ const renderWelcome = (app) => {
         state.pair = randomPair();
         state.board = resetBoard(state.pair);
         state.position = { x: 0, y: 1 };
-        state.state = STATES.PRACTICE;
-        state.startedAt = Date.now();
+        state.state = STATES.PLAYING;
+        state.isPractice = true;
         renderKeyboard();
         render();
     });
@@ -164,11 +264,16 @@ const renderWelcome = (app) => {
 const renderFinish = (app) => {
     killKeyboard();
 
+    if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+    }
+
     const template = get('#finish-template');
     app.innerHTML = '';
     app.appendChild(template.content.cloneNode(true));
 
-    get('#time').textContent = Math.floor((state.finishedAt - state.startedAt) / 1000);
+    get('#time').textContent = state.numSeconds;
     get('#mistakes').textContent = state.mistakes;
     get('#words').textContent = state.board.length - 2;
 
@@ -176,25 +281,38 @@ const renderFinish = (app) => {
 
     get('#board-container').appendChild(boardEl);
 
-
-    get('#share').addEventListener('click', () => {
-        const share = [
-            `Anagramish #${state.puzzleNumber}`,
-            ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟦' : state.pair[1].includes(c) ? '🟧' : '⬜️').join(''))
-        ];
-
-        const data = {
-            text: share.join('\n')
-        };
-
-        if (navigator.canShare && navigator.canShare(data)) {
-            navigator.share(data);
-        } else {
-            renderMessage('Share copied to clipboard');
-
-            navigator.clipboard.writeText(data.text);
-        }
+    get('#practice').addEventListener('click', () => {
+        state.pair = randomPair();
+        state.board = resetBoard(state.pair);
+        state.position = { x: 0, y: 1 };
+        state.state = STATES.PLAYING;
+        state.isPractice = true;
+        renderKeyboard();
+        render();
     });
+
+    if (!state.isPractice) {
+        get('#share').addEventListener('click', () => {
+            const share = [
+                `Anagramish #${state.puzzleNumber}`,
+                ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟦' : state.pair[1].includes(c) ? '🟧' : '⬜').join(''))
+            ];
+
+            const data = {
+                text: share.join('\n')
+            };
+
+            if (navigator.canShare && navigator.canShare(data)) {
+                navigator.share(data);
+            } else {
+                renderMessage('Share copied to clipboard');
+
+                navigator.clipboard.writeText(data.text);
+            }
+        });
+    } else {
+        get('#share').style.display = 'none';
+    }
 };
 
 const getPositionClass = (y, x) => state.position?.x === x && state.position?.y === y ? 'current' : '';
