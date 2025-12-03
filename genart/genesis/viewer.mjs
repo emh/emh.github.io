@@ -1,7 +1,9 @@
 import scaffold from './scaffold.mjs';
+import shape from './shape.mjs';
 
 const renderers = {
-    '#scaffold': scaffold
+    '#scaffold': scaffold,
+    '#shape': shape
 };
 
 const renderer = renderers[location.hash];
