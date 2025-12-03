@@ -1,15 +1,14 @@
-const rnd = (n, m = 0) => Math.floor(Math.random() * (n - m) + m);
-const times = (n, fn) => Array.from({ length: n }, fn);
+import { rnd, times } from './utils.js';
 
 const NUM_POINTS = 10;
 
-const colors = [
+const COLORS = [
     { r: 255, g: 0, b: 0 },
     { r: 0, g: 0, b: 255 },
     { r: 255, g: 255, b: 0 }
 ];
 
-const randColor = () => colors[rnd(colors.length)];
+const randColor = () => COLORS[rnd(COLORS.length)];
 
 const generatePoints = (width, height) => {
     return times(NUM_POINTS, () => ({
