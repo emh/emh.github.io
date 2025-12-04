@@ -1,11 +1,13 @@
 import scaffold from './scaffold.mjs';
 import shape from './shape.mjs';
 import pattern from './pattern.mjs';
+import noise from './noise.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
     '#shape': shape,
-    '#pattern': pattern
+    '#pattern': pattern,
+    '#noise': noise
 };
 
 const renderer = renderers[location.hash];
