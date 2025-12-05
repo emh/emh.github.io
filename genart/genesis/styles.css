@@ -5,6 +5,12 @@ header {
     padding: var(--padd);
 }
 
+a,
+a:visited {
+    color: var(--text);
+    text-decoration: none;
+}
+
 .title-date {
     display: flex;
     align-items: baseline;
@@ -79,7 +85,6 @@ dialog {
     flex-direction: column;
     overflow: hidden;
     opacity: 1;
-    filter: none;
 
     header {
         border-bottom: solid 1px var(--text);
@@ -117,10 +122,9 @@ dialog:not([data-active="true"]) {
     opacity: 0.9;
     border-color: var(--border);
     box-shadow: none;
-    filter: grayscale(50%);
 
     header {
-        border-bottom: solid 1px var(--border); 
+        border-bottom: solid 1px var(--border);
         color: var(--border);
     }
 
@@ -130,7 +134,97 @@ dialog:not([data-active="true"]) {
 }
 
 dialog iframe {
-    display: block;
     flex: 1;
     border: none;
+}
+
+nav {
+    ul {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--padd);
+        padding: var(--padd);
+
+        li:has(> a) {
+            cursor: pointer;
+        }
+
+        li:has(> a):hover {
+            background: var(--border);
+
+            a {
+                color: white;
+            }
+        }
+
+        li:not(:has(> a)) {
+            padding: var(--padd);
+        }
+
+        li {
+            display: inline-block;
+            border: 1px solid var(--border);
+            text-transform: uppercase;
+            color: var(--border);
+
+            a {
+                display: block;
+                padding: var(--padd);
+                color: var(--text);
+            }
+        }
+
+        li.active {
+            background: var(--border);
+
+            a {
+                color: white;
+            }
+        }
+    }
+}
+
+p a {
+    text-decoration: dotted underline;
+}
+
+.detail {
+    /* mobile-first: stacked */
+    display: block;
+}
+
+.detail iframe {
+    width: 100%;
+    height: 400px;
+    border: 1px solid var(--border);
+    display: block;
+}
+
+.detail p {
+    margin-top: 1rem;
+}
+
+@media (min-width: 600px) {
+    .detail {
+        display: flex;
+        align-items: flex-start;
+        gap: 1.5rem;
+    }
+
+    .detail iframe {
+        width: 400px;
+        height: 500px;
+        flex-shrink: 0;
+    }
+
+    .detail p {
+        margin-top: 0;
+    }
+}
+
+.detail div {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }

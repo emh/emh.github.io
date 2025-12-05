@@ -58,12 +58,23 @@
         </ul>
     </nav>
     <main>
+        <div class="detail">
+    <iframe src="viewer.html#shape"></iframe>
+    <div>
         <p>
-    This is a 30 day challenge where I create a piece of generative art each day based on a daily theme.
-    The goal is to build a toolkit of techniques and algorithms that I can then draw on for future projects.
-    The themes are self-selected -- I have a high level map of the territory I want to explore, but the details
-    are flexible and emergent. I fully expect new themes to arise as I work through the month.
-</p>
+            Day 2, "Shape". I've been seeing a lot of "meditative scribble colouring" posts on IG lately and I wanted to try recreating that feel algorithmically.
+        </p>
+        <p>
+            I also wanted to explore using bezier curves. A little research (aka late night chats with the bot) led me to this <a href="https://en.wikipedia.org/wiki/Catmull%E2%80%93Rom_spline">algorithm</a> for creating a smooth curve from a series of points. That got me the scribbles. Then they needed to be coloured in.
+        </p>
+        <p>
+            I used a basic <a href="https://en.wikipedia.org/wiki/Flood_fill">flood fill</a> algorithm to fill in the shapes created by the overlapping curves.
+        </p>
+        <p>
+            Click the frame to create a new drawing. Click <a href="viewer.html#shape" target="_blank">here</a> to open full screen.
+        </p>
+    </div>
+</div>
 
     </main>
 
