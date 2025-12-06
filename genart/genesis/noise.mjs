@@ -1,4 +1,4 @@
-import { perlin2D, fractalPerlin2D } from "./perlin.mjs";
+import { fractalPerlin2D } from "./perlin.mjs";
 import { hsvToRgb } from "./utils.js";
 
 let paused = false;
