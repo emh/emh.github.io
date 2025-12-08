@@ -2,14 +2,16 @@ import scaffold from './scaffold.mjs';
 import shape from './shape.mjs';
 import pattern from './pattern.mjs';
 import noise from './noise.mjs';
-import flow from './flow.mjs';
+import flow from './flow.mjs'
+import morph from './morph.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
     '#shape': shape,
     '#pattern': pattern,
     '#noise': noise,
-    '#flow': flow
+    '#flow': flow,
+    '#morph': morph
 };
 
 const renderer = renderers[location.hash];
