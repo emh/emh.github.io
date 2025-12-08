@@ -3,8 +3,6 @@ document.querySelectorAll('nav ul li').forEach((li) => {
 
     if (!link) return;
 
-    console.log(window.location.pathname, link.getAttribute('href'));
-
     if (window.location.pathname.endsWith(link.getAttribute('href'))) {
         li.classList.add('active');
     }

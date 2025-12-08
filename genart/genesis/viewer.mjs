@@ -4,6 +4,7 @@ import pattern from './pattern.mjs';
 import noise from './noise.mjs';
 import flow from './flow.mjs'
 import morph from './morph.mjs';
+import rules from './rules.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -11,7 +12,8 @@ const renderers = {
     '#pattern': pattern,
     '#noise': noise,
     '#flow': flow,
-    '#morph': morph
+    '#morph': morph,
+    '#rules': rules
 };
 
 const renderer = renderers[location.hash];
