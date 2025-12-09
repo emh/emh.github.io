@@ -16,6 +16,7 @@ a:visited {
     width: 100vw;
     max-width: 600px;
     max-height: 400px;
+    margin: 20px;
 
     grid-template-columns: repeat(12, 1fr);
     grid-template-rows: repeat(9, minmax(0, 1fr));
@@ -60,9 +61,12 @@ a:visited {
     font-weight: bold;
 }
 
-.work {
+.art {
     grid-column: 1 / span 5;
     grid-row: 4 / span 4;
+
+    font-size: 48px;
+    font-weight: bold;
 }
 
 .photography {
@@ -82,4 +86,42 @@ a:visited {
 
 #x-logo {
     fill: black;
+}
+
+@media (max-width: 600px) {
+    .grid-container {
+        grid-template-columns: repeat(6, 1fr);
+        grid-template-rows: repeat(12, minmax(0, 1fr));
+    }
+
+    .main {
+        grid-column: 2 / span 3;
+        grid-row: 1 / span 2;
+    }
+
+    .vibes {
+        grid-column: 1 / span 5;
+        grid-row: 3 / span 3;
+    }
+
+    .art {
+        grid-column: 2 / span 5;
+        grid-row: 6 / span 2;
+    }
+
+    .photography {
+        grid-column: 3 / span 2;
+        grid-row: 8 / span 2;
+    }
+
+    .writing {
+        grid-column: 2 / span 4;
+        grid-row: 10 / span 2;
+    }
+
+    .socials {
+        grid-column: 5 / span 2;
+        grid-row: 12 / span 2;
+    }
+
 }
