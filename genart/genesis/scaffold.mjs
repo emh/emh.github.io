@@ -16,6 +16,8 @@ const run = (canvas) => {
     const context = canvas.getContext('2d');
     let rects = [];
 
+    console.log(canvas.height);
+
     const update = () => {
         if (width !== canvas.width || height !== canvas.height) {
             width = canvas.width;

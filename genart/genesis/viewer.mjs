@@ -5,6 +5,7 @@ import noise from './noise.mjs';
 import flow from './flow.mjs'
 import morph from './morph.mjs';
 import rules from './rules.mjs';
+import life from './life.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -13,16 +14,18 @@ const renderers = {
     '#noise': noise,
     '#flow': flow,
     '#morph': morph,
-    '#rules': rules
+    '#rules': rules,
+    '#life': life
 };
 
 const renderer = renderers[location.hash];
-
 const canvas = document.getElementById('canvas');
 
 const resize = () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const rect = canvas.getBoundingClientRect();
+
+    canvas.width  = rect.width;
+    canvas.height = rect.height;
 };
 
 window.addEventListener('resize', resize);
