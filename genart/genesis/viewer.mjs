@@ -6,6 +6,7 @@ import flow from './flow.mjs'
 import morph from './morph.mjs';
 import rules from './rules.mjs';
 import life from './life.mjs';
+import chaos from './chaos.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -15,7 +16,8 @@ const renderers = {
     '#flow': flow,
     '#morph': morph,
     '#rules': rules,
-    '#life': life
+    '#life': life,
+    '#chaos': chaos
 };
 
 const renderer = renderers[location.hash];
