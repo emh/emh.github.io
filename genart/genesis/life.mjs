@@ -49,7 +49,6 @@ const lerpHue = (h1, h2, t) => {
     return (h1 + d * t + 1) % 1;
 };
 
-
 const toPixel = (col, row) => {
     const x = HEX_WIDTH * (col + 0.5 * (row & 1));
     const y = (3 / 4) * HEX_HEIGHT * row;
