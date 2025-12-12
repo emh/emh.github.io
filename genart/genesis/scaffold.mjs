@@ -86,6 +86,7 @@ const run = (canvas) => {
         paused = !paused;
     });
 
+    tick();
     setInterval(tick, 1000);
 };
 

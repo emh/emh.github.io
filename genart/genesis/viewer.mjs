@@ -8,6 +8,7 @@ import rules from './rules.mjs';
 import life from './life.mjs';
 import chaos from './chaos.mjs';
 import colour from './colour.mjs';
+import tile from './tile.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -19,7 +20,8 @@ const renderers = {
     '#rules': rules,
     '#life': life,
     '#chaos': chaos,
-    '#colour': colour
+    '#colour': colour,
+    '#tile': tile
 };
 
 const renderer = renderers[location.hash];
