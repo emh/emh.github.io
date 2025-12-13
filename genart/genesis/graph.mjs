@@ -127,6 +127,44 @@ const run = (canvas) => {
         return null;
     };
 
+    const findNearbyStrangers = () => {
+        const n = graph.nodes.length;
+        if (n < 2) return null;
+
+        const adj = adjacencyMatrix();
+        const start = rnd(n);
+
+        for (let k = 0; k < n; k++) {
+            const i = (start + k) % n;
+            const ni = graph.nodes[i];
+
+            let bestJ = null;
+            let bestDist2 = Infinity;
+
+            for (let j = 0; j < n; j++) {
+                if (j === i) continue;
+                if (adj[i].has(j)) continue;
+
+                const nj = graph.nodes[j];
+                const dx = ni.x - nj.x;
+                const dy = ni.y - nj.y;
+                const dist2 = dx * dx + dy * dy;
+
+                if (dist2 < bestDist2) {
+                    bestDist2 = dist2;
+                    bestJ = j;
+                }
+            }
+
+            if (bestJ !== null) {
+                return [i, bestJ];
+            }
+        }
+
+        return null;
+    };
+
+
     const init = () => {
         graph = { nodes: [], edges: [] };
 
@@ -155,9 +193,9 @@ const run = (canvas) => {
     const MARGIN = 100;
 
     const rewriteGraph = () => {
-        const rule = rnd(4)
+        const rule = rnd(100);
 
-        if (rule === 0) {
+        if (rule < 40) {
             const triangle = findRandomTriangle();
 
             if (!triangle) return;
@@ -178,7 +216,7 @@ const run = (canvas) => {
             addEdge(a, d);
             addEdge(b, d);
             addEdge(c, d);
-        } else if (rule === 1) {
+        } else if (rule < 50) {
             const u = findCrowdedNode();
 
             if (u === null) return;
@@ -187,7 +225,7 @@ const run = (canvas) => {
             const neighbours = Array.from(adj[u]);
 
             neighbours.forEach((n) => removeEdge(u, n));
-        } else if (rule === 2) {
+        } else if (rule < 60) {
             const wedge = findRandomOpenWedge();
 
             if (!wedge) return;
@@ -195,7 +233,7 @@ const run = (canvas) => {
             const [a, b, c] = wedge;
 
             addEdge(a, c);
-        } else {
+        } else if (rule < 70) {
             if (graph.nodes.length < 3) return;
 
             const pair = findLonelyPair();
@@ -212,6 +250,14 @@ const run = (canvas) => {
 
             addEdge(u, w);
             addEdge(v, w);
+        } else {
+            const pair = findNearbyStrangers();
+
+            if (!pair) return;
+
+            const [u, v] = pair;
+
+            addEdge(u, v);
         }
     };
 
