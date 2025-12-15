@@ -10,6 +10,7 @@ import chaos from './chaos.mjs';
 import colour from './colour.mjs';
 import tile from './tile.mjs';
 import graph from './graph.mjs';
+import seed from './seed.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -23,7 +24,8 @@ const renderers = {
     '#chaos': chaos,
     '#colour': colour,
     '#tile': tile,
-    '#graph': graph
+    '#graph': graph,
+    '#seed': seed
 };
 
 const renderer = renderers[location.hash];

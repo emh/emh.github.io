@@ -59,13 +59,16 @@
     </nav>
     <main>
         <div class="detail">
-    <iframe src="viewer.html#noise"></iframe>
+    <iframe src="viewer.html#seed"></iframe>
     <div>
         <p>
-            Day 4, "Noise". I was aware of noise functions like <a href="https://en.wikipedia.org/wiki/Perlin_noise">Perlin noise</a> and how they could be used to create natural looking transitions but I'd never used them. So I implemented the Perlin noise algorithm and applied it the the colour and size of a grid of circles.
+            Day 13, "Seed". I don't know that I realized my vision for today but I learned a lot. The idea was to have a population of agents/particles that evolve over time to consume the "food" laid down along the path of a random fourier curve.
         </p>
         <p>
-            Click the frame to create a new drawing. Click <a href="viewer.html#noise" target="_blank">here</a> to open full screen.
+            Each agent has a genome that encodes a sequence of actions (move forward, turn left, turn right). Each generation, the fittest agents are selected to breed and create a new generation with crossover and mutation. The fitness function rewards agents for consuming food and for covering new ground.
+        </p>
+        <p>
+            Click the frame to restart. Click <a href="viewer.html#seed" target="_blank">here</a> to open full screen.
         </p>
     </div>
 </div>

@@ -1,5 +1,10 @@
 export const rnd = (n, m = 0) => Math.floor(Math.random() * (n - m) + m);
 export const times = (n, fn) => Array.from({ length: n }, fn);
+export const clamp = (value, min = 0, max) => Math.min(Math.max(value, min), max);
+export const wrap = (value, min, max) => {
+    const range = max - min;
+    return ((value - min) % range + range) % range + min;
+};
 
 export const hsvToRgb = (h, s, v) => {
     let r, g, b;
