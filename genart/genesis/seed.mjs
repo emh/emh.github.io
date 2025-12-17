@@ -116,6 +116,16 @@ const run = (canvas) => {
 
             if (col >= 0 && col < cols && row >= 0 && row < rows) {
                 foodGrid[row][col] = 1;
+
+                if (row < rows - 1 && col < cols - 1) foodGrid[row + 1][col + 1] = 1;
+                if (row < rows - 1 && col > 0) foodGrid[row + 1][col - 1] = 1;
+                if (row > 0 && col < cols - 1) foodGrid[row - 1][col + 1] = 1;
+                if (row > 0 && col > 0) foodGrid[row - 1][col - 1] = 1;
+
+                if (row > 0) foodGrid[row - 1][col] = 1;
+                if (row < rows - 1) foodGrid[row + 1][col] = 1;
+                if (col > 0) foodGrid[row][col - 1] = 1;
+                if (col < cols - 1) foodGrid[row][col + 1] = 1;
             }
         }
     };
@@ -284,7 +294,7 @@ const run = (canvas) => {
         context.fillRect(0, 0, width, height);
     }
 
-    const render = () => {
+    const render = (frozen) => {
         context.beginPath();
         context.fillStyle = 'green';
 
@@ -301,7 +311,11 @@ const run = (canvas) => {
             }
         }
 
-        for (const agent of population) {
+        let agents = [...population].sort((a, b) => fitness(b) - fitness(a));
+
+        if (frozen) agents = agents.slice(0, 10);
+
+        for (const agent of agents) {
             context.beginPath();
             context.fillStyle = hslToCss(agent.color.h, agent.color.s, agent.color.l);
             context.arc(agent.x, agent.y, CELL_SIZE / 2, 0, Math.PI * 2);
@@ -345,7 +359,7 @@ const run = (canvas) => {
             nextGen();
         };
 
-        render();
+        render(frozen);
 
         step++;
         requestAnimationFrame(tick);
