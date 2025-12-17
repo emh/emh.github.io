@@ -73,12 +73,10 @@ const randomGenome = () => Array.from({ length: 3 ** SLICES }).map(() => ACTIONS
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { width, height } = canvas;
-    const cx = width / 2;
-    const cy = height / 2;
+    let { width, height } = canvas;
 
-    const cols = Math.floor(width / CELL_SIZE);
-    const rows = Math.floor(height / CELL_SIZE);
+    let cols;
+    let rows;
 
     const colorProj = initColorProjection(L);
 
@@ -87,9 +85,10 @@ const run = (canvas) => {
     let population;
 
     const resetFoodGrid = () => {
+        const cx = width / 2;
+        const cy = height / 2;
         foodGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
         const radius = Math.min(width, height) * 0.5;
-
         const fourier = randomCoeffs();
 
         const randomFourier = (t) => {
@@ -131,6 +130,8 @@ const run = (canvas) => {
     };
 
     const initAgent = (genome) => {
+        const cx = width / 2;
+        const cy = height / 2;
         const r = Math.random() * (Math.min(width, height) * 0.25);
         const x = cx + r * Math.cos(Math.random() * 2 * Math.PI);
         const y = cy + r * Math.sin(Math.random() * 2 * Math.PI);
@@ -146,6 +147,9 @@ const run = (canvas) => {
     }
 
     const init = () => {
+        cols = Math.floor(width / CELL_SIZE);
+        rows = Math.floor(height / CELL_SIZE);
+
         resetFoodGrid();
 
         agentGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -290,6 +294,12 @@ const run = (canvas) => {
     };
 
     const clear = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+            init();
+        }
+
         context.fillStyle = 'white';
         context.fillRect(0, 0, width, height);
     }

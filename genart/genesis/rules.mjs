@@ -2,7 +2,7 @@ import { perlin2D } from "./perlin.mjs";
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
+    let { height, width } = canvas;
 
     let sentence = "X";
     let iterations = 6;
@@ -95,6 +95,11 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+        }
+
         update();
         render();
 

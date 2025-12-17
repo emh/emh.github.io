@@ -2,9 +2,7 @@ import { rnd, times } from './utils.js';
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
-    const cx = width / 2;
-    const cy = height / 2;
+    let { height, width } = canvas;
 
     const N = 20;
 
@@ -264,6 +262,8 @@ const run = (canvas) => {
     const moveGraph = () => {
         const { nodes, edges } = graph;
         const forces = nodes.map(() => ({ fx: 0, fy: 0 }));
+        const cx = width / 2;
+        const cy = height / 2;
 
         for (const e of edges) {
             const a = nodes[e[0]];
@@ -362,6 +362,11 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+        }
+
         clear();
         update();
         render();

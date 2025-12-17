@@ -39,8 +39,8 @@ const pickParams = () => {
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
-    const scale = Math.min(width, height) / 5;
+    let { height, width } = canvas;
+    let scale = Math.min(width, height) / 5;
 
     const F = (x, y) => ([
         Math.sin(A * y) - Math.cos(B * x),
@@ -109,6 +109,16 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+            scale = Math.min(width, height) / 5;
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            reseed();
+        }
+
         update();
         render();
 

@@ -69,11 +69,11 @@ const toPixel = (col, row) => {
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
+    let { height, width } = canvas;
     const r = CELL_SIZE;
 
-    const rows = Math.ceil(height / (CELL_HEIGHT * 0.75)) + 1;
-    const cols = Math.ceil(width / CELL_WIDTH) + 1;
+    let rows = Math.ceil(height / (CELL_HEIGHT * 0.75)) + 1;
+    let cols = Math.ceil(width / CELL_WIDTH) + 1;
 
     context.strokeStyle = 'black';
     context.lineWidth = 2;
@@ -186,6 +186,13 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+            rows = Math.ceil(height / (CELL_HEIGHT * 0.75)) + 1;
+            cols = Math.ceil(width / CELL_WIDTH) + 1;
+        }
+
         drawPalette();
 
         requestAnimationFrame(tick);

@@ -1,4 +1,4 @@
-import { fractalPerlin2D, perlin2D } from "./perlin.mjs";
+import { perlin2D } from "./perlin.mjs";
 import { hsvToRgb, rnd } from "./utils.js";
 
 const HEX_SIZE = 10;
@@ -77,10 +77,10 @@ const drawHex = (context, row, col, cell) => {
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
+    let { height, width } = canvas;
 
-    const rows = Math.ceil(height / (HEX_HEIGHT * 0.75)) + 1;
-    const cols = Math.ceil(width / HEX_WIDTH) + 1;
+    let rows = Math.ceil(height / (HEX_HEIGHT * 0.75)) + 1;
+    let cols = Math.ceil(width / HEX_WIDTH) + 1;
 
     let grid = [];
     let nextGrid = [];
@@ -88,6 +88,8 @@ const run = (canvas) => {
 
     const init = () => {
         offset = rnd(255);
+        grid = [];
+        nextGrid = [];
 
         for (let row = 0; row < rows; row++) {
             grid[row] = [];
@@ -116,7 +118,7 @@ const run = (canvas) => {
                 const neighbours = getNeighbours(grid, row, col);
                 const avgNeighborHue = averageHue(neighbours);
                 const turbPhase = 90 * Math.sin(cell.angle + t * 0.02);
-                
+
                 let newH = cell.h;
                 newH = lerpHue(newH, avgNeighborHue, NEIGHBOUR_WEIGHT);
                 newH = lerpHue(newH, turbPhase, EXTERNAL_WEIGHT);
@@ -143,6 +145,14 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+            rows = Math.ceil(height / (HEX_HEIGHT * 0.75)) + 1;
+            cols = Math.ceil(width / HEX_WIDTH) + 1;
+            init();
+        }
+
         update();
         render();
 

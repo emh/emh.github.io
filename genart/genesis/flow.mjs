@@ -3,11 +3,12 @@ import { hsvToRgb, rnd, times } from "./utils.js";
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
-
-    const SIZE = Math.min(height, width) * 0.005;
 
     const tick = () => {
+        const { height, width } = canvas;
+
+        const SIZE = Math.min(height, width) * 0.005;
+
         const offset = rnd(255);
 
         context.fillStyle = 'white';

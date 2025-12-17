@@ -49,17 +49,24 @@ const random = () => {
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
-    const image = context.getImageData(0, 0, width, height);
-    const data = image.data;
-    const n = height * width;
+    let { height, width } = canvas;
 
-    let A = new Float32Array(n);
-    let B = new Float32Array(n);
-    let A2 = new Float32Array(n);
-    let B2 = new Float32Array(n);
+    let image;
+    let data;
+
+    let A, B, A2, B2;
 
     const init = (px, py) => {
+        image = context.getImageData(0, 0, width, height);
+        data = image.data;
+
+        const n = height * width;
+
+        A = new Float32Array(n);
+        B = new Float32Array(n);
+        A2 = new Float32Array(n);
+        B2 = new Float32Array(n);
+
         for (let i = 0; i < n; i++) {
             A[i] = 1;
             B[i] = 0;
@@ -142,6 +149,7 @@ const run = (canvas) => {
 
     const render = () => {
         let blank = true;
+        const n = height * width;
 
         for (let i = 0; i < n; i++) {
             const j = i * 4;
@@ -167,6 +175,15 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            init();
+        }
+
         times(10, update);
         render();
 

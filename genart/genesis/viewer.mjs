@@ -11,6 +11,7 @@ import colour from './colour.mjs';
 import tile from './tile.mjs';
 import graph from './graph.mjs';
 import seed from './seed.mjs';
+import emerge from './emerge.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -25,7 +26,8 @@ const renderers = {
     '#colour': colour,
     '#tile': tile,
     '#graph': graph,
-    '#seed': seed
+    '#seed': seed,
+    '#emerge': emerge
 };
 
 const renderer = renderers[location.hash];

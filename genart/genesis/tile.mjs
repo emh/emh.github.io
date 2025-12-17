@@ -23,15 +23,15 @@ const TILES = [
 
 const run = (canvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    const { height, width } = canvas;
+    let { height, width } = canvas;
 
     context.strokeStyle = 'red';
     context.lineWidth = 1;
 
     const TILE_SIZE = 40;
 
-    const cols = Math.ceil(width / TILE_SIZE);
-    const rows = Math.ceil(height / TILE_SIZE);
+    let cols = Math.ceil(width / TILE_SIZE);
+    let rows = Math.ceil(height / TILE_SIZE);
 
     const drawTile = (tile, x, y) => {
         // context.strokeStyle = 'grey';
@@ -200,10 +200,15 @@ const run = (canvas) => {
     };
 
     const tick = () => {
+        if (width !== canvas.width || height !== canvas.height) {
+            width = canvas.width;
+            height = canvas.height;
+            cols = Math.ceil(width / TILE_SIZE);
+            rows = Math.ceil(height / TILE_SIZE);
+        }
+
         update();
         render();
-
-        // requestAnimationFrame(tick);
     };
 
     canvas.addEventListener('pointerup', (e) => {
