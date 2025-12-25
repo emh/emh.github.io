@@ -102,9 +102,9 @@ const hueFromNoise = (t) => {
 
 export function drawCurve(context, points, t) {
     const hue = hueFromNoise(t);
-    const sat = 85;
-    const light = 50;
-    const alpha = 1.0;
+    const sat = 80;
+    const light = 20;
+    const alpha = 0.5;
 
     context.save();
     context.lineWidth = 2;
@@ -156,7 +156,7 @@ const run = (canvas) => {
             params
         );
 
-        step += 5;
+        step += 2;
     };
 
     const clear = () => {
