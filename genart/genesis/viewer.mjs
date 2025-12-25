@@ -13,6 +13,7 @@ import graph from './graph.mjs';
 import seed from './seed.mjs';
 import emerge from './emerge.mjs';
 import growth from './growth.mjs';
+import formula from './formula.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -29,7 +30,8 @@ const renderers = {
     '#graph': graph,
     '#seed': seed,
     '#emerge': emerge,
-    '#growth': growth
+    '#growth': growth,
+    '#formula': formula
 };
 
 const renderer = renderers[location.hash];
