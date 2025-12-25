@@ -12,6 +12,7 @@ import tile from './tile.mjs';
 import graph from './graph.mjs';
 import seed from './seed.mjs';
 import emerge from './emerge.mjs';
+import growth from './growth.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -27,7 +28,8 @@ const renderers = {
     '#tile': tile,
     '#graph': graph,
     '#seed': seed,
-    '#emerge': emerge
+    '#emerge': emerge,
+    '#growth': growth
 };
 
 const renderer = renderers[location.hash];
