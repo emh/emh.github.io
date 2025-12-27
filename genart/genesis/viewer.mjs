@@ -14,6 +14,7 @@ import seed from './seed.mjs';
 import emerge from './emerge.mjs';
 import growth from './growth.mjs';
 import formula from './formula.mjs';
+import move from './move.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -31,7 +32,8 @@ const renderers = {
     '#seed': seed,
     '#emerge': emerge,
     '#growth': growth,
-    '#formula': formula
+    '#formula': formula,
+    '#move': move
 };
 
 const renderer = renderers[location.hash];
