@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Curve Tool (Bezier + B-spline + Catmull–Rom)</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            background: #0b0e13;
+            color: #e8eef8;
+        }
+
+        #app {
+            height: 100%;
+            display: grid;
+            grid-template-columns: 340px 1fr;
+        }
+
+        #sidebar {
+            padding: 14px 14px 10px;
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            background: #0b0e13;
+            overflow: auto;
+        }
+
+        #canvasWrap {
+            position: relative;
+            overflow: hidden;
+            background: #070a0f;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        h1 {
+            font-size: 14px;
+            margin: 0 0 10px;
+            font-weight: 650;
+            letter-spacing: 0.2px;
+            opacity: 0.95;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .row>* {
+            flex: 1;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: rgba(255, 255, 255, 0.06);
+            color: inherit;
+            padding: 10px 10px;
+            outline: none;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button.primary {
+            background: rgba(90, 160, 255, 0.18);
+            border-color: rgba(90, 160, 255, 0.35);
+        }
+
+        button.primary:hover {
+            background: rgba(90, 160, 255, 0.24);
+        }
+
+        button.danger {
+            background: rgba(255, 90, 90, 0.14);
+            border-color: rgba(255, 90, 90, 0.28);
+        }
+
+        button.danger:hover {
+            background: rgba(255, 90, 90, 0.18);
+        }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        label {
+            font-size: 12px;
+            opacity: 0.85;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .group {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+
+        .small {
+            font-size: 12px;
+            opacity: 0.82;
+            line-height: 1.45;
+        }
+
+        #infoBox {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 12px;
+            white-space: pre;
+            line-height: 1.35;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.25);
+            overflow: auto;
+            max-height: 340px;
+        }
+
+        .hint {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px dashed rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.03);
+            font-size: 12px;
+            line-height: 1.45;
+            opacity: 0.9;
+        }
+
+        kbd {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            font-size: 11px;
+            opacity: 0.9;
+            margin-left: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="sidebar">
+            <h1>Curve Tool <span class="pill">bezier + b-spline + catmull–rom</span></h1>
+
+            <div class="group">
+                <label for="curveType">New curve type</label>
+                <div class="row" style="margin-top:0;">
+                    <select id="curveType">
+                        <option value="cubic">Cubic Bezier (2 controls)</option>
+                        <option value="quadratic">Quadratic Bezier (1 control)</option>
+                        <option value="bspline">B-spline (N controls)</option>
+                        <option value="catmullrom">Catmull–Rom (N points)</option>
+                    </select>
+                </div>
+
+                <div class="row">
+                    <button id="addCurveBtn" class="primary">Add new curve</button>
+                </div>
+
+                <div class="row">
+                    <button id="deleteCurveBtn" class="danger" disabled>Delete selected curve</button>
+                </div>
+
+                <div class="row">
+                    <div>
+                        <label for="curveSelect">Select curve</label>
+                        <select id="curveSelect"></select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <button id="addCPBtn" disabled>Add control point (spline)</button>
+                </div>
+                <div class="row">
+                    <button id="delCPBtn" class="danger" disabled>Delete selected control point</button>
+                </div>
+                <div class="small">
+                    For B-splines / Catmull–Rom: click a control point to select it, then delete/move it.
+                </div>
+            </div>
+
+            <div class="group">
+                <div class="row">
+                    <div>
+                        <label>Zoom</label>
+                        <div class="row" style="margin:0;">
+                            <button id="zoomOutBtn">-</button>
+                            <button id="zoomInBtn">+</button>
+                        </div>
+                        <div class="small" style="margin-top:8px;">
+                            Zoom: <span id="zoomLabel">100%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row" style="margin-top: 12px;">
+                    <div>
+                        <label for="snapToggle">Snap to grid</label>
+                        <select id="snapToggle">
+                            <option value="off">Off</option>
+                            <option value="on">On</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gridSize">Grid resolution</label>
+                        <input id="gridSize" type="number" min="2" step="1" value="40" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <button id="resetViewBtn">Reset view</button>
+                </div>
+            </div>
+
+            <div class="group">
+                <label>Info (selected curve)</label>
+                <div id="infoBox">No curve selected.</div>
+            </div>
+
+            <div class="hint">
+                <div><span class="pill">Controls</span></div>
+                <div style="margin-top:6px;">
+                    • Click a curve to select it; click empty background to deselect<br />
+                    • Drag points to edit; drag the curve itself to move it<br />
+                    • Pan: hold <kbd>Space</kbd> and drag, or middle-mouse drag<br />
+                    • Zoom: mouse wheel (cursor-centered), or buttons<br />
+                    • Delete: <kbd>Delete</kbd>/<kbd>Backspace</kbd> removes selected curve
+                </div>
+            </div>
+        </div>
+
+        <div id="canvasWrap">
+            <canvas id="c"></canvas>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('c');
+            const wrap = document.getElementById('canvasWrap');
+            const ctx = canvas.getContext('2d');
+
+            function resizeCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = wrap.getBoundingClientRect();
+                canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+                canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+                canvas.style.width = rect.width + 'px';
+                canvas.style.height = rect.height + 'px';
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                requestRender();
+            }
+            window.addEventListener('resize', resizeCanvas);
+
+            const addCurveBtn = document.getElementById('addCurveBtn');
+            const deleteCurveBtn = document.getElementById('deleteCurveBtn');
+            const curveSelect = document.getElementById('curveSelect');
+            const curveType = document.getElementById('curveType');
+
+            const addCPBtn = document.getElementById('addCPBtn');
+            const delCPBtn = document.getElementById('delCPBtn');
+
+            const zoomInBtn = document.getElementById('zoomInBtn');
+            const zoomOutBtn = document.getElementById('zoomOutBtn');
+            const zoomLabel = document.getElementById('zoomLabel');
+            const resetViewBtn = document.getElementById('resetViewBtn');
+
+            const snapToggle = document.getElementById('snapToggle');
+            const gridSizeInput = document.getElementById('gridSize');
+            const infoBox = document.getElementById('infoBox');
+
+            const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+            const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+
+            const view = { scale: 1.0, tx: 0, ty: 0 };
+            const worldToScreen = (p) => ({ x: p.x * view.scale + view.tx, y: p.y * view.scale + view.ty });
+            const screenToWorld = (x, y) => ({ x: (x - view.tx) / view.scale, y: (y - view.ty) / view.scale });
+
+            function updateZoomLabel() { zoomLabel.textContent = Math.round(view.scale * 100) + '%'; }
+
+            function zoomAtScreenPoint(factor, sx, sy) {
+                const before = screenToWorld(sx, sy);
+                view.scale = clamp(view.scale * factor, 0.1, 10);
+                const after = screenToWorld(sx, sy);
+                view.tx += (after.x - before.x) * view.scale;
+                view.ty += (after.y - before.y) * view.scale;
+                updateZoomLabel();
+                updateInfoBox();
+                requestRender();
+            }
+
+            function resetView() {
+                view.scale = 1;
+                const rect = wrap.getBoundingClientRect();
+                view.tx = rect.width * 0.5;
+                view.ty = rect.height * 0.5;
+                updateZoomLabel();
+                updateInfoBox();
+                requestRender();
+            }
+
+            function getGridSizeWorld() {
+                const v = Number(gridSizeInput.value);
+                return clamp(isFinite(v) ? v : 40, 2, 100000);
+            }
+            const snapEnabled = () => snapToggle.value === 'on';
+            function snapPointWorld(p) {
+                if (!snapEnabled()) return p;
+                const g = getGridSizeWorld();
+                return { x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g };
+            }
+
+            let curves = [];
+            let selectedId = null;
+            let nextId = 1;
+            let selectedSplineCP = null; // for bspline / catmullrom
+
+            // ---------- Curve constructors ----------
+            function makeDefaultCurve(kind) {
+                const rect = wrap.getBoundingClientRect();
+                const cWorld = screenToWorld(rect.width * 0.5, rect.height * 0.5);
+                const s = 140;
+
+                if (kind === 'quadratic') {
+                    return { id: nextId++, kind, p0: { x: cWorld.x - s, y: cWorld.y + s * 0.2 }, p1: { x: cWorld.x, y: cWorld.y - s }, p2: { x: cWorld.x + s, y: cWorld.y + s * 0.2 } };
+                }
+                if (kind === 'cubic') {
+                    return { id: nextId++, kind, p0: { x: cWorld.x - s, y: cWorld.y + s * 0.15 }, p1: { x: cWorld.x - s * 0.3, y: cWorld.y - s * 0.95 }, p2: { x: cWorld.x + s * 0.3, y: cWorld.y + s * 0.95 }, p3: { x: cWorld.x + s, y: cWorld.y + s * 0.15 } };
+                }
+                if (kind === 'bspline') {
+                    const g = getGridSizeWorld();
+                    const pts = [
+                        { x: cWorld.x - 1.5 * g, y: cWorld.y + 0.8 * g },
+                        { x: cWorld.x - 0.5 * g, y: cWorld.y - 1.0 * g },
+                        { x: cWorld.x + 0.5 * g, y: cWorld.y + 1.0 * g },
+                        { x: cWorld.x + 1.5 * g, y: cWorld.y - 0.6 * g },
+                    ];
+                    return { id: nextId++, kind: 'bspline', pts };
+                }
+                // catmull-rom: start with 3 points (start, middle, end)
+                const g = getGridSizeWorld();
+                const pts = [
+                    { x: cWorld.x - 1.5 * g, y: cWorld.y + 0.6 * g },
+                    { x: cWorld.x, y: cWorld.y - 1.0 * g },
+                    { x: cWorld.x + 1.5 * g, y: cWorld.y + 0.6 * g },
+                ];
+                return { id: nextId++, kind: 'catmullrom', pts, alpha: 0.5 }; // alpha=0.5 (centripetal) default
+            }
+
+            function curveLabel(c, idx) {
+                const k = c.kind === 'quadratic' ? 'quad'
+                    : (c.kind === 'cubic' ? 'cubic'
+                        : (c.kind === 'bspline' ? `b-spline(${c.pts.length})`
+                            : `catmull-rom(${c.pts.length})`));
+                return `Curve ${idx + 1} (${k}, id:${c.id})`;
+            }
+
+            function getSelectedCurve() { return curves.find(c => c.id === selectedId) || null; }
+
+            // ---------- UI refresh ----------
+            function refreshCurveSelect() {
+                curveSelect.innerHTML = '';
+                curves.forEach((c, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = String(c.id);
+                    opt.textContent = curveLabel(c, i);
+                    curveSelect.appendChild(opt);
+                });
+
+                if (selectedId != null) curveSelect.value = String(selectedId);
+                else curveSelect.value = '';
+
+                const sel = getSelectedCurve();
+                deleteCurveBtn.disabled = (sel == null);
+
+                const isSpline = sel && (sel.kind === 'bspline' || sel.kind === 'catmullrom');
+                addCPBtn.disabled = !isSpline;
+                delCPBtn.disabled = !isSpline || selectedSplineCP == null || (sel.pts.length <= 1);
+
+                updateInfoBox();
+                requestRender();
+            }
+
+            // ---------- Render scheduling ----------
+            let renderRequested = false;
+            function requestRender() {
+                if (renderRequested) return;
+                renderRequested = true;
+                requestAnimationFrame(() => { renderRequested = false; draw(); });
+            }
+
+            // ---------- Drawing helpers ----------
+            function drawGrid() {
+                const rect = wrap.getBoundingClientRect();
+                const w = rect.width, h = rect.height;
+
+                const gWorld = getGridSizeWorld();
+                const gScreen = gWorld * view.scale;
+
+                const minSpacing = 8;
+                const spacing = Math.max(gScreen, minSpacing);
+                const effectiveGWorld = spacing / view.scale;
+
+                const topLeft = screenToWorld(0, 0);
+                const botRight = screenToWorld(w, h);
+
+                const x0 = Math.floor(topLeft.x / effectiveGWorld) * effectiveGWorld;
+                const y0 = Math.floor(topLeft.y / effectiveGWorld) * effectiveGWorld;
+
+                ctx.save();
+                ctx.lineWidth = 1;
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+                ctx.beginPath();
+                for (let x = x0; x <= botRight.x; x += effectiveGWorld) {
+                    const sx = x * view.scale + view.tx;
+                    ctx.moveTo(sx, 0); ctx.lineTo(sx, h);
+                }
+                for (let y = y0; y <= botRight.y; y += effectiveGWorld) {
+                    const sy = y * view.scale + view.ty;
+                    ctx.moveTo(0, sy); ctx.lineTo(w, sy);
+                }
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+                ctx.beginPath();
+                ctx.moveTo(view.tx, 0); ctx.lineTo(view.tx, h);
+                ctx.moveTo(0, view.ty); ctx.lineTo(w, view.ty);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            function drawHandle(x, y, fill) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = fill;
+                ctx.fill();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            function evalQuadratic(p0, p1, p2, t) {
+                const a = 1 - t, b = t;
+                return { x: a * a * p0.x + 2 * a * b * p1.x + b * b * p2.x, y: a * a * p0.y + 2 * a * b * p1.y + b * b * p2.y };
+            }
+            function evalCubic(p0, p1, p2, p3, t) {
+                const a = 1 - t;
+                const a2 = a * a, a3 = a2 * a;
+                const b = t;
+                const b2 = b * b, b3 = b2 * b;
+                return {
+                    x: a3 * p0.x + 3 * a2 * b * p1.x + 3 * a * b2 * p2.x + b3 * p3.x,
+                    y: a3 * p0.y + 3 * a2 * b * p1.y + 3 * a * b2 * p2.y + b3 * p3.y,
+                };
+            }
+
+            // ---------- B-spline (uniform cubic) ----------
+            function evalUniformCubicBSpline(p0, p1, p2, p3, t) {
+                const t2 = t * t, t3 = t2 * t;
+                const b0 = (-t3 + 3 * t2 - 3 * t + 1) / 6;
+                const b1 = (3 * t3 - 6 * t2 + 4) / 6;
+                const b2 = (-3 * t3 + 3 * t2 + 3 * t + 1) / 6;
+                const b3 = (t3) / 6;
+                return { x: b0 * p0.x + b1 * p1.x + b2 * p2.x + b3 * p3.x, y: b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y };
+            }
+            function bsplinePolylineWorld(curve, stepsPerSeg = 24) {
+                const pts = curve.pts;
+                if (!pts || pts.length < 4) return [];
+                const out = [];
+                for (let i = 0; i <= pts.length - 4; i++) {
+                    const a = pts[i], b = pts[i + 1], c = pts[i + 2], d = pts[i + 3];
+                    for (let s = 0; s <= stepsPerSeg; s++) out.push(evalUniformCubicBSpline(a, b, c, d, s / stepsPerSeg));
+                }
+                return out;
+            }
+
+            // ---------- Catmull–Rom (centripetal by default) ----------
+            function catmullRomPoint(p0, p1, p2, p3, t, alpha = 0.5) {
+                // Parameterization (alpha: 0 uniform, 0.5 centripetal, 1 chordal)
+                const tj = (ti, a, b) => {
+                    const dx = b.x - a.x, dy = b.y - a.y;
+                    const d = Math.sqrt(dx * dx + dy * dy);
+                    return ti + Math.pow(d, alpha);
+                };
+
+                const t0 = 0;
+                const t1 = tj(t0, p0, p1);
+                const t2 = tj(t1, p1, p2);
+                const t3 = tj(t2, p2, p3);
+
+                // Map [0..1] to [t1..t2]
+                const tt = t1 + (t2 - t1) * t;
+
+                const lerpP = (a, b, u) => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+
+                const A1 = lerpP(p0, p1, (tt - t0) / (t1 - t0 || 1));
+                const A2 = lerpP(p1, p2, (tt - t1) / (t2 - t1 || 1));
+                const A3 = lerpP(p2, p3, (tt - t2) / (t3 - t2 || 1));
+
+                const B1 = lerpP(A1, A2, (tt - t0) / (t2 - t0 || 1));
+                const B2 = lerpP(A2, A3, (tt - t1) / (t3 - t1 || 1));
+
+                const C = lerpP(B1, B2, (tt - t1) / (t2 - t1 || 1));
+                return C;
+            }
+
+            function catmullRomPolylineWorld(curve, stepsPerSeg = 24) {
+                const pts = curve.pts;
+                if (!pts || pts.length < 2) return [];
+
+                // For endpoints, duplicate end points (open curve)
+                const alpha = (curve.alpha == null) ? 0.5 : curve.alpha;
+                const out = [];
+
+                if (pts.length === 2) {
+                    // just a line
+                    for (let i = 0; i <= stepsPerSeg; i++) {
+                        const t = i / stepsPerSeg;
+                        out.push({ x: pts[0].x + (pts[1].x - pts[0].x) * t, y: pts[0].y + (pts[1].y - pts[0].y) * t });
+                    }
+                    return out;
+                }
+
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const p0 = pts[i - 1] || pts[i];
+                    const p1 = pts[i];
+                    const p2 = pts[i + 1];
+                    const p3 = pts[i + 2] || pts[i + 1];
+
+                    for (let s = 0; s <= stepsPerSeg; s++) {
+                        out.push(catmullRomPoint(p0, p1, p2, p3, s / stepsPerSeg, alpha));
+                    }
+                }
+                return out;
+            }
+
+            // ---------- Common polyline helpers ----------
+            function polylineScreenFromWorld(worldPts) {
+                return worldPts.map(worldToScreen);
+            }
+
+            function curvePolylineWorld(c) {
+                if (c.kind === 'bspline') return bsplinePolylineWorld(c, 30);
+                if (c.kind === 'catmullrom') return catmullRomPolylineWorld(c, 30);
+                // for hit testing bezier, we generate from screen-space eval anyway (cheaper to reuse existing)
+                return [];
+            }
+
+            // ---------- Draw control lines (ONLY for selected) ----------
+            function drawControlLinesForSelected(c) {
+                ctx.save();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(120,190,255,0.55)';
+
+                if (c.kind === 'quadratic') {
+                    const p0 = worldToScreen(c.p0), p1 = worldToScreen(c.p1), p2 = worldToScreen(c.p2);
+                    ctx.beginPath();
+                    ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+                    ctx.stroke();
+                } else if (c.kind === 'cubic') {
+                    const p0 = worldToScreen(c.p0), p1 = worldToScreen(c.p1), p2 = worldToScreen(c.p2), p3 = worldToScreen(c.p3);
+                    ctx.beginPath();
+                    ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+                    ctx.stroke();
+                } else {
+                    if (c.pts.length >= 2) {
+                        const p0 = worldToScreen(c.pts[0]);
+                        ctx.beginPath();
+                        ctx.moveTo(p0.x, p0.y);
+                        for (let i = 1; i < c.pts.length; i++) {
+                            const p = worldToScreen(c.pts[i]);
+                            ctx.lineTo(p.x, p.y);
+                        }
+                        ctx.stroke();
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            // ---------- Draw curve strokes (always), handles (only selected) ----------
+            function drawCurve(c, isSelected) {
+                ctx.save();
+
+                if (c.kind === 'quadratic') {
+                    const p0 = worldToScreen(c.p0), p1 = worldToScreen(c.p1), p2 = worldToScreen(c.p2);
+                    ctx.lineWidth = isSelected ? 3 : 2;
+                    ctx.strokeStyle = isSelected ? 'rgba(120,190,255,0.95)' : 'rgba(235,240,255,0.75)';
+                    ctx.beginPath();
+                    ctx.moveTo(p0.x, p0.y);
+                    ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+                    ctx.stroke();
+
+                    if (isSelected) {
+                        drawHandle(p0.x, p0.y, 'rgba(255,255,255,0.95)');
+                        drawHandle(p2.x, p2.y, 'rgba(255,255,255,0.95)');
+                        drawHandle(p1.x, p1.y, 'rgba(255,210,120,0.95)');
+                    }
+                } else if (c.kind === 'cubic') {
+                    const p0 = worldToScreen(c.p0), p1 = worldToScreen(c.p1), p2 = worldToScreen(c.p2), p3 = worldToScreen(c.p3);
+                    ctx.lineWidth = isSelected ? 3 : 2;
+                    ctx.strokeStyle = isSelected ? 'rgba(120,190,255,0.95)' : 'rgba(235,240,255,0.75)';
+                    ctx.beginPath();
+                    ctx.moveTo(p0.x, p0.y);
+                    ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                    ctx.stroke();
+
+                    if (isSelected) {
+                        drawHandle(p0.x, p0.y, 'rgba(255,255,255,0.95)');
+                        drawHandle(p3.x, p3.y, 'rgba(255,255,255,0.95)');
+                        drawHandle(p1.x, p1.y, 'rgba(255,210,120,0.95)');
+                        drawHandle(p2.x, p2.y, 'rgba(255,210,120,0.95)');
+                    }
+                } else if (c.kind === 'bspline') {
+                    const poly = polylineScreenFromWorld(bsplinePolylineWorld(c, 28));
+                    if (poly.length >= 2) {
+                        ctx.lineWidth = isSelected ? 3 : 2;
+                        ctx.strokeStyle = isSelected ? 'rgba(120,190,255,0.95)' : 'rgba(235,240,255,0.75)';
+                        ctx.beginPath();
+                        ctx.moveTo(poly[0].x, poly[0].y);
+                        for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+                        ctx.stroke();
+                    }
+
+                    if (isSelected) {
+                        for (let i = 0; i < c.pts.length; i++) {
+                            const sp = worldToScreen(c.pts[i]);
+                            const isCPSelected = selectedSplineCP === i;
+                            drawHandle(sp.x, sp.y, isCPSelected ? 'rgba(255,210,120,0.98)' : 'rgba(255,210,120,0.70)');
+                        }
+                    }
+                } else {
+                    // catmull-rom
+                    const poly = polylineScreenFromWorld(catmullRomPolylineWorld(c, 28));
+                    if (poly.length >= 2) {
+                        ctx.lineWidth = isSelected ? 3 : 2;
+                        ctx.strokeStyle = isSelected ? 'rgba(120,190,255,0.95)' : 'rgba(235,240,255,0.75)';
+                        ctx.beginPath();
+                        ctx.moveTo(poly[0].x, poly[0].y);
+                        for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+                        ctx.stroke();
+                    }
+
+                    if (isSelected) {
+                        for (let i = 0; i < c.pts.length; i++) {
+                            const sp = worldToScreen(c.pts[i]);
+                            const isCPSelected = selectedSplineCP === i;
+                            // endpoints white-ish, middle orange-ish
+                            const fill = (i === 0 || i === c.pts.length - 1)
+                                ? 'rgba(255,255,255,0.95)'
+                                : (isCPSelected ? 'rgba(255,210,120,0.98)' : 'rgba(255,210,120,0.70)');
+                            drawHandle(sp.x, sp.y, fill);
+                        }
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            function draw() {
+                const rect = wrap.getBoundingClientRect();
+                ctx.clearRect(0, 0, rect.width, rect.height);
+                drawGrid();
+
+                const sel = getSelectedCurve();
+                for (const c of curves) drawCurve(c, sel && c.id === sel.id);
+                if (sel) drawControlLinesForSelected(sel);
+            }
+
+            // ---------- Hit testing ----------
+            function pointSegmentDistance2(px, py, ax, ay, bx, by) {
+                const vx = bx - ax, vy = by - ay;
+                const wx = px - ax, wy = py - ay;
+                const vv = vx * vx + vy * vy;
+                let t = vv > 0 ? (wx * vx + wy * vy) / vv : 0;
+                t = clamp(t, 0, 1);
+                const cx = ax + t * vx, cy = ay + t * vy;
+                const dx = px - cx, dy = py - cy;
+                return dx * dx + dy * dy;
+            }
+
+            function curvePolylineScreenForHit(c, steps = 44) {
+                const pts = [];
+                if (c.kind === 'quadratic') {
+                    const p0 = worldToScreen(c.p0), p1 = worldToScreen(c.p1), p2 = worldToScreen(c.p2);
+                    for (let i = 0; i <= steps; i++) pts.push(evalQuadratic(p0, p1, p2, i / steps));
+                    return pts;
+                }
+                if (c.kind === 'cubic') {
+                    const p0 = worldToScreen(c.p0), p1 = worldToScreen(c.p1), p2 = worldToScreen(c.p2), p3 = worldToScreen(c.p3);
+                    for (let i = 0; i <= steps; i++) pts.push(evalCubic(p0, p1, p2, p3, i / steps));
+                    return pts;
+                }
+                if (c.kind === 'bspline') return polylineScreenFromWorld(bsplinePolylineWorld(c, 18));
+                return polylineScreenFromWorld(catmullRomPolylineWorld(c, 18));
+            }
+
+            function hitTestCurveAtScreen(sx, sy) {
+                const thresholdPx = 10;
+                const thr2 = thresholdPx * thresholdPx;
+                let best = null;
+
+                for (const c of curves) {
+                    const poly = curvePolylineScreenForHit(c, 44);
+                    if (poly.length < 2) continue;
+
+                    let minD2 = Infinity;
+                    for (let i = 1; i < poly.length; i++) {
+                        const a = poly[i - 1], b = poly[i];
+                        const d2 = pointSegmentDistance2(sx, sy, a.x, a.y, b.x, b.y);
+                        if (d2 < minD2) minD2 = d2;
+                    }
+                    if (minD2 <= thr2) {
+                        if (!best || minD2 < best.d2) best = { id: c.id, d2: minD2 };
+                    }
+                }
+                return best ? best.id : null;
+            }
+
+            // Returns null or {kind:'bezier', key} or {kind:'spline', index}
+            function hitTestHandleAtScreen(c, sx, sy) {
+                const r = 10, r2 = r * r;
+
+                if (c.kind === 'quadratic') {
+                    const hs = [['p0', worldToScreen(c.p0)], ['p1', worldToScreen(c.p1)], ['p2', worldToScreen(c.p2)]];
+                    let best = null, bestD = r2 + 1;
+                    for (const [key, p] of hs) {
+                        const d = dist2(sx, sy, p.x, p.y);
+                        if (d <= r2 && d < bestD) { best = { kind: 'bezier', key }; bestD = d; }
+                    }
+                    return best;
+                }
+
+                if (c.kind === 'cubic') {
+                    const hs = [['p0', worldToScreen(c.p0)], ['p1', worldToScreen(c.p1)], ['p2', worldToScreen(c.p2)], ['p3', worldToScreen(c.p3)]];
+                    let best = null, bestD = r2 + 1;
+                    for (const [key, p] of hs) {
+                        const d = dist2(sx, sy, p.x, p.y);
+                        if (d <= r2 && d < bestD) { best = { kind: 'bezier', key }; bestD = d; }
+                    }
+                    return best;
+                }
+
+                let bestIdx = null, bestD = r2 + 1;
+                for (let i = 0; i < c.pts.length; i++) {
+                    const p = worldToScreen(c.pts[i]);
+                    const d = dist2(sx, sy, p.x, p.y);
+                    if (d <= r2 && d < bestD) { bestIdx = i; bestD = d; }
+                }
+                return bestIdx == null ? null : { kind: 'spline', index: bestIdx };
+            }
+
+            // ---------- Interaction ----------
+            let isPointerDown = false;
+            let dragging = null; // pan | handle | curve
+            let spaceDown = false;
+
+            function getCanvasPoint(e) {
+                const rect = canvas.getBoundingClientRect();
+                return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            }
+
+            canvas.addEventListener('pointerdown', (e) => {
+                canvas.setPointerCapture(e.pointerId);
+                isPointerDown = true;
+
+                const { x: sx, y: sy } = getCanvasPoint(e);
+
+                if (e.button === 1 || spaceDown) {
+                    dragging = { type: 'pan', startX: sx, startY: sy, startTx: view.tx, startTy: view.ty };
+                    requestRender();
+                    return;
+                }
+
+                const sel = getSelectedCurve();
+
+                if (sel) {
+                    const h = hitTestHandleAtScreen(sel, sx, sy);
+                    if (h) {
+                        const w = screenToWorld(sx, sy);
+
+                        if (h.kind === 'spline') selectedSplineCP = h.index;
+                        else selectedSplineCP = null;
+
+                        dragging = {
+                            type: 'handle',
+                            curveId: sel.id,
+                            handle: h,
+                            startWorld: w,
+                            startHandleWorld: (h.kind === 'spline') ? { ...sel.pts[h.index] } : { ...sel[h.key] }
+                        };
+                        refreshCurveSelect();
+                        return;
+                    }
+                }
+
+                const hitId = hitTestCurveAtScreen(sx, sy);
+                if (hitId != null) {
+                    if (selectedId !== hitId) { selectedId = hitId; selectedSplineCP = null; refreshCurveSelect(); }
+                    const c = curves.find(cc => cc.id === hitId);
+                    const startWorld = screenToWorld(sx, sy);
+
+                    let snapshot;
+                    if (c.kind === 'quadratic') snapshot = { p0: { ...c.p0 }, p1: { ...c.p1 }, p2: { ...c.p2 } };
+                    else if (c.kind === 'cubic') snapshot = { p0: { ...c.p0 }, p1: { ...c.p1 }, p2: { ...c.p2 }, p3: { ...c.p3 } };
+                    else snapshot = { pts: c.pts.map(p => ({ ...p })) };
+
+                    dragging = { type: 'curve', curveId: hitId, startWorld, snapshot };
+                    requestRender();
+                    return;
+                }
+
+                // background -> deselect
+                selectedId = null;
+                selectedSplineCP = null;
+                refreshCurveSelect();
+            });
+
+            canvas.addEventListener('pointermove', (e) => {
+                const { x: sx, y: sy } = getCanvasPoint(e);
+
+                const sel = getSelectedCurve();
+                if (!dragging) {
+                    if (spaceDown) canvas.style.cursor = 'grab';
+                    else if (sel && hitTestHandleAtScreen(sel, sx, sy)) canvas.style.cursor = 'pointer';
+                    else if (hitTestCurveAtScreen(sx, sy) != null) canvas.style.cursor = 'move';
+                    else canvas.style.cursor = 'crosshair';
+                } else {
+                    canvas.style.cursor = 'grabbing';
+                }
+
+                if (!isPointerDown || !dragging) return;
+
+                if (dragging.type === 'pan') {
+                    const dx = sx - dragging.startX;
+                    const dy = sy - dragging.startY;
+                    view.tx = dragging.startTx + dx;
+                    view.ty = dragging.startTy + dy;
+                    updateInfoBox();
+                    requestRender();
+                    return;
+                }
+
+                const c = curves.find(cc => cc.id === dragging.curveId);
+                if (!c) return;
+
+                const w = screenToWorld(sx, sy);
+                const dx = w.x - dragging.startWorld.x;
+                const dy = w.y - dragging.startWorld.y;
+
+                if (dragging.type === 'handle') {
+                    if (dragging.handle.kind === 'spline') {
+                        c.pts[dragging.handle.index] = snapPointWorld({ x: dragging.startHandleWorld.x + dx, y: dragging.startHandleWorld.y + dy });
+                        selectedSplineCP = dragging.handle.index;
+                    } else {
+                        c[dragging.handle.key] = snapPointWorld({ x: dragging.startHandleWorld.x + dx, y: dragging.startHandleWorld.y + dy });
+                    }
+                    updateInfoBox();
+                    requestRender();
+                    return;
+                }
+
+                if (dragging.type === 'curve') {
+                    if (c.kind === 'quadratic') {
+                        c.p0 = { x: dragging.snapshot.p0.x + dx, y: dragging.snapshot.p0.y + dy };
+                        c.p1 = { x: dragging.snapshot.p1.x + dx, y: dragging.snapshot.p1.y + dy };
+                        c.p2 = { x: dragging.snapshot.p2.x + dx, y: dragging.snapshot.p2.y + dy };
+                        if (snapEnabled()) { c.p0 = snapPointWorld(c.p0); c.p1 = snapPointWorld(c.p1); c.p2 = snapPointWorld(c.p2); }
+                    } else if (c.kind === 'cubic') {
+                        c.p0 = { x: dragging.snapshot.p0.x + dx, y: dragging.snapshot.p0.y + dy };
+                        c.p1 = { x: dragging.snapshot.p1.x + dx, y: dragging.snapshot.p1.y + dy };
+                        c.p2 = { x: dragging.snapshot.p2.x + dx, y: dragging.snapshot.p2.y + dy };
+                        c.p3 = { x: dragging.snapshot.p3.x + dx, y: dragging.snapshot.p3.y + dy };
+                        if (snapEnabled()) { c.p0 = snapPointWorld(c.p0); c.p1 = snapPointWorld(c.p1); c.p2 = snapPointWorld(c.p2); c.p3 = snapPointWorld(c.p3); }
+                    } else {
+                        c.pts = dragging.snapshot.pts.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                        if (snapEnabled()) c.pts = c.pts.map(snapPointWorld);
+                    }
+                    updateInfoBox();
+                    requestRender();
+                    return;
+                }
+            });
+
+            function endPointer() { isPointerDown = false; dragging = null; requestRender(); }
+            canvas.addEventListener('pointerup', endPointer);
+            canvas.addEventListener('pointercancel', endPointer);
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const { x: sx, y: sy } = getCanvasPoint(e);
+                zoomAtScreenPoint(Math.exp(-e.deltaY * 0.0015), sx, sy);
+            }, { passive: false });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') { spaceDown = true; canvas.style.cursor = 'grab'; e.preventDefault(); }
+                if (e.code === 'Delete' || e.code === 'Backspace') {
+                    if (selectedId != null) { deleteSelectedCurve(); e.preventDefault(); }
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'Space') { spaceDown = false; canvas.style.cursor = 'crosshair'; }
+            });
+
+            // ---------- UI actions ----------
+            function addCurve() {
+                const kind = curveType.value;
+                const c = makeDefaultCurve(kind);
+
+                if (snapEnabled()) {
+                    if (c.kind === 'bspline' || c.kind === 'catmullrom') c.pts = c.pts.map(snapPointWorld);
+                    else {
+                        c.p0 = snapPointWorld(c.p0);
+                        c.p1 = snapPointWorld(c.p1);
+                        c.p2 = snapPointWorld(c.p2);
+                        if (c.kind === 'cubic') c.p3 = snapPointWorld(c.p3);
+                    }
+                }
+
+                curves.push(c);
+                selectedId = c.id;
+                selectedSplineCP = (c.kind === 'bspline' || c.kind === 'catmullrom') ? 0 : null;
+                refreshCurveSelect();
+            }
+
+            function deleteSelectedCurve() {
+                if (selectedId == null) return;
+                const idx = curves.findIndex(c => c.id === selectedId);
+                if (idx < 0) return;
+                curves.splice(idx, 1);
+                selectedId = null;
+                selectedSplineCP = null;
+                refreshCurveSelect();
+            }
+
+            function addSplineControlPoint() {
+                const c = getSelectedCurve();
+                if (!c || (c.kind !== 'bspline' && c.kind !== 'catmullrom')) return;
+
+                const g = getGridSizeWorld();
+                const last = c.pts[c.pts.length - 1];
+                const newPt = snapPointWorld({ x: last.x + g, y: last.y });
+                c.pts.push(newPt);
+                selectedSplineCP = c.pts.length - 1;
+                refreshCurveSelect();
+            }
+
+            function deleteSelectedSplineControlPoint() {
+                const c = getSelectedCurve();
+                if (!c || (c.kind !== 'bspline' && c.kind !== 'catmullrom')) return;
+                if (selectedSplineCP == null) return;
+                if (c.pts.length <= 1) return;
+
+                c.pts.splice(selectedSplineCP, 1);
+                selectedSplineCP = Math.min(selectedSplineCP, c.pts.length - 1);
+                refreshCurveSelect();
+            }
+
+            addCurveBtn.addEventListener('click', addCurve);
+            deleteCurveBtn.addEventListener('click', deleteSelectedCurve);
+
+            curveSelect.addEventListener('change', () => {
+                const id = Number(curveSelect.value);
+                if (!Number.isFinite(id)) {
+                    selectedId = null;
+                    selectedSplineCP = null;
+                    refreshCurveSelect();
+                    return;
+                }
+                selectedId = id;
+                selectedSplineCP = null;
+                refreshCurveSelect();
+            });
+
+            addCPBtn.addEventListener('click', addSplineControlPoint);
+            delCPBtn.addEventListener('click', deleteSelectedSplineControlPoint);
+
+            zoomInBtn.addEventListener('click', () => {
+                const rect = wrap.getBoundingClientRect();
+                zoomAtScreenPoint(1.15, rect.width * 0.5, rect.height * 0.5);
+            });
+            zoomOutBtn.addEventListener('click', () => {
+                const rect = wrap.getBoundingClientRect();
+                zoomAtScreenPoint(1 / 1.15, rect.width * 0.5, rect.height * 0.5);
+            });
+            resetViewBtn.addEventListener('click', resetView);
+
+            snapToggle.addEventListener('change', () => { updateInfoBox(); requestRender(); });
+            gridSizeInput.addEventListener('change', () => {
+                const v = clamp(Number(gridSizeInput.value) || 40, 2, 100000);
+                gridSizeInput.value = String(Math.round(v));
+                requestRender();
+            });
+
+            function fmt(n) {
+                const s = (Math.round(n * 1000) / 1000).toFixed(3);
+                return s.replace(/\.?0+$/, '');
+            }
+
+            function approxLengthWorld(c) {
+                if (c.kind === 'bspline') {
+                    const poly = bsplinePolylineWorld(c, 30);
+                    let len = 0;
+                    for (let i = 1; i < poly.length; i++) len += Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
+                    return len;
+                }
+                if (c.kind === 'catmullrom') {
+                    const poly = catmullRomPolylineWorld(c, 30);
+                    let len = 0;
+                    for (let i = 1; i < poly.length; i++) len += Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
+                    return len;
+                }
+                const steps = 140;
+                let len = 0;
+                if (c.kind === 'quadratic') {
+                    let prev = evalQuadratic(c.p0, c.p1, c.p2, 0);
+                    for (let i = 1; i <= steps; i++) {
+                        const t = i / steps;
+                        const pt = evalQuadratic(c.p0, c.p1, c.p2, t);
+                        len += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+                        prev = pt;
+                    }
+                    return len;
+                }
+                let prev = evalCubic(c.p0, c.p1, c.p2, c.p3, 0);
+                for (let i = 1; i <= steps; i++) {
+                    const t = i / steps;
+                    const pt = evalCubic(c.p0, c.p1, c.p2, c.p3, t);
+                    len += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+                    prev = pt;
+                }
+                return len;
+            }
+
+            function updateInfoBox() {
+                const c = getSelectedCurve();
+                if (!c) {
+                    infoBox.textContent = 'No curve selected.';
+                    addCPBtn.disabled = true;
+                    delCPBtn.disabled = true;
+                    deleteCurveBtn.disabled = true;
+                    return;
+                }
+
+                const g = getGridSizeWorld();
+                const snap = snapEnabled();
+                const len = approxLengthWorld(c);
+
+                const header =
+                    `selected: Curve id:${c.id}
+type: ${c.kind}
+snap: ${snap ? 'on' : 'off'}
+grid: ${fmt(g)} world units
+view: scale=${fmt(view.scale)} tx=${fmt(view.tx)} ty=${fmt(view.ty)}
+`;
+
+                if (c.kind === 'quadratic') {
+                    infoBox.textContent =
+                        `${header}
+p0 start:   (${fmt(c.p0.x)}, ${fmt(c.p0.y)})
+p1 control: (${fmt(c.p1.x)}, ${fmt(c.p1.y)})
+p2 end:     (${fmt(c.p2.x)}, ${fmt(c.p2.y)})
+
+approx length: ${fmt(len)} (world units)
+`;
+                } else if (c.kind === 'cubic') {
+                    infoBox.textContent =
+                        `${header}
+p0 start:    (${fmt(c.p0.x)}, ${fmt(c.p0.y)})
+p1 control1: (${fmt(c.p1.x)}, ${fmt(c.p1.y)})
+p2 control2: (${fmt(c.p2.x)}, ${fmt(c.p2.y)})
+p3 end:      (${fmt(c.p3.x)}, ${fmt(c.p3.y)})
+
+approx length: ${fmt(len)} (world units)
+`;
+                } else if (c.kind === 'bspline') {
+                    const selCP = (selectedSplineCP == null) ? 'none' : String(selectedSplineCP);
+                    infoBox.textContent =
+                        `${header}
+control points: ${c.pts.length}
+selected control point: ${selCP}
+
+points:
+${c.pts.map((p, i) => `  [${i}] (${fmt(p.x)}, ${fmt(p.y)})`).join('\n')}
+
+approx length: ${fmt(len)} (world units)
+`;
+                } else {
+                    const selCP = (selectedSplineCP == null) ? 'none' : String(selectedSplineCP);
+                    infoBox.textContent =
+                        `${header}
+mode: Catmull–Rom (open), alpha=${fmt(c.alpha ?? 0.5)} (0 uniform, 0.5 centripetal, 1 chordal)
+control points: ${c.pts.length}
+selected control point: ${selCP}
+
+points:
+${c.pts.map((p, i) => `  [${i}] (${fmt(p.x)}, ${fmt(p.y)})`).join('\n')}
+
+approx length: ${fmt(len)} (world units)
+`;
+                }
+
+                const isSpline = c.kind === 'bspline' || c.kind === 'catmullrom';
+                addCPBtn.disabled = !isSpline;
+                delCPBtn.disabled = !isSpline || selectedSplineCP == null || (c.pts.length <= 1);
+                deleteCurveBtn.disabled = false;
+            }
+
+            // ---------- Init ----------
+            function init() {
+                resizeCanvas();
+                resetView();
+                curves = [];          // start empty
+                selectedId = null;
+                selectedSplineCP = null;
+                refreshCurveSelect();
+                requestRender();
+            }
+
+            init();
+        })();
+    </script>
+</body>
+
+</html>
