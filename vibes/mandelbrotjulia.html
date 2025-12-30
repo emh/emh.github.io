@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mandelbrot + Julia Viewer</title>
+  <style>
+    :root { --bg:#0b0d10; --panel:#0f1318; --fg:#e7eef7; --muted:#9fb0c3; --line:rgba(255,255,255,.12); }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.25 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;}
+    #wrap{height:100%;display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px;box-sizing:border-box;}
+    #ui{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;overflow:auto;}
+    #ui h1{font-size:14px;margin:0 0 10px 0;}
+    .group{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;}
+    .row{display:grid;grid-template-columns: 1fr 110px;gap:8px;align-items:center;margin:6px 0;}
+    label{color:var(--muted);}
+    input[type="number"], input[type="range"], select{
+      width:100%; box-sizing:border-box; background:#0c1015; color:var(--fg);
+      border:1px solid var(--line); border-radius:8px; padding:6px 8px;
+    }
+    input[type="range"]{padding:0;}
+    .small{font-size:12px;color:var(--muted);margin-top:8px}
+    .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    button{
+      background:#121821;color:var(--fg);border:1px solid var(--line);
+      border-radius:10px;padding:8px 10px;cursor:pointer;
+    }
+    button:active{transform:translateY(1px)}
+    #main{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+    #can{display:block;width:100%;height:100%;}
+    #overlay{
+      position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;
+      display:flex;align-items:flex-start;justify-content:space-between;padding:10px;
+      font-size:12px;color:var(--muted);
+      text-shadow:0 1px 0 rgba(0,0,0,.6);
+    }
+    #overlay b{color:var(--fg)}
+    #hint{
+      position:absolute;left:10px;bottom:10px;
+      background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);
+      border-radius:10px;padding:8px 10px;color:var(--muted);font-size:12px;
+      pointer-events:none;backdrop-filter: blur(6px);
+    }
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid rgba(255,255,255,.18);border-bottom-width:2px;border-radius:6px;padding:1px 6px;color:var(--fg)}
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <div id="ui">
+    <h1>Mandelbrot + Julia</h1>
+
+    <div class="row">
+      <label for="scale">Render scale</label>
+      <select id="scale">
+        <option value="1">1.0× (sharp, slower)</option>
+        <option value="0.75" selected>0.75×</option>
+        <option value="0.5">0.5× (fast)</option>
+        <option value="0.35">0.35× (very fast)</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="maxIter">Max iterations</label>
+      <input id="maxIter" type="number" min="10" max="5000" step="10" value="50" />
+    </div>
+
+    <div class="row">
+      <label for="power">Power p (Multibrot)</label>
+      <input id="power" type="number" min="2" max="8" step="0.1" value="2" />
+    </div>
+
+    <div class="row">
+      <label for="smooth">Smooth coloring</label>
+      <select id="smooth">
+        <option value="1" selected>On</option>
+        <option value="0">Off</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="palette">Palette</label>
+      <select id="palette">
+        <option value="cosine" selected>Cosine</option>
+        <option value="fire">Fire-ish</option>
+        <option value="ice">Ice-ish</option>
+        <option value="bw">B/W</option>
+      </select>
+    </div>
+
+    <div class="group">
+      <div class="small"><b>Mandelbrot view</b></div>
+      <div class="row">
+        <label for="mZoom">Zoom</label>
+        <input id="mZoom" type="number" step="0.05" value="1" />
+      </div>
+      <div class="row">
+        <label for="mCx">Center Re</label>
+        <input id="mCx" type="number" step="0.01" value="-0.5" />
+      </div>
+      <div class="row">
+        <label for="mCy">Center Im</label>
+        <input id="mCy" type="number" step="0.01" value="0" />
+      </div>
+      <div class="btnrow">
+        <button id="mHome">Mandelbrot Home</button>
+        <button id="mZoomIn">Zoom In</button>
+        <button id="mZoomOut">Zoom Out</button>
+      </div>
+      <div class="small">Click in Mandelbrot to set Julia parameter <b>c</b>.</div>
+    </div>
+
+    <div class="group">
+      <div class="small"><b>Julia view</b></div>
+      <div class="row">
+        <label for="jZoom">Zoom</label>
+        <input id="jZoom" type="number" step="0.05" value="1" />
+      </div>
+      <div class="row">
+        <label for="jCx">c Re</label>
+        <input id="jCx" type="number" step="0.001" value="-0.8" />
+      </div>
+      <div class="row">
+        <label for="jCy">c Im</label>
+        <input id="jCy" type="number" step="0.001" value="0.156" />
+      </div>
+      <div class="btnrow">
+        <button id="jHome">Julia Home</button>
+        <button id="swap">Swap (M ↔ J params)</button>
+      </div>
+    </div>
+
+    <div class="group small">
+      Controls:
+      <div style="margin-top:6px">
+        <span class="kbd">Click</span> Mandelbrot = set Julia c<br/>
+        <span class="kbd">Shift</span> + Click = recenter Mandelbrot<br/>
+        <span class="kbd">Alt</span> + Wheel = zoom Mandelbrot at cursor
+      </div>
+    </div>
+  </div>
+
+  <div id="main">
+    <canvas id="can"></canvas>
+    <div id="overlay">
+      <div><b>Mandelbrot</b> (left)</div>
+      <div><b>Julia</b> (right)</div>
+    </div>
+    <div id="hint"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const can = $("can");
+  const ctx = can.getContext("2d", { alpha: false });
+
+  const hint = $("hint");
+
+  const ui = {
+    scale: $("scale"),
+    maxIter: $("maxIter"),
+    power: $("power"),
+    smooth: $("smooth"),
+    palette: $("palette"),
+    mZoom: $("mZoom"),
+    mCx: $("mCx"),
+    mCy: $("mCy"),
+    jZoom: $("jZoom"),
+    jCx: $("jCx"),
+    jCy: $("jCy"),
+    mHome: $("mHome"),
+    mZoomIn: $("mZoomIn"),
+    mZoomOut: $("mZoomOut"),
+    jHome: $("jHome"),
+    swap: $("swap"),
+  };
+
+  // -------------------- math / color --------------------
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+  // z^p via polar (works for non-integer p)
+  function powComplex(zr, zi, p) {
+    const r = Math.hypot(zr, zi);
+    const th = Math.atan2(zi, zr);
+    const rp = Math.pow(r, p);
+    const ang = th * p;
+    return [rp * Math.cos(ang), rp * Math.sin(ang)];
+  }
+
+  function smoothMu(n, zr, zi, p) {
+    // Classic smooth coloring generalized a bit:
+    // mu ≈ n + 1 - log(log|z|)/log(p) (approx; behaves well for p≈2..8)
+    const r = Math.hypot(zr, zi);
+    const log_r = Math.log(Math.max(1e-12, r));
+    const denom = Math.log(Math.max(1.000001, p));
+    return n + 1 - Math.log(Math.max(1e-12, log_r)) / denom;
+  }
+
+  function paletteCosine(t) {
+    // t in [0,1]
+    const a = 0.55, b = 0.45;
+    const r = a + b * Math.cos(6.28318 * (t + 0.00));
+    const g = a + b * Math.cos(6.28318 * (t + 0.33));
+    const bl= a + b * Math.cos(6.28318 * (t + 0.67));
+    return [r*255, g*255, bl*255];
+  }
+  function paletteFire(t) {
+    // quick “fire”: dark -> red -> yellow -> white
+    t = clamp(t, 0, 1);
+    const r = 255 * clamp(1.8*t, 0, 1);
+    const g = 255 * clamp(2.2*(t-0.25), 0, 1);
+    const b = 255 * clamp(3.0*(t-0.60), 0, 1);
+    return [r, g, b];
+  }
+  function paletteIce(t) {
+    t = clamp(t, 0, 1);
+    const r = 255 * clamp(1.6*(t-0.15), 0, 1);
+    const g = 255 * clamp(1.8*(t-0.05), 0, 1);
+    const b = 255 * clamp(1.9*(t+0.05), 0, 1);
+    return [r*0.75, g*0.9, b];
+  }
+  function paletteBW(t) {
+    t = clamp(t, 0, 1);
+    const v = Math.floor(255 * t);
+    return [v, v, v];
+  }
+  function getPaletteFn() {
+    switch (ui.palette.value) {
+      case "fire": return paletteFire;
+      case "ice": return paletteIce;
+      case "bw": return paletteBW;
+      default: return paletteCosine;
+    }
+  }
+
+  // -------------------- view / mapping --------------------
+  const state = {
+    // Mandelbrot view
+    m: { cx: -0.5, cy: 0.0, zoom: 1.0 },
+    // Julia view (z0 plane)
+    j: { zoom: 1.0, cRe: -0.8, cIm: 0.156 },
+    // global
+    maxIter: 500,
+    p: 2.0,
+    smooth: true,
+    scale: 0.75,
+  };
+
+  function syncStateFromUI() {
+    state.scale = parseFloat(ui.scale.value);
+    state.maxIter = Math.floor(parseFloat(ui.maxIter.value));
+    state.p = parseFloat(ui.power.value);
+    state.smooth = ui.smooth.value === "1";
+
+    state.m.zoom = Math.max(1e-9, parseFloat(ui.mZoom.value));
+    state.m.cx = parseFloat(ui.mCx.value);
+    state.m.cy = parseFloat(ui.mCy.value);
+
+    state.j.zoom = Math.max(1e-9, parseFloat(ui.jZoom.value));
+    state.j.cRe = parseFloat(ui.jCx.value);
+    state.j.cIm = parseFloat(ui.jCy.value);
+  }
+
+  function syncUIFromState() {
+    ui.mZoom.value = state.m.zoom;
+    ui.mCx.value = state.m.cx;
+    ui.mCy.value = state.m.cy;
+    ui.jZoom.value = state.j.zoom;
+    ui.jCx.value = state.j.cRe;
+    ui.jCy.value = state.j.cIm;
+    ui.maxIter.value = state.maxIter;
+    ui.power.value = state.p;
+    ui.smooth.value = state.smooth ? "1" : "0";
+    ui.scale.value = String(state.scale);
+  }
+
+  function resizeCanvas() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = can.getBoundingClientRect();
+    can.width = Math.floor(rect.width * dpr);
+    can.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(1,0,0,1,0,0);
+    // drawImageData is in canvas pixels; we keep everything in canvas pixels
+    requestFullRedraw();
+  }
+
+  // Map pixel -> complex for Mandelbrot: pixel corresponds to c
+  function pixelToMandelbrot(x, y, W, H) {
+    // x,y in panel pixel coords [0..W),[0..H)
+    const aspect = W / H;
+    const spanY = 2.4 / state.m.zoom;
+    const spanX = spanY * aspect;
+
+    const u = (x / (W - 1)) * 2 - 1;
+    const v = (y / (H - 1)) * 2 - 1;
+
+    const cRe = state.m.cx + u * (spanX * 0.5);
+    const cIm = state.m.cy + v * (spanY * 0.5);
+    return [cRe, cIm];
+  }
+
+  // Map pixel -> complex for Julia: pixel corresponds to z0
+  function pixelToJuliaZ0(x, y, W, H) {
+    const aspect = W / H;
+    const spanY = 2.6 / state.j.zoom;
+    const spanX = spanY * aspect;
+
+    const u = (x / (W - 1)) * 2 - 1;
+    const v = (y / (H - 1)) * 2 - 1;
+
+    const zRe = u * (spanX * 0.5);
+    const zIm = v * (spanY * 0.5);
+    return [zRe, zIm];
+  }
+
+  // -------------------- fractal iteration --------------------
+  function escapeTimeMandelbrot(cRe, cIm) {
+    let zr = 0, zi = 0;
+    const p = state.p;
+    const bailout2 = 4.0;
+
+    for (let n = 0; n < state.maxIter; n++) {
+      const [pr, pi] = powComplex(zr, zi, p);
+      zr = pr + cRe;
+      zi = pi + cIm;
+      if (zr*zr + zi*zi > bailout2) {
+        return state.smooth ? smoothMu(n, zr, zi, p) : n;
+      }
+    }
+    return Infinity; // inside
+  }
+
+  function escapeTimeJulia(z0Re, z0Im) {
+    let zr = z0Re, zi = z0Im;
+    const cRe = state.j.cRe, cIm = state.j.cIm;
+    const p = state.p;
+    const bailout2 = 4.0;
+
+    for (let n = 0; n < state.maxIter; n++) {
+      const [pr, pi] = powComplex(zr, zi, p);
+      zr = pr + cRe;
+      zi = pi + cIm;
+      if (zr*zr + zi*zi > bailout2) {
+        return state.smooth ? smoothMu(n, zr, zi, p) : n;
+      }
+    }
+    return Infinity;
+  }
+
+  // -------------------- progressive renderer --------------------
+  let renderToken = 0;
+
+  function requestFullRedraw() {
+    renderToken++;
+    const token = renderToken;
+
+    // Determine internal render resolution (scaled) in canvas pixels
+    const Wc = can.width, Hc = can.height;
+    const W = Math.max(64, Math.floor(Wc * state.scale));
+    const H = Math.max(64, Math.floor(Hc * state.scale));
+
+    const halfW = Math.floor(W / 2);
+    const leftW = halfW;
+    const rightW = W - halfW;
+
+    const img = ctx.createImageData(W, H);
+    const data = img.data;
+    const pal = getPaletteFn();
+
+    let y = 0;
+    const rowsPerFrame = Math.max(2, Math.floor(18 / state.scale));
+
+    function drawChunk() {
+      if (token !== renderToken) return;
+
+      const yEnd = Math.min(H, y + rowsPerFrame);
+
+      for (let py = y; py < yEnd; py++) {
+        for (let px = 0; px < W; px++) {
+          let mu;
+          if (px < leftW) {
+            const [cRe, cIm] = pixelToMandelbrot(px, py, leftW, H);
+            mu = escapeTimeMandelbrot(cRe, cIm);
+          } else {
+            const jx = px - leftW;
+            const [zRe, zIm] = pixelToJuliaZ0(jx, py, rightW, H);
+            mu = escapeTimeJulia(zRe, zIm);
+          }
+
+          const idx = (py * W + px) * 4;
+
+          if (!isFinite(mu)) {
+            data[idx+0] = 0;
+            data[idx+1] = 0;
+            data[idx+2] = 0;
+            data[idx+3] = 255;
+          } else {
+            const t = clamp(mu / state.maxIter, 0, 1);
+            const [r,g,b] = pal(t);
+            data[idx+0] = r|0;
+            data[idx+1] = g|0;
+            data[idx+2] = b|0;
+            data[idx+3] = 255;
+          }
+        }
+      }
+
+      y = yEnd;
+
+      // Blit scaled image to full canvas each chunk for responsiveness
+      // We use an offscreen canvas to avoid putImageData scaling artifacts.
+      blitImageData(img, W, H, can.width, can.height);
+
+      if (y < H) {
+        requestAnimationFrame(drawChunk);
+      }
+    }
+
+    requestAnimationFrame(drawChunk);
+  }
+
+  // putImageData cannot scale; use a temp canvas and drawImage
+  const tmp = document.createElement("canvas");
+  const tctx = tmp.getContext("2d", { alpha: false });
+
+  function blitImageData(img, W, H, Wc, Hc) {
+    if (tmp.width !== W || tmp.height !== H) {
+      tmp.width = W;
+      tmp.height = H;
+    }
+    tctx.putImageData(img, 0, 0);
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, Wc, Hc);
+    ctx.drawImage(tmp, 0, 0, Wc, Hc);
+
+    // divider line
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.lineWidth = Math.max(1, Math.floor(Wc * 0.002));
+    ctx.beginPath();
+    ctx.moveTo(Wc/2, 0);
+    ctx.lineTo(Wc/2, Hc);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // -------------------- interaction --------------------
+  function panelAt(clientX, clientY) {
+    const rect = can.getBoundingClientRect();
+    const x = (clientX - rect.left) / rect.width * can.width;
+    const y = (clientY - rect.top) / rect.height * can.height;
+    const isLeft = x < can.width / 2;
+    return { x, y, isLeft, rect };
+  }
+
+  function setJuliaFromMandelClick(clientX, clientY) {
+    const { x, y } = panelAt(clientX, clientY);
+
+    const Wc = can.width, Hc = can.height;
+    const W = Math.max(64, Math.floor(Wc * state.scale));
+    const H = Math.max(64, Math.floor(Hc * state.scale));
+    const leftW = Math.floor(W / 2);
+
+    // map to internal pixel coords
+    const px = clamp(Math.floor(x / Wc * W), 0, leftW - 1);
+    const py = clamp(Math.floor(y / Hc * H), 0, H - 1);
+
+    const [cRe, cIm] = pixelToMandelbrot(px, py, leftW, H);
+    state.j.cRe = cRe;
+    state.j.cIm = cIm;
+    ui.jCx.value = cRe.toFixed(6);
+    ui.jCy.value = cIm.toFixed(6);
+    requestFullRedraw();
+  }
+
+  function recenterMandel(clientX, clientY) {
+    const { x, y } = panelAt(clientX, clientY);
+
+    const Wc = can.width, Hc = can.height;
+    const W = Math.max(64, Math.floor(Wc * state.scale));
+    const H = Math.max(64, Math.floor(Hc * state.scale));
+    const leftW = Math.floor(W / 2);
+
+    const px = clamp(Math.floor(x / Wc * W), 0, leftW - 1);
+    const py = clamp(Math.floor(y / Hc * H), 0, H - 1);
+
+    const [cRe, cIm] = pixelToMandelbrot(px, py, leftW, H);
+    state.m.cx = cRe;
+    state.m.cy = cIm;
+    ui.mCx.value = cRe.toFixed(6);
+    ui.mCy.value = cIm.toFixed(6);
+    requestFullRedraw();
+  }
+
+  function zoomMandelAt(clientX, clientY, factor) {
+    // zoom about cursor by adjusting center so the point under cursor stays fixed
+    const { x, y } = panelAt(clientX, clientY);
+    if (x >= can.width/2) return; // only left panel
+
+    const Wc = can.width, Hc = can.height;
+    const W = Math.max(64, Math.floor(Wc * state.scale));
+    const H = Math.max(64, Math.floor(Hc * state.scale));
+    const leftW = Math.floor(W / 2);
+
+    const px = clamp(Math.floor(x / Wc * W), 0, leftW - 1);
+    const py = clamp(Math.floor(y / Hc * H), 0, H - 1);
+
+    const [beforeRe, beforeIm] = pixelToMandelbrot(px, py, leftW, H);
+
+    state.m.zoom = Math.max(1e-12, state.m.zoom * factor);
+
+    const [afterRe, afterIm] = pixelToMandelbrot(px, py, leftW, H);
+
+    // shift center by delta to keep cursor point stationary
+    state.m.cx += (beforeRe - afterRe);
+    state.m.cy += (beforeIm - afterIm);
+
+    syncUIFromState();
+    requestFullRedraw();
+  }
+
+  can.addEventListener("mousemove", (e) => {
+    const { x, y, isLeft } = panelAt(e.clientX, e.clientY);
+
+    const Wc = can.width, Hc = can.height;
+    const W = Math.max(64, Math.floor(Wc * state.scale));
+    const H = Math.max(64, Math.floor(Hc * state.scale));
+    const leftW = Math.floor(W / 2);
+    const rightW = W - leftW;
+
+    if (isLeft) {
+      const px = clamp(Math.floor(x / Wc * W), 0, leftW - 1);
+      const py = clamp(Math.floor(y / Hc * H), 0, H - 1);
+      const [cRe, cIm] = pixelToMandelbrot(px, py, leftW, H);
+      hint.textContent = `Mandelbrot c = ${cRe.toFixed(6)} ${cIm >= 0 ? "+" : "-"} ${Math.abs(cIm).toFixed(6)}i`;
+    } else {
+      const px = clamp(Math.floor((x - Wc/2) / (Wc/2) * rightW), 0, rightW - 1);
+      const py = clamp(Math.floor(y / Hc * H), 0, H - 1);
+      const [zRe, zIm] = pixelToJuliaZ0(px, py, rightW, H);
+      hint.textContent = `Julia z₀ = ${zRe.toFixed(6)} ${zIm >= 0 ? "+" : "-"} ${Math.abs(zIm).toFixed(6)}i  |  c = ${state.j.cRe.toFixed(4)} ${state.j.cIm>=0?"+":"-"} ${Math.abs(state.j.cIm).toFixed(4)}i`;
+    }
+  });
+
+  can.addEventListener("mouseleave", () => { hint.textContent = ""; });
+
+  can.addEventListener("click", (e) => {
+    const { isLeft } = panelAt(e.clientX, e.clientY);
+    if (!isLeft) return;
+
+    if (e.shiftKey) recenterMandel(e.clientX, e.clientY);
+    else setJuliaFromMandelClick(e.clientX, e.clientY);
+  });
+
+  can.addEventListener("wheel", (e) => {
+    if (!e.altKey) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+    zoomMandelAt(e.clientX, e.clientY, factor);
+  }, { passive: false });
+
+  // -------------------- UI wiring --------------------
+  function onAnyChange() {
+    syncStateFromUI();
+    requestFullRedraw();
+  }
+
+  for (const el of [ui.scale, ui.maxIter, ui.power, ui.smooth, ui.palette,
+                   ui.mZoom, ui.mCx, ui.mCy, ui.jZoom, ui.jCx, ui.jCy]) {
+    el.addEventListener("change", onAnyChange);
+    el.addEventListener("input", () => {
+      // avoid excessive redraw for number typing; still keep responsive
+      syncStateFromUI();
+      requestFullRedraw();
+    });
+  }
+
+  ui.mHome.addEventListener("click", () => {
+    state.m.cx = -0.5; state.m.cy = 0.0; state.m.zoom = 1.0;
+    syncUIFromState(); requestFullRedraw();
+  });
+
+  ui.mZoomIn.addEventListener("click", () => {
+    state.m.zoom *= 1.5;
+    syncUIFromState(); requestFullRedraw();
+  });
+
+  ui.mZoomOut.addEventListener("click", () => {
+    state.m.zoom /= 1.5;
+    syncUIFromState(); requestFullRedraw();
+  });
+
+  ui.jHome.addEventListener("click", () => {
+    state.j.zoom = 1.0; state.j.cRe = -0.8; state.j.cIm = 0.156;
+    syncUIFromState(); requestFullRedraw();
+  });
+
+  ui.swap.addEventListener("click", () => {
+    // Swap Mandel center with Julia c (occasionally useful exploration trick)
+    const tmpRe = state.m.cx, tmpIm = state.m.cy;
+    state.m.cx = state.j.cRe; state.m.cy = state.j.cIm;
+    state.j.cRe = tmpRe; state.j.cIm = tmpIm;
+    syncUIFromState(); requestFullRedraw();
+  });
+
+  // -------------------- init --------------------
+  syncStateFromUI();
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+  requestFullRedraw();
+})();
+</script>
+</body>
+</html>
