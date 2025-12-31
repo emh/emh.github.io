@@ -16,6 +16,7 @@ import growth from './growth.mjs';
 import formula from './formula.mjs';
 import move from './move.mjs';
 import symmetry from './symmetry.mjs';
+import constraint from './constraint.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -35,7 +36,8 @@ const renderers = {
     '#growth': growth,
     '#formula': formula,
     '#move': move,
-    '#symmetry': symmetry
+    '#symmetry': symmetry,
+    '#constraint': constraint
 };
 
 const renderer = renderers[location.hash];
