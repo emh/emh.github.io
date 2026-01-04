@@ -31,7 +31,7 @@ const run = () => {
     const R_FACTOR = Math.min(cx, cy) / (2 * TOTAL_RADIUS);
 
     const tick = (ts) => {
-        const t = ts * 0.002;
+        const t = ts * 0.01;
 
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, width, height);

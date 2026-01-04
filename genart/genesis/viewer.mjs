@@ -17,6 +17,7 @@ import formula from './formula.mjs';
 import move from './move.mjs';
 import symmetry from './symmetry.mjs';
 import constraint from './constraint.mjs';
+import glyph from './glyph.mjs';
 
 const renderers = {
     '#scaffold': scaffold,
@@ -37,7 +38,8 @@ const renderers = {
     '#formula': formula,
     '#move': move,
     '#symmetry': symmetry,
-    '#constraint': constraint
+    '#constraint': constraint,
+    '#glyph': glyph
 };
 
 const renderer = renderers[location.hash];
