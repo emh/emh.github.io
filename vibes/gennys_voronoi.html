@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Genny's Voronoi Editor</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        #panel {
+            position: fixed;
+            left: 12px;
+            top: 12px;
+            width: min(460px, calc(100vw - 24px));
+            max-height: calc(100vh - 24px);
+            overflow: auto;
+            background: rgba(20, 20, 20, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 12px 12px 10px;
+            backdrop-filter: blur(8px);
+            font: 12px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            color: #eee;
+            user-select: none;
+        }
+
+        #panel h1 {
+            font-size: 13px;
+            margin: 0 0 10px;
+            font-weight: 600;
+            opacity: 0.95;
+        }
+
+        .section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.10);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 10px;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        .row label {
+            opacity: 0.9;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        input[type="color"] {
+            width: 100%;
+            height: 28px;
+            border: 0;
+            background: transparent;
+            padding: 0;
+        }
+
+        select {
+            width: 100%;
+            height: 28px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: #eee;
+            padding: 0 10px;
+            outline: none;
+        }
+
+        input[type="checkbox"] {
+            transform: translateY(1px);
+        }
+
+        .inline {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            appearance: none;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: #eee;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button.danger {
+            border-color: rgba(255, 80, 80, 0.28);
+        }
+
+        .hint {
+            opacity: 0.75;
+            margin-top: 10px;
+        }
+
+        .stats {
+            opacity: 0.8;
+            margin-top: 8px;
+            white-space: pre;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        }
+
+        .layerCard {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .layerHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .layerTitle {
+            font-weight: 600;
+            opacity: 0.95;
+        }
+
+        .layerControls .row {
+            grid-template-columns: 130px 1fr;
+        }
+
+        .muted {
+            opacity: 0.75;
+        }
+
+        kbd {
+            font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            padding: 1px 6px;
+            border-radius: 7px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.06);
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+
+    <div id="panel">
+        <h1>Voronoi Editor</h1>
+
+        <div class="row">
+            <label for="bgColor">Background</label>
+            <input id="bgColor" type="color" value="#0b0b0b" />
+        </div>
+
+        <div class="row">
+            <label for="showPoints">Show points</label>
+            <div class="inline">
+                <input id="showPoints" type="checkbox" checked />
+                <span class="muted">toggle point rendering</span>
+            </div>
+        </div>
+
+        <div class="inline" style="margin-top:10px;">
+            <button id="addLayer">Add layer</button>
+            <button id="regen">Regenerate 100 points</button>
+            <button id="clear">Clear points</button>
+        </div>
+
+        <div class="section">
+            <div class="muted" style="margin-bottom:6px;">Line layers (each draws the same Voronoi edges)</div>
+            <div id="layers"></div>
+        </div>
+
+        <div class="hint">
+            Drag points to move. Double-click to add a point.
+            Delete: <kbd>Delete</kbd>/<kbd>Backspace</kbd> deletes hovered/selected point, or <kbd>Alt</kbd>+click a
+            point.
+        </div>
+
+        <div class="stats" id="stats"></div>
+    </div>
+
+    <script>
+        (() => {
+            // -----------------------------
+            // Canvas + DPI handling
+            // -----------------------------
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d', { alpha: true });
+
+            let W = 0, H = 0, DPR = 1;
+
+            const resize = () => {
+                DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+                const rect = canvas.getBoundingClientRect();
+                W = Math.max(1, Math.floor(rect.width));
+                H = Math.max(1, Math.floor(rect.height));
+                canvas.width = Math.floor(W * DPR);
+                canvas.height = Math.floor(H * DPR);
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+                // resize offscreen
+                ensureOffscreen();
+
+                requestRebuild();
+                draw();
+            };
+
+            window.addEventListener('resize', resize);
+
+            // -----------------------------
+            // Helpers
+            // -----------------------------
+            const $ = (id) => document.getElementById(id);
+            const rand = (a, b) => a + Math.random() * (b - a);
+            const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+            const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+            const lerp = (a, b, t) => a + (b - a) * t;
+
+            function randColor() {
+                // pleasant-ish random color using HSL
+                const h = Math.floor(rand(0, 360));
+                const s = Math.floor(rand(55, 85));
+                const l = Math.floor(rand(45, 70));
+                return hslToHex(h, s, l);
+            }
+
+            function hslToHex(h, s, l) {
+                s /= 100; l /= 100;
+                const k = (n) => (n + h / 30) % 12;
+                const a = s * Math.min(l, 1 - l);
+                const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+                const toHex = (x) => {
+                    const v = Math.round(x * 255);
+                    return v.toString(16).padStart(2, '0');
+                };
+                return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+            }
+
+            // -----------------------------
+            // UI state
+            // -----------------------------
+            const ui = {
+                bgColor: $('bgColor'),
+                showPoints: $('showPoints'),
+                addLayer: $('addLayer'),
+                regen: $('regen'),
+                clear: $('clear'),
+                layersHost: $('layers'),
+                stats: $('stats')
+            };
+
+            const viewState = {
+                bgColor: ui.bgColor.value,
+                showPoints: ui.showPoints.checked
+            };
+
+            ui.bgColor.addEventListener('input', () => { viewState.bgColor = ui.bgColor.value; draw(); });
+            ui.showPoints.addEventListener('change', () => { viewState.showPoints = ui.showPoints.checked; draw(); });
+
+            // -----------------------------
+            // Points + interaction
+            // -----------------------------
+            const N0 = 100;
+            const points = []; // {x,y}
+
+            const hit = {
+                hover: -1,
+                active: -1,
+                dragging: false,
+                dx: 0, dy: 0,
+                pointerId: null
+            };
+
+            let selected = -1;
+
+            const addPoint = (x, y) => { points.push({ x: clamp(x, 0, W), y: clamp(y, 0, H) }); requestRebuild(); };
+            const deletePoint = (idx) => {
+                if (idx < 0 || idx >= points.length) return;
+                points.splice(idx, 1);
+                if (selected === idx) selected = -1;
+                if (selected > idx) selected--;
+                requestRebuild();
+            };
+
+            const regenerate = (n = N0) => {
+                points.length = 0;
+                for (let i = 0; i < n; i++) addPoint(rand(20, W - 20), rand(20, H - 20));
+                requestRebuild();
+            };
+
+            ui.regen.addEventListener('click', () => regenerate(N0));
+            ui.clear.addEventListener('click', () => { points.length = 0; selected = -1; requestRebuild(); draw(); });
+
+            // -----------------------------
+            // Voronoi computation (half-plane intersection per site)
+            // -----------------------------
+            const EPS = 1e-9;
+
+            function intersectSegmentLine(p, q, a, b, c) {
+                const px = p.x, py = p.y, qx = q.x, qy = q.y;
+                const vp = a * px + b * py - c;
+                const vq = a * qx + b * qy - c;
+                const t = vp / (vp - vq);
+                return { x: px + (qx - px) * t, y: py + (qy - py) * t };
+            }
+
+            function clipPolygonHalfPlane(poly, a, b, c) {
+                const out = [];
+                if (poly.length === 0) return out;
+
+                for (let i = 0; i < poly.length; i++) {
+                    const p = poly[i];
+                    const q = poly[(i + 1) % poly.length];
+
+                    const dp = a * p.x + b * p.y - c;
+                    const dq = a * q.x + b * q.y - c;
+
+                    const pin = dp <= EPS;
+                    const qin = dq <= EPS;
+
+                    if (pin && qin) {
+                        out.push(q);
+                    } else if (pin && !qin) {
+                        out.push(intersectSegmentLine(p, q, a, b, c));
+                    } else if (!pin && qin) {
+                        out.push(intersectSegmentLine(p, q, a, b, c));
+                        out.push(q);
+                    }
+                }
+                return out;
+            }
+
+            function boundingPoly() {
+                return [
+                    { x: 0, y: 0 },
+                    { x: W, y: 0 },
+                    { x: W, y: H },
+                    { x: 0, y: H }
+                ];
+            }
+
+            let cells = [];     // {poly, site}
+            let edges = [];     // unique segments: {ax,ay,bx,by,len,ux,uy,px,py}
+            let needsRebuild = true;
+
+            function requestRebuild() { needsRebuild = true; }
+
+            function rebuildVoronoi() {
+                needsRebuild = false;
+                cells = new Array(points.length);
+                const base = boundingPoly();
+
+                for (let i = 0; i < points.length; i++) {
+                    const si = points[i];
+                    let poly = base.slice();
+
+                    for (let j = 0; j < points.length; j++) {
+                        if (i === j) continue;
+                        const sj = points[j];
+
+                        // Keep half-plane closer to si than sj
+                        const dx = sj.x - si.x;
+                        const dy = sj.y - si.y;
+                        const mx = (si.x + sj.x) * 0.5;
+                        const my = (si.y + sj.y) * 0.5;
+
+                        // dx*x + dy*y <= dx*mx + dy*my
+                        poly = clipPolygonHalfPlane(poly, dx, dy, dx * mx + dy * my);
+                        if (poly.length === 0) break;
+                    }
+
+                    cells[i] = { poly, site: si };
+                }
+
+                // Build unique edges from cell polygons (quantized keys)
+                const map = new Map();
+                edges = [];
+
+                const q = (v) => Math.round(v * 2) / 2; // 0.5px quantization
+                const keyPt = (x, y) => `${q(x)},${q(y)}`;
+                const keyEdge = (ax, ay, bx, by) => {
+                    const a = keyPt(ax, ay);
+                    const b = keyPt(bx, by);
+                    return (a < b) ? `${a}|${b}` : `${b}|${a}`;
+                };
+
+                for (let i = 0; i < cells.length; i++) {
+                    const poly = cells[i]?.poly;
+                    if (!poly || poly.length < 2) continue;
+                    for (let k = 0; k < poly.length; k++) {
+                        const p = poly[k];
+                        const r = poly[(k + 1) % poly.length];
+                        const ax = p.x, ay = p.y, bx = r.x, by = r.y;
+                        const key = keyEdge(ax, ay, bx, by);
+                        if (map.has(key)) continue;
+                        map.set(key, true);
+
+                        const dx = bx - ax, dy = by - ay;
+                        const len = Math.hypot(dx, dy);
+                        if (len < 0.5) continue;
+
+                        const ux = dx / len, uy = dy / len;        // tangent unit
+                        const px = -uy, py = ux;                   // perpendicular unit
+                        edges.push({ ax, ay, bx, by, len, ux, uy, px, py });
+                    }
+                }
+            }
+
+            // -----------------------------
+            // Layers + Patterns
+            // -----------------------------
+            const THICK_MIN = 0.5, THICK_MAX = 25;
+            const PAT_MIN = 0.5, PAT_MAX = 25;
+
+            const layers = [];
+            let layerIdSeq = 1;
+
+            function randomPattern() {
+                // bias slightly toward "none" so it isn't always busy
+                const r = Math.random();
+                if (r < 0.45) return 'none';
+                if (r < 0.72) return 'dots';
+                return 'lines';
+            }
+
+            function makeLayer(name) {
+                const thickness = rand(THICK_MIN, THICK_MAX);
+                const opacity = rand(0.15, 0.95);
+                const color = randColor();
+
+                const pattern = randomPattern();
+                const patternColor = randColor();
+                const patternSize = rand(PAT_MIN, Math.min(PAT_MAX, 10 + thickness * 0.35)); // keep reasonable by default
+
+                return {
+                    id: layerIdSeq++,
+                    name,
+                    thickness,
+                    color,
+                    opacity,
+                    pattern,            // 'none' | 'dots' | 'lines'
+                    patternColor,
+                    patternSize          // dot radius or stripe thickness
+                };
+            }
+
+            // Base layer
+            layers.push(makeLayer('Layer 1'));
+
+            function addLayer() {
+                const n = layers.length + 1;
+                layers.push(makeLayer(`Layer ${n}`));
+                renderLayersUI();
+                draw();
+            }
+
+            function deleteLayerById(id) {
+                const idx = layers.findIndex(l => l.id === id);
+                if (idx <= 0) return; // protect base layer
+                layers.splice(idx, 1);
+                renderLayersUI();
+                draw();
+            }
+
+            ui.addLayer.addEventListener('click', addLayer);
+
+            // -----------------------------
+            // Layer UI
+            // -----------------------------
+            function renderLayersUI() {
+                ui.layersHost.innerHTML = '';
+
+                for (let i = 0; i < layers.length; i++) {
+                    const layer = layers[i];
+                    const card = document.createElement('div');
+                    card.className = 'layerCard';
+
+                    const header = document.createElement('div');
+                    header.className = 'layerHeader';
+
+                    const title = document.createElement('div');
+                    title.className = 'layerTitle';
+                    title.textContent = i === 0 ? `${layer.name} (base)` : layer.name;
+
+                    header.appendChild(title);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'inline';
+
+                    if (i > 0) {
+                        const del = document.createElement('button');
+                        del.className = 'danger';
+                        del.textContent = 'Delete';
+                        del.addEventListener('click', () => deleteLayerById(layer.id));
+                        actions.appendChild(del);
+                    } else {
+                        const note = document.createElement('span');
+                        note.className = 'muted';
+                        note.textContent = 'cannot delete';
+                        actions.appendChild(note);
+                    }
+
+                    header.appendChild(actions);
+                    card.appendChild(header);
+
+                    const controls = document.createElement('div');
+                    controls.className = 'layerControls';
+
+                    // thickness
+                    controls.appendChild(makeRow(
+                        'Thickness',
+                        makeRange(layer.thickness, THICK_MIN, THICK_MAX, 0.1, (v) => { layer.thickness = v; draw(); })
+                    ));
+
+                    // color
+                    controls.appendChild(makeRow(
+                        'Color',
+                        makeColor(layer.color, (v) => { layer.color = v; draw(); })
+                    ));
+
+                    // opacity
+                    controls.appendChild(makeRow(
+                        'Opacity',
+                        makeRange(layer.opacity, 0, 1, 0.01, (v) => { layer.opacity = v; draw(); })
+                    ));
+
+                    // pattern select
+                    controls.appendChild(makeRow(
+                        'Pattern',
+                        makeSelect(
+                            [
+                                ['none', 'none'],
+                                ['dots', 'dots'],
+                                ['lines', 'lines']
+                            ],
+                            layer.pattern,
+                            (v) => { layer.pattern = v; draw(); }
+                        )
+                    ));
+
+                    // pattern color
+                    controls.appendChild(makeRow(
+                        'Pattern color',
+                        makeColor(layer.patternColor, (v) => { layer.patternColor = v; draw(); })
+                    ));
+
+                    // pattern size (dot radius / stripe thickness)
+                    controls.appendChild(makeRow(
+                        'Dot/stripe size',
+                        makeRange(layer.patternSize, PAT_MIN, PAT_MAX, 0.1, (v) => { layer.patternSize = v; draw(); })
+                    ));
+
+                    card.appendChild(controls);
+                    ui.layersHost.appendChild(card);
+                }
+            }
+
+            function makeRow(labelText, inputEl) {
+                const row = document.createElement('div');
+                row.className = 'row';
+
+                const lab = document.createElement('label');
+                lab.textContent = labelText;
+
+                row.appendChild(lab);
+                row.appendChild(inputEl);
+                return row;
+            }
+
+            function makeRange(value, min, max, step, onChange) {
+                const r = document.createElement('input');
+                r.type = 'range';
+                r.min = String(min);
+                r.max = String(max);
+                r.step = String(step);
+                r.value = String(value);
+                r.addEventListener('input', () => onChange(parseFloat(r.value)));
+                return r;
+            }
+
+            function makeColor(value, onChange) {
+                const c = document.createElement('input');
+                c.type = 'color';
+                c.value = value;
+                c.addEventListener('input', () => onChange(c.value));
+                return c;
+            }
+
+            function makeSelect(options, value, onChange) {
+                const s = document.createElement('select');
+                for (const [v, label] of options) {
+                    const opt = document.createElement('option');
+                    opt.value = v;
+                    opt.textContent = label;
+                    s.appendChild(opt);
+                }
+                s.value = value;
+                s.addEventListener('change', () => onChange(s.value));
+                return s;
+            }
+
+            renderLayersUI();
+
+            // -----------------------------
+            // Offscreen for masked stripe rendering
+            // -----------------------------
+            const off = document.createElement('canvas');
+            const offCtx = off.getContext('2d', { alpha: true });
+
+            function ensureOffscreen() {
+                off.width = Math.floor(W * DPR);
+                off.height = Math.floor(H * DPR);
+                offCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                offCtx.clearRect(0, 0, W, H);
+            }
+
+            // -----------------------------
+            // Rendering
+            // -----------------------------
+            function drawEdgesStroke(layer) {
+                ctx.save();
+                ctx.globalAlpha = layer.opacity;
+                ctx.lineWidth = layer.thickness;
+                ctx.strokeStyle = layer.color;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+
+                ctx.beginPath();
+                for (let i = 0; i < edges.length; i++) {
+                    const e = edges[i];
+                    ctx.moveTo(e.ax, e.ay);
+                    ctx.lineTo(e.bx, e.by);
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            function drawDotsPattern(layer) {
+                const size = layer.patternSize; // radius
+                const spacing = Math.max(3, size * 3.5);
+
+                ctx.save();
+                ctx.globalAlpha = layer.opacity; // keep pattern tied to layer opacity
+                ctx.fillStyle = layer.patternColor;
+
+                for (let i = 0; i < edges.length; i++) {
+                    const e = edges[i];
+                    const len = e.len;
+
+                    // start a little in so dots don't bunch at vertices
+                    const start = spacing * 0.5;
+                    for (let d = start; d < len - start; d += spacing) {
+                        const x = e.ax + e.ux * d;
+                        const y = e.ay + e.uy * d;
+                        ctx.beginPath();
+                        ctx.arc(x, y, size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            function drawLinesPatternMasked(layer) {
+                // "lines" = perpendicular stripes; clip/mask to the main stroke so stripes do not extend outside.
+                const stripeW = layer.patternSize;  // thickness of stripe
+                const spacing = Math.max(4, stripeW * 3.25);
+
+                // 1) draw stripes into offscreen
+                offCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                offCtx.clearRect(0, 0, W, H);
+
+                offCtx.save();
+                offCtx.globalAlpha = layer.opacity;
+                offCtx.strokeStyle = layer.patternColor;
+                offCtx.lineWidth = stripeW;
+                offCtx.lineCap = 'butt';  // hard caps for the stripes themselves
+                offCtx.lineJoin = 'miter';
+
+                offCtx.beginPath();
+                for (let i = 0; i < edges.length; i++) {
+                    const e = edges[i];
+                    const len = e.len;
+
+                    const start = spacing * 0.5;
+                    const half = layer.thickness * 0.55; // a bit beyond; mask will trim
+                    for (let d = start; d < len - start; d += spacing) {
+                        const cx = e.ax + e.ux * d;
+                        const cy = e.ay + e.uy * d;
+                        const x0 = cx - e.px * half;
+                        const y0 = cy - e.py * half;
+                        const x1 = cx + e.px * half;
+                        const y1 = cy + e.py * half;
+                        offCtx.moveTo(x0, y0);
+                        offCtx.lineTo(x1, y1);
+                    }
+                }
+                offCtx.stroke();
+                offCtx.restore();
+
+                // 2) mask with the main stroke shape (destination-in)
+                offCtx.save();
+                offCtx.globalCompositeOperation = 'destination-in';
+                offCtx.lineWidth = layer.thickness;
+                offCtx.strokeStyle = '#fff';
+                offCtx.lineCap = 'butt';   // hard caps so the mask doesn't extend beyond segment ends
+                offCtx.lineJoin = 'round';
+
+                offCtx.beginPath();
+                for (let i = 0; i < edges.length; i++) {
+                    const e = edges[i];
+                    offCtx.moveTo(e.ax, e.ay);
+                    offCtx.lineTo(e.bx, e.by);
+                }
+                offCtx.stroke();
+                offCtx.restore();
+
+                // 3) draw masked result onto main canvas
+                ctx.save();
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                ctx.drawImage(off, 0, 0);
+                ctx.restore();
+            }
+
+            function drawPoints() {
+                const r = 5;
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const isHover = (i === hit.hover);
+                    const isSel = (i === selected);
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, r + (isHover ? 2 : 0) + (isSel ? 1 : 0), 0, Math.PI * 2);
+
+                    if (isSel) ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                    else if (isHover) ctx.fillStyle = 'rgba(255,255,255,0.75)';
+                    else ctx.fillStyle = 'rgba(255,255,255,0.45)';
+                    ctx.fill();
+
+                    if (isSel) {
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            function draw() {
+                if (needsRebuild) rebuildVoronoi();
+
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+                // background
+                ctx.fillStyle = viewState.bgColor;
+                ctx.fillRect(0, 0, W, H);
+
+                // base edges + patterns per layer
+                for (const layer of layers) {
+                    drawEdgesStroke(layer);
+
+                    if (layer.pattern === 'dots') {
+                        drawDotsPattern(layer);
+                    } else if (layer.pattern === 'lines') {
+                        drawLinesPatternMasked(layer);
+                    }
+                }
+
+                // points
+                if (viewState.showPoints) drawPoints();
+
+                ui.stats.textContent =
+                    `points: ${points.length}\n` +
+                    `layers: ${layers.length}\n` +
+                    `edges: ${edges.length}\n` +
+                    `selected: ${selected >= 0 ? selected : '-'}\n` +
+                    `hover: ${hit.hover >= 0 ? hit.hover : '-'}\n` +
+                    `rebuild: ${needsRebuild ? 'pending' : 'ok'}`;
+            }
+
+            // -----------------------------
+            // Picking + pointer events
+            // -----------------------------
+            function getCanvasPos(ev) {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: (ev.clientX - rect.left) * (W / rect.width),
+                    y: (ev.clientY - rect.top) * (H / rect.height)
+                };
+            }
+
+            function pickPoint(x, y) {
+                const rr = 10 * 10;
+                let best = -1, bestD = Infinity;
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const d = dist2(x, y, p.x, p.y);
+                    if (d < rr && d < bestD) { bestD = d; best = i; }
+                }
+                return best;
+            }
+
+            canvas.addEventListener('pointermove', (ev) => {
+                const pos = getCanvasPos(ev);
+
+                if (hit.dragging && hit.active >= 0 && hit.pointerId === ev.pointerId) {
+                    const p = points[hit.active];
+                    p.x = clamp(pos.x + hit.dx, 0, W);
+                    p.y = clamp(pos.y + hit.dy, 0, H);
+                    requestRebuild();
+                    draw();
+                    return;
+                }
+
+                const idx = pickPoint(pos.x, pos.y);
+                if (idx !== hit.hover) {
+                    hit.hover = idx;
+                    canvas.style.cursor = idx >= 0 ? 'grab' : 'crosshair';
+                    draw();
+                }
+            });
+
+            canvas.addEventListener('pointerdown', (ev) => {
+                ev.preventDefault();
+                const pos = getCanvasPos(ev);
+                const idx = pickPoint(pos.x, pos.y);
+
+                if (idx >= 0) {
+                    if (ev.altKey) {
+                        deletePoint(idx);
+                        hit.hover = -1;
+                        draw();
+                        return;
+                    }
+
+                    selected = idx;
+                    hit.active = idx;
+                    hit.dragging = true;
+                    hit.pointerId = ev.pointerId;
+                    canvas.setPointerCapture(ev.pointerId);
+                    canvas.style.cursor = 'grabbing';
+
+                    const p = points[idx];
+                    hit.dx = p.x - pos.x;
+                    hit.dy = p.y - pos.y;
+                    draw();
+                } else {
+                    selected = -1;
+                    draw();
+                }
+            });
+
+            canvas.addEventListener('pointerup', (ev) => {
+                if (hit.pointerId === ev.pointerId) {
+                    hit.dragging = false;
+                    hit.active = -1;
+                    hit.pointerId = null;
+                    const pos = getCanvasPos(ev);
+                    const idx = pickPoint(pos.x, pos.y);
+                    canvas.style.cursor = idx >= 0 ? 'grab' : 'crosshair';
+                    draw();
+                }
+            });
+
+            canvas.addEventListener('pointercancel', (ev) => {
+                if (hit.pointerId === ev.pointerId) {
+                    hit.dragging = false;
+                    hit.active = -1;
+                    hit.pointerId = null;
+                    canvas.style.cursor = 'crosshair';
+                    draw();
+                }
+            });
+
+            canvas.addEventListener('dblclick', (ev) => {
+                const pos = getCanvasPos(ev);
+                addPoint(pos.x, pos.y);
+                draw();
+            });
+
+            window.addEventListener('keydown', (ev) => {
+                if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+                const idx = hit.hover >= 0 ? hit.hover : selected;
+                if (idx >= 0) {
+                    ev.preventDefault();
+                    deletePoint(idx);
+                    hit.hover = -1;
+                    draw();
+                }
+            });
+
+            // -----------------------------
+            // Start
+            // -----------------------------
+            resize();
+            regenerate(N0);
+            draw();
+        })();
+    </script>
+</body>
+
+</html>
