@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Genny's Web</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height: 100%; margin: 0; background:#07192a; overflow:hidden; font: 13px/1.3 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #ui{
+      position: fixed; left: 12px; top: 12px; z-index: 10;
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(6px);
+      user-select: none;
+      min-width: 360px;
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+    }
+    #ui .row { display:flex; align-items:center; gap:10px; margin: 8px 0; }
+    #ui label { width: 130px; opacity: .9; }
+    #ui input[type="range"] { width: 150px; }
+    #ui input[type="number"] { width: 72px; }
+    #ui input[type="color"] { width: 44px; height: 26px; padding:0; border:0; background:transparent; }
+    #ui select { width: 160px; }
+    #ui button{
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.14);
+      color: #fff;
+      padding: 7px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #ui button:hover { background: rgba(255,255,255,.12); }
+    #ui button:disabled { opacity: .45; cursor: not-allowed; }
+    #ui .divider { height:1px; background: rgba(255,255,255,.12); margin: 10px 0; }
+    #ui .hint { margin-top: 8px; opacity: .75; font-size: 12px; }
+    .sectionTitle { font-weight: 650; opacity: .92; margin-top: 2px; }
+    .muted { opacity: .75; }
+    .layers { margin-top: 8px; }
+
+    .layerCard{
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      border-radius: 12px;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .layerHead{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .layerTitle{ font-weight: 600; opacity: .95; }
+    .iconBtn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 10px;
+      font-size: 16px;
+      line-height: 1;
+    }
+    canvas { display:block; width:100vw; height:100vh; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div class="row">
+      <button id="addCurve">Add curve</button>
+      <button id="delCurve">Delete selected</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="sectionTitle">Curve settings</div>
+
+    <div class="row">
+      <label for="segments">Segments</label>
+      <input id="segments" type="number" min="3" max="120" step="1" value="10" />
+      <button id="addLayer" disabled>Add layer</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="sectionTitle">Layers</div>
+    <div id="layers" class="layers">
+      <div class="muted">Select a curve to edit layers.</div>
+    </div>
+
+    <div class="hint">
+      Click a curve to select. Drag handles to edit path. Drag stroke to move. Patterns follow the same path per layer.
+    </div>
+  </div>
+
+  <canvas id="c"></canvas>
+
+<script>
+(() => {
+  // ---------- utilities ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp  = (a, b, t) => a + (b - a) * t;
+  const dist2 = (ax, ay, bx, by) => { const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
+
+  const hexToRgb = (hex) => {
+    const s = hex.replace('#','').trim();
+    const n = parseInt(s.length===3 ? s.split('').map(ch=>ch+ch).join('') : s, 16);
+    return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+  };
+  const rgba = (hex, a) => { const {r,g,b}=hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; };
+
+  function cubicAt(p0, p1, p2, p3, t) {
+    const u = 1 - t;
+    return u*u*u*p0 + 3*u*u*t*p1 + 3*u*t*t*p2 + t*t*t*p3;
+  }
+  function cubicPoint(seg, t) {
+    return {
+      x: cubicAt(seg.p0.x, seg.c1.x, seg.c2.x, seg.p3.x, t),
+      y: cubicAt(seg.p0.y, seg.c1.y, seg.c2.y, seg.p3.y, t)
+    };
+  }
+  function pointToSegmentDistanceSq(px, py, ax, ay, bx, by) {
+    const abx=bx-ax, aby=by-ay;
+    const apx=px-ax, apy=py-ay;
+    const denom = abx*abx + aby*aby || 1e-9;
+    let t = (apx*abx + apy*aby) / denom;
+    t = clamp(t, 0, 1);
+    const cx = ax + abx*t, cy = ay + aby*t;
+    return dist2(px,py,cx,cy);
+  }
+
+  function hsvToRgb(h, s, v) {
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
+    let r, g, b;
+    switch (i % 6) {
+      case 0: r=v; g=t; b=p; break;
+      case 1: r=q; g=v; b=p; break;
+      case 2: r=p; g=v; b=t; break;
+      case 3: r=p; g=q; b=v; break;
+      case 4: r=t; g=p; b=v; break;
+      case 5: r=v; g=p; b=q; break;
+    }
+    return { r: Math.round(r*255), g: Math.round(g*255), b: Math.round(b*255) };
+  }
+  function rgbToHex(r,g,b){
+    const to = (x)=>x.toString(16).padStart(2,'0');
+    return `#${to(r)}${to(g)}${to(b)}`;
+  }
+  function randColorHex() {
+    const h = Math.random();
+    const s = lerp(0.65, 0.95, Math.random());
+    const v = lerp(0.85, 1.00, Math.random());
+    const rgb = hsvToRgb(h, s, v);
+    return rgbToHex(rgb.r, rgb.g, rgb.b);
+  }
+
+  // ---------- model ----------
+  class Curve {
+    constructor(anchors, c1s, c2s) {
+      this.anchors = anchors;
+      this.c1 = c1s;
+      this.c2 = c2s;
+      this.layers = []; // [{width, opacity, color, pattern:{type,color,size}}]
+      this._cachedPolyline = null; // for hit-test
+    }
+    bumpCache() { this._cachedPolyline = null; }
+    segments() {
+      const n = this.anchors.length;
+      const segs = [];
+      for (let i=0;i<n;i++){
+        const p0=this.anchors[i];
+        const p3=this.anchors[(i+1)%n];
+        segs.push({ p0, p3, c1: this.c1[i], c2: this.c2[i] });
+      }
+      return segs;
+    }
+    polyline(samplePerSeg=18){
+      if (this._cachedPolyline) return this._cachedPolyline;
+      const pts=[];
+      for (const seg of this.segments()) {
+        for (let j=0;j<=samplePerSeg;j++){
+          pts.push(cubicPoint(seg, j/samplePerSeg));
+        }
+      }
+      this._cachedPolyline = pts;
+      return pts;
+    }
+    translate(dx,dy){
+      for (const p of this.anchors){ p.x+=dx; p.y+=dy; }
+      for (const p of this.c1){ p.x+=dx; p.y+=dy; }
+      for (const p of this.c2){ p.x+=dx; p.y+=dy; }
+      this.bumpCache();
+    }
+  }
+
+  // ---------- state ----------
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  const ui = {
+    addCurve: document.getElementById('addCurve'),
+    delCurve: document.getElementById('delCurve'),
+    addLayer: document.getElementById('addLayer'),
+    segments: document.getElementById('segments'),
+    layers: document.getElementById('layers'),
+  };
+
+  const state = {
+    curves: [],
+    selectedCurve: -1,
+    dragging: null,
+    margin: 12,
+    bgAlpha: 0.12
+  };
+
+  // ---------- generation ----------
+  function randomBezierLoopChain(nSegments) {
+    const w=innerWidth, h=innerHeight;
+    const cx=w/2, cy=h/2;
+    const margin=state.margin;
+
+    const anchors=[];
+    for (let i=0;i<nSegments;i++){
+      const angle=(i/nSegments)*Math.PI*2;
+      const radius=lerp(150,300,Math.random());
+      anchors.push({
+        x: clamp(cx + Math.cos(angle)*radius, margin, w-margin),
+        y: clamp(cy + Math.sin(angle)*radius, margin, h-margin)
+      });
+    }
+
+    const biasAngle=Math.random()*Math.PI*2;
+    const biasMag=lerp(120,280,Math.random());
+    const bx=Math.cos(biasAngle)*biasMag;
+    const by=Math.sin(biasAngle)*biasMag;
+
+    for (const p of anchors){
+      p.x = clamp(p.x + lerp(-80,80,Math.random()) + bx, margin, w-margin);
+      p.y = clamp(p.y + lerp(-80,80,Math.random()) + by, margin, h-margin);
+    }
+
+    const tangents=[];
+    for (let i=0;i<anchors.length;i++){
+      const prev=anchors[(i-1+anchors.length)%anchors.length];
+      const next=anchors[(i+1)%anchors.length];
+      let tx=next.x-prev.x, ty=next.y-prev.y;
+
+      const d=Math.hypot(next.x-prev.x, next.y-prev.y);
+      const mag=d*0.30;
+      const len=Math.hypot(tx,ty)||1e-9;
+      tx=(tx/len)*mag; ty=(ty/len)*mag;
+
+      const cpx=(cx-anchors[i].x)*(-0.15);
+      const cpy=(cy-anchors[i].y)*(-0.15);
+      tx+=cpx; ty+=cpy;
+
+      tangents.push({x:tx,y:ty});
+    }
+
+    const c1=[], c2=[];
+    for (let i=0;i<anchors.length;i++){
+      const curr=anchors[i];
+      const next=anchors[(i+1)%anchors.length];
+      const t0=tangents[i];
+      const t1=tangents[(i+1)%anchors.length];
+      c1.push({ x: curr.x + t0.x, y: curr.y + t0.y });
+      c2.push({ x: next.x - t1.x, y: next.y - t1.y });
+    }
+
+    return new Curve(anchors,c1,c2);
+  }
+
+  function randomLayer() {
+    return {
+      width: Math.round(lerp(3, 28, Math.random())),
+      opacity: +(lerp(0.20, 0.95, Math.random()).toFixed(2)),
+      color: randColorHex(),
+      pattern: {
+        type: 'none',          // 'none' | 'dots' | 'stripes'
+        color: '#ffffff',
+        size: Math.round(lerp(3, 10, Math.random())) // dot radius OR stripe thickness
+      }
+    };
+  }
+
+  // ---------- curve sampling for patterns ----------
+  // returns [{x,y, tx,ty, nx,ny}] where (tx,ty) is unit tangent and (nx,ny) is unit normal
+  function sampleCurveWithTangent(curve, stepPx) {
+    const samples = [];
+    const segs = curve.segments();
+
+    let prev = null;
+    let acc = 0;
+
+    // dense sampling per segment, then re-sample by arc-length-ish
+    for (const seg of segs) {
+      const dense = 40;
+      for (let i=0;i<=dense;i++){
+        const p = cubicPoint(seg, i/dense);
+        if (!prev) {
+          prev = p;
+          samples.push({ x:p.x, y:p.y, tx:1, ty:0, nx:0, ny:1 });
+          continue;
+        }
+        const dx = p.x - prev.x;
+        const dy = p.y - prev.y;
+        const d = Math.hypot(dx,dy);
+        acc += d;
+
+        if (acc >= stepPx) {
+          // tangent from prev->p (unit)
+          const len = d || 1e-9;
+          const tx = dx / len;
+          const ty = dy / len;
+          const nx = -ty;
+          const ny = tx;
+          samples.push({ x:p.x, y:p.y, tx, ty, nx, ny });
+          acc = 0;
+        }
+        prev = p;
+      }
+    }
+    return samples;
+  }
+
+  // ---------- rendering ----------
+  function clearWithFade(force=false){
+    if (force) { ctx.clearRect(0,0,innerWidth,innerHeight); return; }
+    ctx.save();
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle=`rgba(0,25,51,${state.bgAlpha})`;
+    ctx.fillRect(0,0,innerWidth,innerHeight);
+    ctx.restore();
+  }
+
+  function traceCurvePath(curve){
+    const n = curve.anchors.length;
+    ctx.beginPath();
+    ctx.moveTo(curve.anchors[0].x, curve.anchors[0].y);
+    for (let i=0;i<n;i++){
+      const next=curve.anchors[(i+1)%n];
+      const c1=curve.c1[i];
+      const c2=curve.c2[i];
+      ctx.bezierCurveTo(c1.x,c1.y,c2.x,c2.y,next.x,next.y);
+    }
+    ctx.closePath();
+  }
+
+  function drawPattern(curve, layer) {
+    const pat = layer.pattern;
+    if (!pat || pat.type === 'none') return;
+
+    const half = layer.width / 2;
+
+    if (pat.type === 'dots') {
+      const r = Math.max(0.5, pat.size);
+      const step = Math.max(6, r * 3); // spacing heuristic
+      const pts = sampleCurveWithTangent(curve, step);
+
+      ctx.save();
+      ctx.fillStyle = rgba(pat.color, layer.opacity);
+      for (const p of pts) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+
+    if (pat.type === 'stripes') {
+      const thick = Math.max(0.5, pat.size);
+      const step = Math.max(6, thick * 4);
+      const pts = sampleCurveWithTangent(curve, step);
+
+      ctx.save();
+      ctx.strokeStyle = rgba(pat.color, layer.opacity);
+      ctx.lineWidth = thick;
+      ctx.lineCap = 'round';
+
+      for (const p of pts) {
+        const ax = p.x - p.nx * half;
+        const ay = p.y - p.ny * half;
+        const bx = p.x + p.nx * half;
+        const by = p.y + p.ny * half;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawCurveLayers(curve, selected=false) {
+    for (let li=0; li<curve.layers.length; li++){
+      const layer = curve.layers[li];
+
+      // base stroke
+      ctx.save();
+      ctx.lineJoin='round';
+      ctx.lineCap='round';
+      ctx.lineWidth=layer.width;
+      ctx.strokeStyle=rgba(layer.color, layer.opacity);
+      traceCurvePath(curve);
+      ctx.stroke();
+      ctx.restore();
+
+      // pattern overlays (aligned to same path)
+      drawPattern(curve, layer);
+    }
+
+    if (selected) drawControls(curve);
+  }
+
+  function drawControls(curve){
+    const n=curve.anchors.length;
+
+    ctx.save();
+    ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    for (let i=0;i<n;i++){
+      const a=curve.anchors[i], c1=curve.c1[i];
+      const next=curve.anchors[(i+1)%n], c2=curve.c2[i];
+      ctx.moveTo(a.x,a.y); ctx.lineTo(c1.x,c1.y);
+      ctx.moveTo(next.x,next.y); ctx.lineTo(c2.x,c2.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    const rA=6, rC=5;
+    for (let i=0;i<n;i++){
+      drawHandle(curve.c1[i].x, curve.c1[i].y, rC, 'rgba(255,255,255,0.9)','rgba(0,0,0,0.8)','square');
+      drawHandle(curve.c2[i].x, curve.c2[i].y, rC, 'rgba(255,255,255,0.9)','rgba(0,0,0,0.8)','square');
+      drawHandle(curve.anchors[i].x, curve.anchors[i].y, rA, 'rgba(0,255,255,0.95)','rgba(0,0,0,0.85)','circle');
+    }
+  }
+
+  function drawHandle(x,y,r,fill,stroke,shape){
+    ctx.save();
+    ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=2;
+    if (shape==='square'){
+      ctx.beginPath(); ctx.rect(x-r,y-r,r*2,r*2); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function redraw(force=true){
+    clearWithFade(force);
+    for (let i=0;i<state.curves.length;i++){
+      drawCurveLayers(state.curves[i], i===state.selectedCurve);
+    }
+  }
+
+  // ---------- hit testing ----------
+  function hitHandle(curve,mx,my){
+    const rA=8, rC=7;
+    const n=curve.anchors.length;
+    for (let i=0;i<n;i++){
+      if (dist2(mx,my,curve.anchors[i].x,curve.anchors[i].y) <= rA*rA) return {type:'anchor', idx:i};
+    }
+    for (let i=0;i<n;i++){
+      if (dist2(mx,my,curve.c1[i].x,curve.c1[i].y) <= rC*rC) return {type:'c1', idx:i};
+      if (dist2(mx,my,curve.c2[i].x,curve.c2[i].y) <= rC*rC) return {type:'c2', idx:i};
+    }
+    return null;
+  }
+
+  function hitCurveStroke(curve,mx,my){
+    const pts=curve.polyline(20);
+    const maxW = curve.layers.reduce((m,l)=>Math.max(m,l.width), 1);
+    const tol = Math.max(6, maxW*0.6);
+    const tol2=tol*tol;
+    for (let i=0;i<pts.length-1;i++){
+      const a=pts[i], b=pts[i+1];
+      if (pointToSegmentDistanceSq(mx,my,a.x,a.y,b.x,b.y) <= tol2) return true;
+    }
+    return false;
+  }
+
+  function pickCurve(mx,my){
+    for (let i=state.curves.length-1;i>=0;i--){
+      const c=state.curves[i];
+      if (i===state.selectedCurve) {
+        const h=hitHandle(c,mx,my);
+        if (h) return {curveIndex:i, handle:h, onStroke:false};
+        if (hitCurveStroke(c,mx,my)) return {curveIndex:i, handle:null, onStroke:true};
+      } else {
+        if (hitCurveStroke(c,mx,my)) return {curveIndex:i, handle:null, onStroke:true};
+      }
+    }
+    return null;
+  }
+
+  // ---------- UI helpers ----------
+  function el(tag, attrs={}, ...kids){
+    const n=document.createElement(tag);
+    for (const [k,v] of Object.entries(attrs)){
+      if (k==='class') n.className=v;
+      else if (k==='text') n.textContent=v;
+      else if (k.startsWith('on') && typeof v==='function') n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const kid of kids) n.append(kid);
+    return n;
+  }
+
+  function renderLayersPanel(){
+    ui.layers.innerHTML = '';
+
+    const ci = state.selectedCurve;
+    ui.addLayer.disabled = (ci < 0);
+    ui.delCurve.disabled = (ci < 0);
+
+    if (ci < 0) {
+      ui.layers.append(el('div', { class:'muted', text:'Select a curve to edit layers.' }));
+      return;
+    }
+
+    const curve = state.curves[ci];
+    ui.layers.append(el('div', { class:'muted', text:`Curve ${ci+1} — ${curve.layers.length} layer(s)` }));
+
+    curve.layers.forEach((layer, li) => {
+      const card = el('div', { class:'layerCard' });
+      const canDelete = curve.layers.length > 1;
+
+      const delBtn = el('button', {
+        class: 'iconBtn',
+        title: canDelete ? 'Delete layer' : 'Cannot delete the only layer',
+        text: '×'
+      });
+      delBtn.disabled = !canDelete;
+      delBtn.addEventListener('click', () => {
+        if (curve.layers.length <= 1) return;
+        curve.layers.splice(li, 1);
+        curve.bumpCache();
+        renderLayersPanel();
+        redraw(true);
+      });
+
+      const head = el('div', { class:'layerHead' },
+        el('div', { class:'layerTitle', text:`Layer ${li+1}${li===0 ? ' (base)' : ''}` }),
+        delBtn
+      );
+
+      const widthRow = el('div', { class:'row' },
+        el('label', { text:'Line width' }),
+        (() => {
+          const r = el('input', { type:'range', min:'1', max:'60', step:'1', value:String(layer.width) });
+          const out = el('span', { text:String(layer.width) });
+          r.addEventListener('input', () => {
+            layer.width = Number(r.value);
+            out.textContent = r.value;
+            curve.bumpCache();
+            redraw(true);
+          });
+          return el('div', {}, r, out);
+        })()
+      );
+
+      const opRow = el('div', { class:'row' },
+        el('label', { text:'Opacity' }),
+        (() => {
+          const r = el('input', { type:'range', min:'0', max:'1', step:'0.01', value:String(layer.opacity) });
+          const out = el('span', { text: Number(layer.opacity).toFixed(2) });
+          r.addEventListener('input', () => {
+            layer.opacity = Number(r.value);
+            out.textContent = Number(r.value).toFixed(2);
+            redraw(true);
+          });
+          return el('div', {}, r, out);
+        })()
+      );
+
+      const colorRow = el('div', { class:'row' },
+        el('label', { text:'Color' }),
+        (() => {
+          const c = el('input', { type:'color', value: layer.color });
+          c.addEventListener('input', () => { layer.color = c.value; redraw(true); });
+          return c;
+        })()
+      );
+
+      // pattern controls
+      const pat = layer.pattern || (layer.pattern = { type:'none', color:'#ffffff', size:6 });
+
+      const patTypeRow = el('div', { class:'row' },
+        el('label', { text:'Pattern' }),
+        (() => {
+          const s = el('select', {});
+          s.append(
+            el('option', { value:'none', text:'None' }),
+            el('option', { value:'dots', text:'Dots' }),
+            el('option', { value:'stripes', text:'Stripes' }),
+          );
+          s.value = pat.type;
+          s.addEventListener('change', () => {
+            pat.type = s.value;
+            renderLayersPanel(); // show/hide dependent rows
+            redraw(true);
+          });
+          return s;
+        })()
+      );
+
+      const patColorRow = el('div', { class:'row' },
+        el('label', { text:'Pattern color' }),
+        (() => {
+          const c = el('input', { type:'color', value: pat.color || '#ffffff' });
+          c.addEventListener('input', () => { pat.color = c.value; redraw(true); });
+          return c;
+        })()
+      );
+
+      const patSizeRow = el('div', { class:'row' },
+        el('label', { text: pat.type === 'dots' ? 'Dot radius' : 'Stripe thickness' }),
+        (() => {
+          const min = 1;
+          const max = pat.type === 'dots' ? 24 : 20;
+          const r = el('input', { type:'range', min:String(min), max:String(max), step:'1', value:String(pat.size ?? 6) });
+          const out = el('span', { text:String(pat.size ?? 6) });
+          r.addEventListener('input', () => {
+            pat.size = Number(r.value);
+            out.textContent = r.value;
+            redraw(true);
+          });
+          return el('div', {}, r, out);
+        })()
+      );
+
+      card.append(head, widthRow, opRow, colorRow, patTypeRow);
+
+      if (pat.type !== 'none') {
+        card.append(patColorRow, patSizeRow);
+      }
+
+      ui.layers.append(card);
+    });
+  }
+
+  // ---------- selection ----------
+  function selectCurve(i){
+    state.selectedCurve = i;
+    renderLayersPanel();
+    redraw(true);
+  }
+
+  // ---------- interaction ----------
+  function getMouse(e){
+    const rect=canvas.getBoundingClientRect();
+    return { x:e.clientX-rect.left, y:e.clientY-rect.top };
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    const {x,y}=getMouse(e);
+    const picked=pickCurve(x,y);
+
+    if (!picked) { state.dragging=null; selectCurve(-1); return; }
+    if (picked.curveIndex !== state.selectedCurve) selectCurve(picked.curveIndex);
+
+    const curve = state.curves[picked.curveIndex];
+    const h = hitHandle(curve,x,y);
+    if (h) {
+      state.dragging = { type:h.type, curveIndex:picked.curveIndex, idx:h.idx, lastX:x, lastY:y };
+      return;
+    }
+    if (hitCurveStroke(curve,x,y)) {
+      state.dragging = { type:'curve', curveIndex:picked.curveIndex, idx:-1, lastX:x, lastY:y };
+      return;
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!state.dragging) return;
+    const {x,y}=getMouse(e);
+    const d=state.dragging;
+    const curve=state.curves[d.curveIndex];
+    const dx=x-d.lastX, dy=y-d.lastY;
+
+    if (d.type==='curve') curve.translate(dx,dy);
+    else if (d.type==='anchor'){ const p=curve.anchors[d.idx]; p.x+=dx; p.y+=dy; curve.bumpCache(); }
+    else if (d.type==='c1'){ const p=curve.c1[d.idx]; p.x+=dx; p.y+=dy; curve.bumpCache(); }
+    else if (d.type==='c2'){ const p=curve.c2[d.idx]; p.x+=dx; p.y+=dy; curve.bumpCache(); }
+
+    d.lastX=x; d.lastY=y;
+    redraw(true);
+  });
+
+  window.addEventListener('mouseup', () => { state.dragging=null; });
+  window.addEventListener('dragstart', (e)=>e.preventDefault());
+
+  // ---------- canvas sizing ----------
+  function resize(){
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio||1));
+    canvas.width = Math.floor(innerWidth*dpr);
+    canvas.height = Math.floor(innerHeight*dpr);
+    canvas.style.width = innerWidth+'px';
+    canvas.style.height = innerHeight+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    redraw(true);
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- actions ----------
+  ui.addCurve.addEventListener('click', () => {
+    const n = clamp(Number(ui.segments.value)||10, 3, 200);
+    const curve = randomBezierLoopChain(n);
+    curve.layers.push(randomLayer());
+    state.curves.push(curve);
+    selectCurve(state.curves.length - 1);
+  });
+
+  ui.delCurve.addEventListener('click', () => {
+    if (state.selectedCurve < 0) return;
+    state.curves.splice(state.selectedCurve, 1);
+    state.selectedCurve = Math.min(state.selectedCurve, state.curves.length - 1);
+    renderLayersPanel();
+    redraw(true);
+  });
+
+  ui.addLayer.addEventListener('click', () => {
+    const ci = state.selectedCurve;
+    if (ci < 0) return;
+    const curve = state.curves[ci];
+    curve.layers.push(randomLayer());
+    curve.bumpCache();
+    renderLayersPanel();
+    redraw(true);
+  });
+
+  // ---------- init ----------
+  resize();
+  renderLayersPanel();
+})();
+</script>
+</body>
+</html>
