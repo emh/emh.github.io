@@ -20,7 +20,6 @@ const easeOutBack = (t, s = 1.8) => {
     const u = t - 1;
     return 1 + u * u * ((s + 1) * u + s);
 };
-const times = (n, fn) => Array.from({ length: n }, fn);
 
 const neighbors4 = (x, y) => ([
     { x: x + 1, y },
