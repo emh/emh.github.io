@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Catmull–Rom Loop + Voronoi Interior (Vanilla JS)</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #0b0c10;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #hud {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            font: 12px/1.25 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            color: #e7eaf0;
+            background: rgba(0, 0, 0, .35);
+            padding: 8px 10px;
+            border-radius: 10px;
+            user-select: none;
+            pointer-events: none;
+            white-space: pre;
+            backdrop-filter: blur(6px);
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <div id="hud"></div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('c');
+            const hud = document.getElementById('hud');
+            const ctx = canvas.getContext('2d');
+
+            const N = 20;         // spline control points
+            const M = 50;         // interior voronoi sites
+            const SEG_STEPS = 24; // samples per spline segment
+
+            // Styling per request
+            const STROKE_W = 5;
+            const ROYAL_BLUE = 'rgba(65, 105, 225, 0.65)'; // royalblue with slight transparency
+
+            const UI = {
+                cpRadius: 7,
+                siteRadius: 6,
+                pickRadius: 14,
+            };
+
+            const rnd = (a = 1, b = 0) => b + Math.random() * (a - b);
+            const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+            const hypot = Math.hypot;
+
+            function resize() {
+                const r = canvas.getBoundingClientRect();
+                canvas.width = Math.max(1, Math.floor(r.width));
+                canvas.height = Math.max(1, Math.floor(r.height));
+            }
+            window.addEventListener('resize', () => { resize(); recomputeAll(); });
+            resize();
+
+            // --- Geometry helpers ---
+            const dot = (p, q) => p.x * q.x + p.y * q.y;
+
+            function pointInPoly(pt, poly) {
+                let inside = false;
+                for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                    const a = poly[i], b = poly[j];
+                    const intersect = ((a.y > pt.y) !== (b.y > pt.y)) &&
+                        (pt.x < (b.x - a.x) * (pt.y - a.y) / ((b.y - a.y) || 1e-12) + a.x);
+                    if (intersect) inside = !inside;
+                }
+                return inside;
+            }
+
+            function polyArea(poly) {
+                let s = 0;
+                for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                    s += (poly[j].x * poly[i].y - poly[i].x * poly[j].y);
+                }
+                return 0.5 * s;
+            }
+
+            function polyCentroid(poly) {
+                let a = 0, cx = 0, cy = 0;
+                for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                    const cross = poly[j].x * poly[i].y - poly[i].x * poly[j].y;
+                    a += cross;
+                    cx += (poly[j].x + poly[i].x) * cross;
+                    cy += (poly[j].y + poly[i].y) * cross;
+                }
+                a *= 0.5;
+                if (Math.abs(a) < 1e-9) return { x: poly[0]?.x ?? 0, y: poly[0]?.y ?? 0 };
+                return { x: cx / (6 * a), y: cy / (6 * a) };
+            }
+
+            function closestPointOnSegment(p, a, b) {
+                const abx = b.x - a.x, aby = b.y - a.y;
+                const apx = p.x - a.x, apy = p.y - a.y;
+                const denom = abx * abx + aby * aby;
+                const t = denom > 0 ? clamp((apx * abx + apy * aby) / denom, 0, 1) : 0;
+                return { x: a.x + abx * t, y: a.y + aby * t, t };
+            }
+
+            function closestPointOnPolyline(p, poly) {
+                let best = null;
+                let bestD2 = Infinity;
+                for (let i = 0; i < poly.length; i++) {
+                    const a = poly[i], b = poly[(i + 1) % poly.length];
+                    const q = closestPointOnSegment(p, a, b);
+                    const dx = p.x - q.x, dy = p.y - q.y;
+                    const d2 = dx * dx + dy * dy;
+                    if (d2 < bestD2) { bestD2 = d2; best = q; }
+                }
+                return { ...best, d2: bestD2 };
+            }
+
+            // --- Catmull–Rom (uniform) ---
+            function catmullRom(p0, p1, p2, p3, t) {
+                const t2 = t * t, t3 = t2 * t;
+                return {
+                    x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+                    y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+                };
+            }
+
+            function sampleClosedCatmullRom(ctrlPts, stepsPerSeg) {
+                const n = ctrlPts.length;
+                const out = [];
+                for (let i = 0; i < n; i++) {
+                    const p0 = ctrlPts[(i - 1 + n) % n];
+                    const p1 = ctrlPts[i];
+                    const p2 = ctrlPts[(i + 1) % n];
+                    const p3 = ctrlPts[(i + 2) % n];
+                    for (let s = 0; s < stepsPerSeg; s++) {
+                        const t = s / stepsPerSeg;
+                        out.push(catmullRom(p0, p1, p2, p3, t));
+                    }
+                }
+                return out;
+            }
+
+            // --- Voronoi via half-plane clipping ---
+            function clipPolyHalfPlane(poly, d, c) {
+                const inside = (p) => dot(p, d) <= c + 1e-9;
+                const out = [];
+                for (let i = 0; i < poly.length; i++) {
+                    const s = poly[i];
+                    const e = poly[(i + 1) % poly.length];
+                    const Sin = inside(s);
+                    const Ein = inside(e);
+
+                    if (Sin && Ein) {
+                        out.push(e);
+                    } else if (Sin && !Ein) {
+                        const sd = dot(s, d), ed = dot(e, d);
+                        const denom = (ed - sd);
+                        if (Math.abs(denom) > 1e-12) {
+                            const t = (c - sd) / denom;
+                            out.push({ x: s.x + (e.x - s.x) * t, y: s.y + (e.y - s.y) * t });
+                        }
+                    } else if (!Sin && Ein) {
+                        const sd = dot(s, d), ed = dot(e, d);
+                        const denom = (ed - sd);
+                        if (Math.abs(denom) > 1e-12) {
+                            const t = (c - sd) / denom;
+                            out.push({ x: s.x + (e.x - s.x) * t, y: s.y + (e.y - s.y) * t });
+                        }
+                        out.push(e);
+                    }
+                }
+                if (out.length > 2) {
+                    const cleaned = [];
+                    for (let i = 0; i < out.length; i++) {
+                        const a = out[i];
+                        const b = out[(i + 1) % out.length];
+                        if (hypot(a.x - b.x, a.y - b.y) > 1e-6) cleaned.push(a);
+                    }
+                    return cleaned;
+                }
+                return out;
+            }
+
+            function computeVoronoiCells(sites, boundaryPoly) {
+                const out = [];
+                for (let i = 0; i < sites.length; i++) {
+                    const a = sites[i];
+                    let cell = boundaryPoly.slice();
+                    for (let j = 0; j < sites.length; j++) {
+                        if (i === j) continue;
+                        const b = sites[j];
+                        const d = { x: b.x - a.x, y: b.y - a.y };
+                        const c = (b.x * b.x + b.y * b.y - a.x * a.x - a.y * a.y) * 0.5;
+                        cell = clipPolyHalfPlane(cell, d, c);
+                        if (cell.length < 3) break;
+                    }
+                    if (cell.length >= 3 && Math.abs(polyArea(cell)) > 1e-3) {
+                        out.push({ poly: cell, idx: i });
+                    }
+                }
+                return out;
+            }
+
+            // --- State ---
+            let ctrl = [];
+            let sites = [];
+            let boundary = [];
+            let cells = [];
+            let boundaryCentroid = { x: 0, y: 0 };
+
+            function bounds(poly) {
+                let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+                for (const p of poly) {
+                    if (p.x < minx) minx = p.x;
+                    if (p.y < miny) miny = p.y;
+                    if (p.x > maxx) maxx = p.x;
+                    if (p.y > maxy) maxy = p.y;
+                }
+                return { minx, miny, maxx, maxy };
+            }
+
+            function clampSiteInside(p) {
+                if (boundary.length < 3) return p;
+                if (pointInPoly(p, boundary)) return p;
+
+                const cp = closestPointOnPolyline(p, boundary);
+                const c = boundaryCentroid;
+                const vx = c.x - cp.x, vy = c.y - cp.y;
+                const len = Math.hypot(vx, vy) || 1;
+                const inset = STROKE_W * 0.7 + 1.5;
+                return { x: cp.x + vx / len * inset, y: cp.y + vy / len * inset };
+            }
+
+            function recomputeAll() {
+                boundary = sampleClosedCatmullRom(ctrl, SEG_STEPS);
+                boundaryCentroid = polyCentroid(boundary);
+                sites = sites.map(clampSiteInside);
+                cells = computeVoronoiCells(sites, boundary);
+            }
+
+            function init() {
+                const w = canvas.width, h = canvas.height;
+                const cx = w * 0.5, cy = h * 0.5;
+                const R = Math.min(w, h) * 0.33;
+
+                ctrl = [];
+                for (let i = 0; i < N; i++) {
+                    const a = (i / N) * Math.PI * 2;
+                    const rr = R * rnd(1.15, 0.85);
+                    ctrl.push({
+                        x: cx + Math.cos(a) * rr + rnd(14, -14),
+                        y: cy + Math.sin(a) * rr + rnd(14, -14),
+                    });
+                }
+
+                boundary = sampleClosedCatmullRom(ctrl, SEG_STEPS);
+                boundaryCentroid = polyCentroid(boundary);
+
+                sites = [];
+                const bb = bounds(boundary);
+                let tries = 0;
+                while (sites.length < M && tries < 20000) {
+                    tries++;
+                    const p = { x: rnd(bb.maxx, bb.minx), y: rnd(bb.maxy, bb.miny) };
+                    if (pointInPoly(p, boundary)) sites.push(p);
+                }
+
+                recomputeAll();
+            }
+
+            init();
+
+            // --- Interaction ---
+            let dragging = null; // { type, idx, ox, oy }
+
+            function mousePos(e) {
+                const r = canvas.getBoundingClientRect();
+                return {
+                    x: (e.clientX - r.left) * (canvas.width / r.width),
+                    y: (e.clientY - r.top) * (canvas.height / r.height)
+                };
+            }
+
+            function pickPoint(list, p, radius) {
+                let best = -1, bestD2 = radius * radius;
+                for (let i = 0; i < list.length; i++) {
+                    const dx = p.x - list[i].x, dy = p.y - list[i].y;
+                    const d2 = dx * dx + dy * dy;
+                    if (d2 <= bestD2) { bestD2 = d2; best = i; }
+                }
+                return best;
+            }
+
+            canvas.addEventListener('pointerdown', (e) => {
+                canvas.setPointerCapture(e.pointerId);
+                const p = mousePos(e);
+
+                const ci = pickPoint(ctrl, p, 14);
+                if (ci !== -1) {
+                    dragging = { type: 'ctrl', idx: ci, ox: ctrl[ci].x - p.x, oy: ctrl[ci].y - p.y };
+                    return;
+                }
+                const si = pickPoint(sites, p, 14);
+                if (si !== -1) {
+                    dragging = { type: 'site', idx: si, ox: sites[si].x - p.x, oy: sites[si].y - p.y };
+                    return;
+                }
+            });
+
+            canvas.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                const p = mousePos(e);
+
+                if (dragging.type === 'ctrl') {
+                    const i = dragging.idx;
+                    ctrl[i].x = p.x + dragging.ox;
+                    ctrl[i].y = p.y + dragging.oy;
+                    recomputeAll();
+                } else {
+                    const i = dragging.idx;
+                    const np = { x: p.x + dragging.ox, y: p.y + dragging.oy };
+                    sites[i] = clampSiteInside(np);
+                    recomputeAll();
+                }
+            });
+
+            const endDrag = () => { dragging = null; };
+            canvas.addEventListener('pointerup', endDrag);
+            canvas.addEventListener('pointercancel', endDrag);
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'r' || e.key === 'R') init();
+            });
+
+            // --- Rendering ---
+            function drawPoly(poly) {
+                if (poly.length < 2) return;
+                ctx.beginPath();
+                ctx.moveTo(poly[0].x, poly[0].y);
+                for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+                ctx.closePath();
+            }
+
+            function strokePoly(poly) {
+                drawPoly(poly);
+                ctx.stroke();
+            }
+
+            function drawPoints(list, r, fill, stroke) {
+                ctx.fillStyle = fill;
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 2;
+                for (const p of list) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            }
+
+            function frame() {
+                const w = canvas.width, h = canvas.height;
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, w, h);
+
+                // shared stroke style for everything (loop + interior lines)
+                ctx.strokeStyle = ROYAL_BLUE;
+                ctx.lineWidth = STROKE_W;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+
+                // draw voronoi cell edges only (no fill)
+                for (const c of cells) strokePoly(c.poly);
+
+                // draw boundary loop with same stroke
+                strokePoly(boundary);
+
+                // points (keep neutral so blue lines stand out)
+                drawPoints(sites, UI.siteRadius, 'rgba(0,0,0,0.25)', 'rgba(255,255,255,0.65)');
+                drawPoints(ctrl, UI.cpRadius, 'rgba(0,0,0,0.25)', 'rgba(255,210,90,0.95)');
+
+                hud.textContent =
+                    `Drag yellow points: reshape loop (Catmull–Rom)
+Drag white points: move Voronoi sites (clamped inside loop)
+R: reset random`;
+
+                requestAnimationFrame(frame);
+            }
+            requestAnimationFrame(frame);
+        })();
+    </script>
+</body>
+
+</html>
