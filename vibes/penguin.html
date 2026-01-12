@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <meta name="description" content="Penguin Graphics - like turtle graphics but on the polar plane">
+    <meta name="theme-color" content="#000000">
+    <link rel="canonical" href="https://emh.io/vibes/penguin.html">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Penguin Graphics">
+    <meta property="og:description" content="Penguin Graphics - like turtle graphics but on the polar plane">
+    <meta property="og:url" content="https://emh.io/vibes/penguin.html">
+    <meta property="og:image" content="https://emh.io/vibes/penguin.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Penguin Graphics">
+    <meta name="twitter:description" content="Penguin Graphics - like turtle graphics but on the polar plane">
+    <meta name="twitter:image" content="https://emh.io/vibes/penguin.png">
+
+    <title>Penguin Graphics</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: #fff;
+        }
+
+        #hud {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            font: 12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            color: #111;
+            background: rgba(255, 255, 255, 0.90);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 10px;
+            padding: 10px 12px;
+            user-select: none;
+            -webkit-user-select: none;
+            max-width: min(1040px, calc(100vw - 20px));
+        }
+
+        #hud b {
+            font-weight: 650;
+        }
+
+        #hud .hint {
+            margin-top: 6px;
+            color: rgba(0, 0, 0, 0.65);
+        }
+
+        #hud .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        }
+
+        #hud .row {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            align-items: center;
+        }
+
+        #hud label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #hud input[type="checkbox"] {
+            transform: translateY(1px);
+        }
+
+        #hud kbd {
+            font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            padding: 1px 6px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-bottom-width: 2px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        #hud .pill {
+            display: inline-block;
+            padding: 1px 8px;
+            border: 1px solid rgba(0, 0, 0, 0.16);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+
+    <div id="hud">
+        <div><b>Penguin graphics</b> (camera lock toggle)</div>
+        <div class="hint">
+            <kbd>←</kbd> CCW · <kbd>→</kbd> CW · <kbd>↑</kbd> outward · <kbd>↓</kbd> inward ·
+            <kbd>Space</kbd> mode (pen/erase/move) · <kbd>Z</kbd> zoom · <kbd>L</kbd> camera lock ·
+            <kbd>C</kbd> clear · <kbd>G</kbd> grid
+        </div>
+
+        <div class="row">
+            <label><input id="showGrid" type="checkbox" checked /> grid</label>
+            <label><input id="camLock" type="checkbox" checked /> camera lock</label>
+        </div>
+
+        <div class="row mono">
+            <div>mode: <span id="modeVal" class="pill"></span></div>
+            <div>zoom: <span id="zoomVal" class="pill"></span></div>
+            <div>camera: <span id="camVal" class="pill"></span></div>
+            <div>Δr(logical): <span id="drVal"></span></div>
+            <div>Δθ(logical): <span id="dtVal"></span></div>
+            <div>r: <span id="rVal"></span></div>
+            <div>θ: <span id="tVal"></span></div>
+            <div>segments: <span id="segVal"></span></div>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            const elShowGrid = document.getElementById('showGrid');
+            const elCamLock = document.getElementById('camLock');
+
+            const modeVal = document.getElementById('modeVal');
+            const zoomVal = document.getElementById('zoomVal');
+            const camVal = document.getElementById('camVal');
+            const drVal = document.getElementById('drVal');
+            const dtVal = document.getElementById('dtVal');
+            const rVal = document.getElementById('rVal');
+            const tVal = document.getElementById('tVal');
+            const segVal = document.getElementById('segVal');
+
+            let DPR = 1, W = 0, H = 0;
+
+            const TAU = Math.PI * 2;
+            const MODES = ['PEN', 'ERASE', 'MOVE'];
+
+            const ZOOMS = [0.25, 0.5, 1, 2, 4];
+            const MIN_ZOOM = 0.25;
+
+            const BASE_DR_PHYS = 16;
+            const BASE_DTH_PHYS = Math.PI / 12;
+
+            const FINE_DR = BASE_DR_PHYS * MIN_ZOOM;
+            const FINE_DTH = BASE_DTH_PHYS * MIN_ZOOM;
+
+            const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+            const wrapInt = (i, n) => ((i % n) + n) % n;
+
+            const normAngle = (a) => {
+                a = ((a % TAU) + TAU) % TAU;
+                if (a > Math.PI) a -= TAU;
+                return a;
+            };
+
+            function polarToWorld(r, theta) {
+                return { x: r * Math.cos(theta), y: -r * Math.sin(theta) };
+            }
+            const toCanvasAngle = (theta) => -theta;
+
+            function thetaFineForUp() {
+                return Math.round((Math.PI * 0.5) / FINE_DTH);
+            }
+
+            const state = {
+                rFine: 0,
+                tFine: thetaFineForUp(),
+
+                zoomIndex: 2,
+                showGrid: true,
+
+                cameraLock: true,
+                lockTheta: Math.PI * 0.5,
+
+                mode: 0,
+                ink: new Set(),
+            };
+
+            function zoomLevel() { return ZOOMS[state.zoomIndex]; }
+            function viewScale() { return 1 / zoomLevel(); }
+
+            function drLogical() { return BASE_DR_PHYS * zoomLevel(); }
+            function dthLogical() { return BASE_DTH_PHYS * zoomLevel(); }
+
+            function stepFineCount() { return Math.max(1, Math.round(zoomLevel() / MIN_ZOOM)); }
+
+            function fineSpokes() { return Math.max(1, Math.floor(TAU / Math.max(1e-9, FINE_DTH) + 0.5)); }
+
+            function rFromFineIndex(i) { return i * FINE_DR; }
+            function thetaFromFineIndex(i) { return i * FINE_DTH; }
+
+            function arcKey(rFine, t0, t1, n) {
+                if (Math.abs(t0 - t1) === n - 1) return `A:${rFine}:${n - 1}:0`;
+                const a = Math.min(t0, t1);
+                const b = Math.max(t0, t1);
+                return `A:${rFine}:${a}:${b}`;
+            }
+            function radKey(tFine, r0, r1) {
+                const a = Math.min(r0, r1);
+                const b = Math.max(r0, r1);
+                return `R:${tFine}:${a}:${b}`;
+            }
+
+            function resizeToDisplaySize() {
+                const cssW = Math.max(1, canvas.clientWidth | 0);
+                const cssH = Math.max(1, canvas.clientHeight | 0);
+                const nextDPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+                const need = (W !== cssW) || (H !== cssH) || (DPR !== nextDPR);
+                if (!need) return false;
+
+                W = cssW; H = cssH; DPR = nextDPR;
+                canvas.width = Math.floor(W * DPR);
+                canvas.height = Math.floor(H * DPR);
+                return true;
+            }
+
+            function snapToLogicalGrid() {
+                const s = stepFineCount();
+                state.rFine = Math.round(state.rFine / s) * s;
+                state.tFine = Math.round(state.tFine / s) * s;
+                state.tFine = wrapInt(state.tFine, fineSpokes());
+            }
+
+            function clearInk() { state.ink.clear(); }
+
+            function applyInkFineStep(prevRF, prevTF, nextRF, nextTF) {
+                const n = fineSpokes();
+                const isArc = (prevRF === nextRF) && (prevTF !== nextTF);
+                const isRad = (prevTF === nextTF) && (prevRF !== nextRF);
+                if (!isArc && !isRad) return;
+
+                const key = isArc ? arcKey(prevRF, prevTF, nextTF, n) : radKey(prevTF, prevRF, nextRF);
+
+                if (state.mode === 0) state.ink.add(key);
+                else if (state.mode === 1) state.ink.delete(key);
+            }
+
+            function moveThetaLogical(dir) {
+                const n = fineSpokes();
+                const steps = stepFineCount();
+                for (let k = 0; k < steps; k++) {
+                    const prevRF = state.rFine, prevTF = state.tFine;
+                    state.tFine = wrapInt(state.tFine + dir, n);
+                    applyInkFineStep(prevRF, prevTF, state.rFine, state.tFine);
+                }
+                snapToLogicalGrid();
+            }
+
+            function moveRadiusLogical(dir) {
+                const steps = stepFineCount();
+                const maxRWorld = Math.hypot(W, H) / Math.max(1e-6, viewScale());
+                const maxRF = Math.max(0, Math.floor(maxRWorld / FINE_DR));
+
+                for (let k = 0; k < steps; k++) {
+                    const prevRF = state.rFine, prevTF = state.tFine;
+                    state.rFine = clamp(state.rFine + dir, 0, maxRF);
+                    applyInkFineStep(prevRF, prevTF, state.rFine, state.tFine);
+                }
+                snapToLogicalGrid();
+            }
+
+            function setCameraLock(on) {
+                const was = state.cameraLock;
+                state.cameraLock = !!on;
+                if (!was && state.cameraLock) state.lockTheta = thetaFromFineIndex(state.tFine);
+                elCamLock.checked = state.cameraLock;
+            }
+
+            // UI
+            elShowGrid.addEventListener('change', () => { state.showGrid = !!elShowGrid.checked; });
+            elCamLock.addEventListener('change', () => setCameraLock(elCamLock.checked));
+
+            window.addEventListener('keydown', (e) => {
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+                if (e.repeat) return;
+
+                if (e.key === ' ') { state.mode = (state.mode + 1) % MODES.length; return; }
+                if (e.key === 'z' || e.key === 'Z') { state.zoomIndex = (state.zoomIndex + 1) % ZOOMS.length; snapToLogicalGrid(); return; }
+                if (e.key === 'l' || e.key === 'L') { setCameraLock(!state.cameraLock); return; }
+                if (e.key === 'c' || e.key === 'C') { clearInk(); return; }
+                if (e.key === 'g' || e.key === 'G') { state.showGrid = !state.showGrid; elShowGrid.checked = state.showGrid; return; }
+
+                if (e.key === 'ArrowLeft') moveThetaLogical(+1);
+                else if (e.key === 'ArrowRight') moveThetaLogical(-1);
+                else if (e.key === 'ArrowUp') moveRadiusLogical(+1);
+                else if (e.key === 'ArrowDown') moveRadiusLogical(-1);
+            }, { passive: false });
+
+            function applyWorldTransformFixed() {
+                const s = viewScale();
+                ctx.setTransform(DPR * s, 0, 0, DPR * s, Math.floor(W * 0.5 * DPR), Math.floor(H * 0.5 * DPR));
+            }
+
+            function applyCameraLockTransform() {
+                const s = viewScale();
+                const r = rFromFineIndex(state.rFine);
+                const theta = thetaFromFineIndex(state.tFine);
+                const pos = polarToWorld(r, theta);
+
+                const phi = (Math.PI * 0.5) - state.lockTheta;
+
+                ctx.setTransform(DPR * s, 0, 0, DPR * s, Math.floor(W * 0.5 * DPR), Math.floor(H * 0.5 * DPR));
+                ctx.rotate(phi);
+                ctx.translate(-pos.x, -pos.y);
+            }
+
+            function visibleMaxR() {
+                const s = viewScale();
+                const base = Math.hypot(W * 0.5, H * 0.5) / s;
+                const r = rFromFineIndex(state.rFine);
+                return base + r + BASE_DR_PHYS * 10;
+            }
+
+            function drawGrid(gctx, maxR) {
+                const dr = drLogical();
+                const dth = dthLogical();
+
+                gctx.save();
+                gctx.lineWidth = 1 / viewScale();
+                gctx.strokeStyle = 'rgba(0,0,0,0.10)';
+
+                gctx.beginPath();
+                for (let r = dr; r <= maxR; r += dr) {
+                    gctx.moveTo(r, 0);
+                    gctx.arc(0, 0, r, 0, TAU);
+                }
+                gctx.stroke();
+
+                const nSpokes = Math.max(1, Math.floor(TAU / Math.max(1e-9, dth) + 0.5));
+                gctx.beginPath();
+                for (let k = 0; k < nSpokes; k++) {
+                    const theta = k * dth;
+                    const p = polarToWorld(maxR, theta);
+                    gctx.moveTo(0, 0);
+                    gctx.lineTo(p.x, p.y);
+                }
+                gctx.stroke();
+
+                gctx.strokeStyle = 'rgba(0,0,0,0.18)';
+                gctx.beginPath();
+                gctx.moveTo(-maxR, 0); gctx.lineTo(maxR, 0);
+                gctx.moveTo(0, -maxR); gctx.lineTo(0, maxR);
+                gctx.stroke();
+
+                gctx.restore();
+            }
+
+            function drawInk(gctx) {
+                const n = fineSpokes();
+
+                gctx.save();
+                gctx.lineCap = 'round';
+                gctx.lineJoin = 'round';
+                gctx.strokeStyle = 'rgba(0,0,0,0.90)';
+                gctx.lineWidth = 2 / viewScale();
+
+                for (const key of state.ink) {
+                    const parts = key.split(':');
+                    const kind = parts[0];
+
+                    gctx.beginPath();
+
+                    if (kind === 'A') {
+                        const rFine = Number(parts[1]);
+                        const tA = Number(parts[2]);
+                        const tB = Number(parts[3]);
+
+                        const r = rFromFineIndex(rFine);
+                        const thetaA = thetaFromFineIndex(tA);
+                        const a0 = toCanvasAngle(thetaA);
+
+                        let ccw = false;
+                        if (tA === n - 1 && tB === 0) ccw = true;
+                        else ccw = (tB > tA);
+
+                        const end = a0 + (ccw ? -FINE_DTH : +FINE_DTH);
+                        gctx.arc(0, 0, r, a0, end, ccw);
+                        gctx.stroke();
+                    } else if (kind === 'R') {
+                        const tFine = Number(parts[1]);
+                        const rA = Number(parts[2]);
+                        const rB = Number(parts[3]);
+
+                        const theta = thetaFromFineIndex(tFine);
+                        const p0 = polarToWorld(rFromFineIndex(rA), theta);
+                        const p1 = polarToWorld(rFromFineIndex(rB), theta);
+
+                        gctx.moveTo(p0.x, p0.y);
+                        gctx.lineTo(p1.x, p1.y);
+                        gctx.stroke();
+                    }
+                }
+
+                gctx.restore();
+            }
+
+            function drawPenguinAtWorldPos(gctx) {
+                // Draw penguin in WORLD space, but keep its size constant in SCREEN pixels by compensating for viewScale.
+                const r = rFromFineIndex(state.rFine);
+                const theta = thetaFromFineIndex(state.tFine);
+                const p = polarToWorld(r, theta);
+
+                const tx = -Math.sin(theta);
+                const ty = -Math.cos(theta);
+                const heading = Math.atan2(ty, tx);
+
+                gctx.save();
+                gctx.translate(p.x, p.y);
+                gctx.rotate(heading);
+
+                const inv = 1 / viewScale(); // cancel the zoom scaling for the penguin only
+                gctx.scale(inv, inv);
+
+                // Draw at constant pixel-ish size (in world units now that we've canceled view scale)
+                gctx.fillStyle = 'rgba(0,0,0,0.92)';
+                gctx.beginPath();
+                gctx.ellipse(0, 0, 7, 10, 0, 0, TAU);
+                gctx.fill();
+
+                gctx.fillStyle = 'rgba(255,255,255,0.93)';
+                gctx.beginPath();
+                gctx.ellipse(0, 2, 4, 6, 0, 0, TAU);
+                gctx.fill();
+
+                gctx.fillStyle = 'rgba(255,165,0,0.95)';
+                gctx.beginPath();
+                gctx.moveTo(10, 0);
+                gctx.lineTo(6, -2.5);
+                gctx.lineTo(6, 2.5);
+                gctx.closePath();
+                gctx.fill();
+
+                gctx.restore();
+            }
+
+            function drawPenguinScreenLocked() {
+                // Already drawn in screen space => not affected by zoom.
+                const cx = W * 0.5, cy = H * 0.5;
+
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                ctx.translate(cx, cy);
+                ctx.rotate(-Math.PI * 0.5);
+
+                ctx.fillStyle = 'rgba(0,0,0,0.92)';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 7, 10, 0, 0, TAU);
+                ctx.fill();
+
+                ctx.fillStyle = 'rgba(255,255,255,0.93)';
+                ctx.beginPath();
+                ctx.ellipse(0, 2, 4, 6, 0, 0, TAU);
+                ctx.fill();
+
+                ctx.fillStyle = 'rgba(255,165,0,0.95)';
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(6, -2.5);
+                ctx.lineTo(6, 2.5);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            function render() {
+                resizeToDisplaySize();
+
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const maxR = visibleMaxR();
+
+                if (state.cameraLock) {
+                    applyCameraLockTransform();
+                    if (state.showGrid) drawGrid(ctx, maxR);
+                    drawInk(ctx);
+                    drawPenguinScreenLocked(); // already constant size
+                } else {
+                    applyWorldTransformFixed();
+                    if (state.showGrid) drawGrid(ctx, maxR);
+                    drawInk(ctx);
+                    drawPenguinAtWorldPos(ctx); // compensates for zoom
+                }
+
+                const z = zoomLevel();
+                const rWorld = rFromFineIndex(state.rFine);
+                const tWorld = thetaFromFineIndex(state.tFine);
+
+                modeVal.textContent = MODES[state.mode];
+                zoomVal.textContent = `${z}x`;
+                camVal.textContent = state.cameraLock ? 'LOCKED' : 'FREE';
+                drVal.textContent = drLogical().toFixed(3);
+                dtVal.textContent = dthLogical().toFixed(6);
+                rVal.textContent = rWorld.toFixed(2);
+                tVal.textContent = `${normAngle(tWorld).toFixed(3)} rad`;
+                segVal.textContent = String(state.ink.size);
+            }
+
+            function init() {
+                resizeToDisplaySize();
+
+                elShowGrid.checked = state.showGrid;
+                elCamLock.checked = state.cameraLock;
+
+                snapToLogicalGrid();
+
+                const loop = () => { render(); requestAnimationFrame(loop); };
+                requestAnimationFrame(loop);
+
+                const ro = new ResizeObserver(() => { render(); });
+                ro.observe(document.documentElement);
+            }
+
+            window.addEventListener('resize', () => { render(); });
+
+            init();
+        })();
+    </script>
+</body>
+
+</html>
