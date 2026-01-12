@@ -549,10 +549,8 @@ const update = () => {
     };
 };
 
-let lastTs = 0;
-let paused = false;
-
 let SIM_FPS = 10;
+let lastTs = 0;
 let acc = 0;
 
 const tick = (ts) => {
@@ -576,7 +574,7 @@ const tick = (ts) => {
         acc -= stepMs;
     }
 
-    if (!paused) raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame(tick);
 };
 
 function resize() {
@@ -594,21 +592,7 @@ function resize() {
 window.addEventListener("resize", resize, { passive: true });
 
 window.addEventListener("click", (e) => {
-    paused = !paused;
-
-    if (paused) {
-        if (raf) cancelAnimationFrame(raf);
-    } else {
-        raf = requestAnimationFrame(tick);
-    }
-}, { passive: false });
-
-window.addEventListener("keydown", (e) => {
-    if (e.key === ' ') {
-        e.preventDefault();
-
-        tick();
-    }
+    init();
 }, { passive: false });
 
 resize();
@@ -616,37 +600,3 @@ init();
 
 if (raf) cancelAnimationFrame(raf);
 raf = requestAnimationFrame(tick);
-
-function saveCanvasPNG(canvas) {
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-
-    // filename with timestamp
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    a.download = `canvas-${stamp}.png`;
-
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    URL.revokeObjectURL(url);
-  }, "image/png");
-}
-
-// Hotkey: "P" (no modifiers) saves PNG
-window.addEventListener("keydown", (e) => {
-  // ignore if user is typing in an input/textarea
-  const t = e.target;
-  const typing =
-    t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
-  if (typing) return;
-
-  if (e.key.toLowerCase() === "p") {
-    e.preventDefault();
-    saveCanvasPNG(canvas);
-  }
-});
