@@ -210,7 +210,7 @@
   justify-content:center;
   align-items:center;
   padding: 8px 0 8px;
-  height: 320px;          /* reserves space so cards can't overlap buttons */
+  height: 220px;          /* reserves space so cards can't overlap buttons */
   overflow: hidden;       /* clips weird emoji extents */
 }
 
@@ -838,7 +838,7 @@
             setTimeout(() => {
                 newCoach();
                 renderCoach(null);
-            }, 1400); // slower, fixed (removed "fast")
+            }, 2500); // slower, fixed (removed "fast")
         }
         function renderCoach(feedback) {
             const handKey = S.coach.hand;
