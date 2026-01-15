@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Poker Trainer (Minimal / Phone)</title>
+    <style>
+        :root {
+            --bg: #0b0c10;
+            --card: #12141b;
+            --text: #eef0f7;
+            --muted: #a5adbf;
+            --line: rgba(255, 255, 255, .08);
+            --good: #39d98a;
+            --bad: #ff5c5c;
+            --warn: #ffcf5c;
+            --accent: #7aa7ff;
+            --r: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .app {
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 16px 14px calc(18px + env(safe-area-inset-bottom));
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            margin: 4px 0 12px;
+        }
+
+        .h1 {
+            font-weight: 900;
+            font-size: 16px;
+            letter-spacing: .2px;
+        }
+
+        .sub {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 4px;
+            line-height: 1.25;
+        }
+
+        .stats {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .chip {
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+        }
+
+        .chip b {
+            color: var(--text);
+            font-weight: 900;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin: 10px 0 12px;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+            font-weight: 900;
+            font-size: 13px;
+            user-select: none;
+        }
+
+        .tab.active {
+            border-color: rgba(122, 167, 255, .45);
+            background: rgba(122, 167, 255, .12);
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: var(--r);
+            background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, .015));
+            overflow: hidden;
+        }
+
+        .cardHd {
+            padding: 12px 12px 10px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            background: rgba(0, 0, 0, .18);
+        }
+
+        .cardHd .t {
+            font-weight: 900;
+            font-size: 14px;
+        }
+
+        .cardHd .m {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 4px;
+            line-height: 1.25;
+        }
+
+        .tag {
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .cardBd {
+            padding: 12px;
+        }
+
+        .heroBox {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(0, 0, 0, .18);
+            padding: 14px 12px;
+        }
+
+        .metaRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .metaLeft {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .pillMiniBtn {
+            appearance: none;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+            color: var(--text);
+            border-radius: 999px;
+            padding: 10px 12px;
+            font-weight: 900;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .pillMiniBtn:active {
+            transform: translateY(1px);
+        }
+
+        .pillMiniBtn span.secondary {
+            color: var(--muted);
+            font-weight: 800;
+        }
+
+        .pillMiniBtn .q {
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 900;
+            background: rgba(0, 0, 0, .12);
+        }
+
+.cardsWrap{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding: 8px 0 8px;
+  height: 320px;          /* reserves space so cards can't overlap buttons */
+  overflow: hidden;       /* clips weird emoji extents */
+}
+
+.cards{
+  display:flex; gap:14px; align-items:center; justify-content:center;
+  font-family: "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", system-ui, sans-serif;
+  font-size: 54px;        /* keep base size */
+  line-height: 1;
+  transform: scale(5);    /* 5x visual size, without huge layout boxes */
+  transform-origin: center;
+  pointer-events: none;   /* never steal taps from buttons */
+}
+
+.cards span{ filter: drop-shadow(0 2px 14px rgba(0,0,0,.45)); }
+
+        /* Range: smaller unicode cards (still “new design”) */
+        .cardsSmall {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif;
+            font-size: 96px;
+            line-height: 1;
+            margin-top: 8px;
+        }
+
+        .cardsSmall span {
+            filter: drop-shadow(0 2px 12px rgba(0, 0, 0, .35));
+        }
+
+        .btnRow {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        button {
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+            color: var(--text);
+            border-radius: 14px;
+            padding: 14px 10px;
+            font-weight: 900;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button.primary {
+            border-color: rgba(122, 167, 255, .45);
+            background: rgba(122, 167, 255, .12);
+        }
+
+        button.danger {
+            border-color: rgba(255, 92, 92, .35);
+            background: rgba(255, 92, 92, .10);
+        }
+
+        .row2 {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .row2 button {
+            flex: 1;
+            padding: 12px 10px;
+            border-radius: 14px;
+            font-size: 13px;
+        }
+
+        .feedback {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(0, 0, 0, .16);
+            line-height: 1.3;
+            font-size: 13px;
+        }
+
+        .feedback.good {
+            border-color: rgba(57, 217, 138, .35);
+        }
+
+        .feedback.bad {
+            border-color: rgba(255, 92, 92, .35);
+        }
+
+        .k {
+            color: var(--muted);
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+
+        .stamp {
+            font-weight: 950;
+        }
+
+        .g {
+            color: var(--good);
+        }
+
+        .b {
+            color: var(--bad);
+        }
+
+        .two {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .fighter {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(0, 0, 0, .16);
+            padding: 12px;
+        }
+
+        .fighter .name {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .fighter .h {
+            font-size: 30px;
+            font-weight: 950;
+            letter-spacing: .6px;
+            margin-top: 6px;
+        }
+
+        .traits {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .trait {
+            font-size: 11px;
+            color: var(--muted);
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .02);
+        }
+
+        .footerRow {
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+        }
+
+        .tinyBtn {
+            flex: 1;
+            padding: 10px;
+            font-weight: 900;
+            border-radius: 12px;
+            font-size: 13px;
+        }
+
+        .settings {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+            user-select: none;
+        }
+
+        /* overlays */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .65);
+            display: none;
+            align-items: flex-end;
+            padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+        }
+
+        .overlay.show {
+            display: flex;
+        }
+
+        .sheet {
+            width: 100%;
+            max-width: 520px;
+            margin: 0 auto;
+            border-radius: 18px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            padding: 14px;
+        }
+
+        .sheet h3 {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .sheet p {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.35;
+            white-space: pre-wrap;
+        }
+
+        .sheet .row {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <header>
+            <div>
+                <div class="h1">Poker Trainer</div>
+                <div class="sub">Minimal. Fundamentals only. Training-only.</div>
+            </div>
+            <div class="stats">
+                <div class="chip">LV <b id="lv">1</b></div>
+                <div class="chip">XP <b id="xp">0</b>/<span id="xpNeed">100</span></div>
+                <div class="chip">STK <b id="stk">0</b></div>
+                <div class="chip">TODAY <b id="todayDone">0</b>/<span id="todayGoal">20</span></div>
+                <div class="chip">DAYS <b id="dayStreak">0</b></div>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <div class="tab active" id="tabCoach" onclick="setMode('coach')">Coach</div>
+            <div class="tab" id="tabBattle" onclick="setMode('battle')">Range</div>
+        </div>
+
+        <div class="card">
+            <div class="cardHd">
+                <div>
+                    <div class="t" id="title">Pre-Flop Coach</div>
+                    <div class="m" id="mini">Pick the simplest good action.</div>
+                </div>
+                <div class="tag" id="diff">Rookie</div>
+            </div>
+            <div class="cardBd" id="body"></div>
+        </div>
+
+        <div class="settings">
+            <div class="pill" onclick="showHelp()"><span class="stamp">?</span><span>Rules</span></div>
+            <div class="pill" onclick="resetProgress()"><span class="stamp">↺</span><span>Reset</span></div>
+        </div>
+    </div>
+
+    <!-- Help overlay -->
+    <div class="overlay" id="ovHelp" onclick="hideOverlay('ovHelp')">
+        <div class="sheet" onclick="event.stopPropagation()">
+            <h3>Rules (keep it simple)</h3>
+            <p><span class="stamp">Position:</span> early = tight, button = wider.</p>
+            <p><span class="stamp">Order:</span> pairs &gt; big cards &gt; suited &gt; connected.</p>
+            <p><span class="stamp">Beginner traps:</span> weak offsuit aces/kings that look pretty but lose.</p>
+            <p><span class="stamp">Daily goal:</span> get 20 correct decisions. Hit it to grow a day streak.</p>
+            <div class="row">
+                <button class="tinyBtn primary" onclick="hideOverlay('ovHelp')">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup overlay (bottom sheet; keep text behavior) -->
+    <div class="overlay" id="ovPopup" onclick="hideOverlay('ovPopup')">
+        <div class="sheet" onclick="event.stopPropagation()">
+            <h3 id="popTitle">Title</h3>
+            <p id="popBody">Body</p>
+            <div class="row">
+                <button class="tinyBtn primary" onclick="hideOverlay('ovPopup')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ----------------- Data ----------------- */
+        const R = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"];
+        const V = Object.fromEntries(R.map((r, i) => [r, i + 2]));
+        const POS = [
+            { k: "EP", n: "Early", d: "act first • play tight", loosen: 0.0 },
+            { k: "MP", n: "Middle", d: "still careful", loosen: 0.5 },
+            { k: "LP", n: "Late", d: "more info • wider", loosen: 1.0 },
+            { k: "BTN", n: "Button", d: "best spot • widest", loosen: 1.4 },
+            { k: "SB", n: "SB", d: "out of position", loosen: 0.7 },
+            { k: "BB", n: "BB", d: "already posted", loosen: 0.9 },
+        ];
+
+        const BASE_PLAY = new Set([
+            "AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "33", "22",
+            "AKs", "AQs", "AJs", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s",
+            "AKo", "AQo", "AJo",
+            "KQs", "KJs", "KTs",
+            "QJs", "QTs",
+            "JTs", "T9s", "98s", "87s", "76s"
+        ]);
+        const LATE_BONUS = new Set([
+            "A4s", "A3s", "A2s",
+            "KQo", "KJo", "QJo",
+            "J9s", "T8s", "97s", "65s",
+            "K9s", "Q9s", "J8s"
+        ]);
+        const ROOKIE_TRAPS = new Set([
+            "A9o", "A8o", "A7o", "A6o", "A5o", "A4o", "A3o", "A2o",
+            "KTo", "K9o", "K8o", "K7o",
+            "QTo", "Q9o", "Q8o",
+            "JTo", "J9o", "J8o"
+        ]);
+
+        /* ----------------- Unicode cards ----------------- */
+        const SUITS = [
+            { id: "S", name: "Spades", base: 0x1F0A0 },
+            { id: "H", name: "Hearts", base: 0x1F0B0 },
+            { id: "D", name: "Diamonds", base: 0x1F0C0 },
+            { id: "C", name: "Clubs", base: 0x1F0D0 },
+        ];
+        function rankOffset(r) {
+            if (r === "A") return 0x1;
+            if (r >= "2" && r <= "9") return parseInt(r, 10);
+            if (r === "T") return 0xA;
+            if (r === "J") return 0xB;
+            if (r === "Q") return 0xD; // skip Knight
+            if (r === "K") return 0xE;
+            return 0x1;
+        }
+        function cardChar(rank, suitObj) {
+            return String.fromCodePoint(suitObj.base + rankOffset(rank));
+        }
+        function randSuit(exceptId = null) {
+            const opts = exceptId ? SUITS.filter(s => s.id !== exceptId) : SUITS;
+            return opts[Math.floor(Math.random() * opts.length)];
+        }
+
+        /* ----------------- State ----------------- */
+        const S = {
+            mode: "coach",
+            level: 1,
+            xp: 0,
+            streak: 0,
+            coach: { hand: null, pos: null, cards: null },
+            battle: { h: null, v: null, hCards: null, vCards: null },
+            daily: { dateKey: "", correct: 0, goal: 20, dayStreak: 0, didAwardToday: false }
+        };
+
+        function xpNeed(lv) { return 100 + (lv - 1) * 60; }
+        function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+        function pickSet(set) { const a = [...set]; return a[Math.floor(Math.random() * a.length)]; }
+
+        function parseKey(k) {
+            const a = k[0], b = k[1];
+            const pair = a === b;
+            const suited = !pair && k[2] === "s";
+            const offsuit = !pair && k[2] === "o";
+            const va = V[a], vb = V[b];
+            const hi = (va >= vb) ? a : b;
+            const lo = (hi === a) ? b : a;
+            return { a, b, pair, suited, offsuit, va, vb, vhi: Math.max(va, vb), vlo: Math.min(va, vb), hi, lo };
+        }
+        function canonKey(k) {
+            const p = parseKey(k);
+            if (p.pair) return p.a + p.a;
+            const sfx = k.endsWith("s") ? "s" : "o";
+            return p.hi + p.lo + sfx;
+        }
+        function randHandKey() {
+            let r1 = pick(R), r2 = pick(R);
+            if (r1 === r2) return r1 + r1;
+            const hi = (V[r1] >= V[r2]) ? r1 : r2;
+            const lo = (hi === r1) ? r2 : r1;
+            return hi + lo + (Math.random() < 0.5 ? "s" : "o");
+        }
+        function diffName() {
+            if (S.level <= 2) return "Rookie";
+            if (S.level <= 4) return "Skilled";
+            return "Sharp";
+        }
+
+        function todayKey() {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            return `${y}-${m}-${day}`;
+        }
+        function ensureDaily() {
+            const key = todayKey();
+            if (S.daily.dateKey !== key) {
+                S.daily.dateKey = key;
+                S.daily.correct = 0;
+                S.daily.didAwardToday = false;
+            }
+        }
+
+        /* ----------------- Coach policy (single built-in table: Standard) ----------------- */
+        function isPlayable(handKey, posKey) {
+            if (BASE_PLAY.has(handKey)) return true;
+
+            const pos = POS.find(p => p.k === posKey);
+            const loosen = (pos?.loosen ?? 0);
+
+            if (loosen >= 1.0 && LATE_BONUS.has(handKey)) return true;
+
+            if ((posKey === "BB" || posKey === "SB") && handKey.endsWith("s")) {
+                const p = parseKey(handKey);
+                const gap = Math.abs(p.va - p.vb);
+                if (!p.pair && gap <= 2 && p.vhi >= V["8"]) return true;
+            }
+            return false;
+        }
+        function recommended(handKey, posKey) {
+            const premium = new Set(["AA", "KK", "QQ", "JJ", "TT", "AKs", "AKo", "AQs"]);
+            const pos = POS.find(p => p.k === posKey);
+            const late = pos && (pos.k === "LP" || pos.k === "BTN");
+
+            if (premium.has(handKey)) return "raise";
+            if (!isPlayable(handKey, posKey)) return "fold";
+
+            if (!late) return "call";
+            return "raise";
+        }
+
+        function dealUnicodeCards(handKey) {
+            const p = parseKey(handKey);
+
+            if (p.pair) {
+                const s1 = randSuit();
+                const s2 = randSuit(s1.id);
+                return [
+                    { rank: p.a, suitId: s1.id, char: cardChar(p.a, s1) },
+                    { rank: p.a, suitId: s2.id, char: cardChar(p.a, s2) }
+                ];
+            }
+
+            if (handKey.endsWith("s")) {
+                const s = randSuit();
+                return [
+                    { rank: p.hi, suitId: s.id, char: cardChar(p.hi, s) },
+                    { rank: p.lo, suitId: s.id, char: cardChar(p.lo, s) }
+                ];
+            }
+
+            const s1 = randSuit();
+            const s2 = randSuit(s1.id);
+            return [
+                { rank: p.hi, suitId: s1.id, char: cardChar(p.hi, s1) },
+                { rank: p.lo, suitId: s2.id, char: cardChar(p.lo, s2) }
+            ];
+        }
+
+        /* ----------------- Explanations ----------------- */
+        function positionPopupText(posKey) {
+            const pos = POS.find(p => p.k === posKey);
+            const common = "Later position = more info = you can play more hands.\nEarlier position = less info = play tighter.";
+            const specifics = {
+                EP: "Early: you act first. Avoid marginal hands.",
+                MP: "Middle: still careful, but slightly wider than early.",
+                LP: "Late: you act after several players. You can open more hands.",
+                BTN: "Button: best seat. You act last after the flop. Widest opens.",
+                SB: "Small blind: you’ll be out of position. Don’t get dragged into junk.",
+                BB: "Big blind: you already posted. You can defend some hands, but still avoid trash."
+            };
+            return `${pos.n} — ${pos.d}\n\n${common}\n\n${specifics[posKey] || ""}`;
+        }
+        function hintPopupBody() {
+            const handKey = S.coach.hand;
+            const posKey = S.coach.pos;
+            const rec = recommended(handKey, posKey);
+            const p = parseKey(handKey);
+
+            let whyHand = "";
+            if (p.pair) whyHand = "Pairs start strong and can improve easily.";
+            else if (handKey.endsWith("s")) whyHand = "Suited hands can make flushes and strong draws.";
+            else whyHand = "Offsuit hands connect less and get dominated more.";
+            if (ROOKIE_TRAPS.has(handKey)) whyHand += " Common beginner trap.";
+
+            let whyPos = "";
+            if (posKey === "EP") whyPos = "Early position is strict: you’ll face action behind you.";
+            else if (posKey === "BTN") whyPos = "Button is powerful: you act last later.";
+            else if (posKey === "SB") whyPos = "Small blind is awkward: out of position.";
+            else whyPos = "Position changes what’s safe.";
+
+            let why = "";
+            if (rec === "fold") why = "This spot tends to lose. Folding is disciplined.";
+            else if (rec === "call") why = "Playable but not premium. Keep it controlled.";
+            else why = "Good spot to apply pressure and take the lead.";
+
+            return `Suggested: ${rec.toUpperCase()}\n\nWhy (hand): ${whyHand}\nWhy (position): ${whyPos}\n\n${why}`;
+        }
+
+        /* ----------------- XP + daily ----------------- */
+        function addXP(n) {
+            S.xp += n;
+            while (S.xp >= xpNeed(S.level)) {
+                S.xp -= xpNeed(S.level);
+                S.level++;
+            }
+            save();
+            renderHUD();
+        }
+        function bumpDailyIfCorrect() {
+            ensureDaily();
+            S.daily.correct++;
+            if (!S.daily.didAwardToday && S.daily.correct >= S.daily.goal) {
+                S.daily.didAwardToday = true;
+                S.daily.dayStreak++;
+            }
+            save();
+            renderHUD();
+        }
+        function renderHUD() {
+            ensureDaily();
+            document.getElementById("lv").textContent = S.level;
+            document.getElementById("xp").textContent = S.xp;
+            document.getElementById("xpNeed").textContent = xpNeed(S.level);
+            document.getElementById("stk").textContent = S.streak;
+            document.getElementById("todayDone").textContent = S.daily.correct;
+            document.getElementById("todayGoal").textContent = S.daily.goal;
+            document.getElementById("dayStreak").textContent = S.daily.dayStreak;
+            document.getElementById("diff").textContent = diffName();
+        }
+
+        /* ----------------- Coach flow ----------------- */
+        function newCoach() {
+            const posKey = pick(POS).k;
+
+            let handKey;
+            const r = Math.random();
+            if (S.level <= 2) {
+                if (r < 0.45) handKey = pickSet(BASE_PLAY);
+                else if (r < 0.75) handKey = pickSet(ROOKIE_TRAPS);
+                else handKey = randHandKey();
+            } else {
+                if (r < 0.35) handKey = pickSet(BASE_PLAY);
+                else if (r < 0.65) handKey = pickSet(LATE_BONUS);
+                else handKey = randHandKey();
+            }
+            handKey = canonKey(handKey);
+
+            S.coach.hand = handKey;
+            S.coach.pos = posKey;
+            S.coach.cards = dealUnicodeCards(handKey);
+            save();
+        }
+        function coachExplain(handKey, posKey, action, rec) {
+            const p = parseKey(handKey);
+
+            const posLine =
+                (posKey === "EP") ? "Early is strict: lots of players act after you."
+                    : (posKey === "BTN") ? "Button is strong: you act last later."
+                        : (posKey === "SB") ? "SB is tricky: you’ll be out of position."
+                            : (posKey === "BB") ? "BB: you can defend a little wider."
+                                : "Position changes what’s safe.";
+
+            let handLine = p.pair ? "Pairs start strong."
+                : (handKey.endsWith("s") ? "Suited hands have extra ways to improve." : "Offsuit hands connect less.");
+            if (ROOKIE_TRAPS.has(handKey)) handLine += " Beginner trap: often second-best.";
+
+            const tip =
+                (rec === "fold") ? "Fold junk. Save chips for better spots."
+                    : (rec === "call") ? "Playable. Keep it simple: don’t get stubborn."
+                        : "Good spot to be the aggressor.";
+
+            const ok = action === rec;
+            const verdict = ok ? `<span class="stamp g">Correct.</span>` : `<span class="stamp b">Not ideal.</span>`;
+            return { ok, verdict, recLine: `Recommended: <b>${rec.toUpperCase()}</b>. You: <b>${action.toUpperCase()}</b>.`, posLine, handLine, tip };
+        }
+        function coachAct(action) {
+            const handKey = S.coach.hand;
+            const posKey = S.coach.pos;
+            const rec = recommended(handKey, posKey);
+            const ex = coachExplain(handKey, posKey, action, rec);
+
+            if (ex.ok) {
+                S.streak++;
+                addXP(18 + Math.min(12, S.streak));
+                bumpDailyIfCorrect();
+            } else {
+                S.streak = 0;
+                addXP(6);
+            }
+            save();
+
+            const goalHit = (S.daily.correct >= S.daily.goal);
+            const goalMsg = goalHit
+                ? `<div style="margin-top:8px;"><span class="stamp g">Daily goal hit.</span> Day streak: <span class="stamp g">${S.daily.dayStreak}</span></div>`
+                : "";
+
+            const fbClass = ex.ok ? "feedback good" : "feedback bad";
+            const fb = `
+    <div class="${fbClass}">
+      <div class="k">Result</div>
+      <div>${ex.verdict} ${ex.recLine}</div>
+      <div style="margin-top:8px;"><span class="stamp">${ex.posLine}</span></div>
+      <div style="margin-top:6px; color:var(--muted)">${ex.handLine}</div>
+      <div style="margin-top:8px;"><span class="stamp">${ex.tip}</span></div>
+      ${goalMsg}
+    </div>
+  `;
+            renderCoach(fb);
+
+            setTimeout(() => {
+                newCoach();
+                renderCoach(null);
+            }, 1400); // slower, fixed (removed "fast")
+        }
+        function renderCoach(feedback) {
+            const handKey = S.coach.hand;
+            const posKey = S.coach.pos;
+            const pos = POS.find(p => p.k === posKey);
+            const cards = S.coach.cards || dealUnicodeCards(handKey);
+
+            document.getElementById("title").textContent = "Pre-Flop Coach";
+            document.getElementById("mini").textContent = "Pick the simplest good action.";
+
+            const html = `
+    <div class="heroBox">
+      <div class="metaRow">
+        <div class="metaLeft">
+          <button class="pillMiniBtn" onclick="openPopup('Position', positionPopupText('${posKey}'))">
+            <span class="secondary">Position</span> <span>${pos.n}</span> <span class="q">?</span>
+          </button>
+        </div>
+        <div class="tag">${handKey}</div>
+      </div>
+
+      <div class="cardsWrap">
+        <div class="cards" aria-label="Your two cards">
+          <span>${cards[0].char}</span>
+          <span>${cards[1].char}</span>
+        </div>
+      </div>
+
+      <div class="btnRow">
+        <button class="danger" onclick="coachAct('fold')">Fold</button>
+        <button onclick="coachAct('call')">Call</button>
+        <button class="primary" onclick="coachAct('raise')">Raise</button>
+      </div>
+
+      <div class="row2">
+        <button onclick="openPopup('Hint', hintPopupBody())">Hint</button>
+      </div>
+    </div>
+    ${feedback || ""}
+  `;
+            document.getElementById("body").innerHTML = html;
+        }
+
+        /* ----------------- Range Battle (updated to use unicode cards) ----------------- */
+        function traits(handKey) {
+            const p = parseKey(handKey);
+            const t = [];
+            if (p.pair) t.push("Pair");
+            if (handKey.endsWith("s")) t.push("Suited");
+            const gap = p.pair ? 0 : Math.abs(p.va - p.vb);
+            if (!p.pair && gap === 1) t.push("Connector");
+            if (!p.pair && gap === 2) t.push("1-Gapper");
+            if (p.vhi >= V["Q"]) t.push("Big Card");
+            return t;
+        }
+        function score(handKey) {
+            const p = parseKey(handKey);
+            let s = 0;
+            if (p.pair) {
+                s += 200 + p.vhi * 6;
+            } else {
+                s += p.vhi * 5 + p.vlo * 2;
+                if (handKey.endsWith("s")) s += 10;
+                const gap = Math.abs(p.va - p.vb);
+                if (gap === 1) s += 8;
+                else if (gap === 2) s += 4;
+                if (p.vhi >= V["A"] && p.vlo <= V["8"] && handKey.endsWith("o")) s -= 8;
+            }
+            return s;
+        }
+        function label(h, v) {
+            const d = score(h) - score(v);
+            if (d >= 35) return { t: "Hero ahead", c: "good" };
+            if (d >= 15) return { t: "Hero small edge", c: "warn" };
+            if (d > -15) return { t: "Even-ish", c: "warn" };
+            if (d > -35) return { t: "Villain small edge", c: "warn" };
+            return { t: "Villain ahead", c: "bad" };
+        }
+        function explainBattle(h, v) {
+            const hp = parseKey(h), vp = parseKey(v);
+            if (hp.pair && !vp.pair) return "Pairs usually start ahead of unpaired hands.";
+            if (!hp.pair && vp.pair) return "Unpaired hands often start behind pairs.";
+            if (hp.pair && vp.pair) return (hp.vhi > vp.vhi) ? "Higher pair is usually ahead." : "Lower pair is usually behind.";
+            if (!hp.pair && !vp.pair) {
+                if (hp.vhi > vp.vhi && hp.vlo >= vp.vlo) return "Bigger cards tend to dominate smaller cards.";
+                if (h.endsWith("s") && !v.endsWith("s")) return "Suited hand has extra ways to improve.";
+                if (!h.endsWith("s") && v.endsWith("s")) return "Villain’s suited hand has extra ways to improve.";
+                const hgap = Math.abs(hp.va - hp.vb), vgap = Math.abs(vp.va - vp.vb);
+                if (hgap < vgap) return "More connected cards can make straights more often.";
+                return "Close matchup. Small features matter.";
+            }
+            return "Close matchup.";
+        }
+        function newBattle() {
+            S.battle.h = canonKey(randHandKey());
+            S.battle.v = canonKey(randHandKey());
+            S.battle.hCards = dealUnicodeCards(S.battle.h);
+            S.battle.vCards = dealUnicodeCards(S.battle.v);
+            save();
+        }
+        function battlePick(choice) {
+            const h = S.battle.h, v = S.battle.v;
+            const d = score(h) - score(v);
+            let correct = "even";
+            if (d >= 15) correct = "hero";
+            else if (d <= -15) correct = "vill";
+
+            const ok = choice === correct;
+            if (ok) {
+                S.streak++;
+                addXP(16 + Math.min(12, S.streak));
+                bumpDailyIfCorrect();
+            } else {
+                S.streak = 0;
+                addXP(6);
+            }
+
+            const l = label(h, v);
+            const note = explainBattle(h, v);
+            const fbClass = ok ? "feedback good" : "feedback bad";
+            const verdict = ok ? `<span class="stamp g">Correct.</span>` : `<span class="stamp b">Not quite.</span>`;
+
+            const goalHit = (S.daily.correct >= S.daily.goal);
+            const goalMsg = goalHit
+                ? `<div style="margin-top:8px;"><span class="stamp g">Daily goal hit.</span> Day streak: <span class="stamp g">${S.daily.dayStreak}</span></div>`
+                : "";
+
+            const fb = `
+    <div class="${fbClass}">
+      <div class="k">Reveal</div>
+      <div>${verdict} <b>${l.t}</b></div>
+      <div style="margin-top:8px;"><span class="stamp">${note}</span></div>
+      <div style="margin-top:6px; color:var(--muted)">You: <b>${choice.toUpperCase()}</b> • Best: <b>${correct.toUpperCase()}</b></div>
+      ${goalMsg}
+    </div>
+  `;
+            renderBattle(fb);
+
+            setTimeout(() => {
+                newBattle();
+                renderBattle(null);
+            }, 1500);
+        }
+        function renderBattle(feedback) {
+            document.getElementById("title").textContent = "Range Battle";
+            document.getElementById("mini").textContent = "Who starts ahead? Build intuition.";
+
+            const h = S.battle.h, v = S.battle.v;
+            const hc = S.battle.hCards || dealUnicodeCards(h);
+            const vc = S.battle.vCards || dealUnicodeCards(v);
+            const ht = traits(h), vt = traits(v);
+
+            const html = `
+    <div class="two">
+      <div class="fighter">
+        <div class="name">Hero</div>
+        <div class="h">${h}</div>
+        <div class="cardsSmall" aria-label="Hero cards">
+          <span>${hc[0].char}</span><span>${hc[1].char}</span>
+        </div>
+        <div class="traits">${ht.map(x => `<span class="trait">${x}</span>`).join("")}</div>
+      </div>
+      <div class="fighter">
+        <div class="name">Villain</div>
+        <div class="h">${v}</div>
+        <div class="cardsSmall" aria-label="Villain cards">
+          <span>${vc[0].char}</span><span>${vc[1].char}</span>
+        </div>
+        <div class="traits">${vt.map(x => `<span class="trait">${x}</span>`).join("")}</div>
+      </div>
+    </div>
+
+    <div class="footerRow">
+      <button class="tinyBtn" onclick="battlePick('hero')">Hero</button>
+      <button class="tinyBtn" onclick="battlePick('even')">Even</button>
+      <button class="tinyBtn" onclick="battlePick('vill')">Villain</button>
+      <button class="tinyBtn primary" onclick="newBattle(); renderBattle(null);">New</button>
+    </div>
+
+    ${feedback || ""}
+  `;
+            document.getElementById("body").innerHTML = html;
+        }
+
+        /* ----------------- Overlays ----------------- */
+        function openPopup(title, body) {
+            document.getElementById("popTitle").textContent = title;
+            document.getElementById("popBody").textContent = body;
+            showOverlay('ovPopup');
+        }
+        function showOverlay(id) { document.getElementById(id).classList.add("show"); }
+        function hideOverlay(id) { document.getElementById(id).classList.remove("show"); }
+
+        /* ----------------- UI / Mode ----------------- */
+        function setMode(mode) {
+            S.mode = mode;
+            document.getElementById("tabCoach").classList.toggle("active", mode === "coach");
+            document.getElementById("tabBattle").classList.toggle("active", mode === "battle");
+            save();
+            render();
+        }
+        function render() {
+            ensureDaily();
+            renderHUD();
+            if (S.mode === "coach") renderCoach(null);
+            else renderBattle(null);
+        }
+
+        /* ----------------- Persistence ----------------- */
+        function save() { localStorage.setItem("pokerTrainerMinimalV5", JSON.stringify(S)); }
+        function load() {
+            try {
+                const raw = localStorage.getItem("pokerTrainerMinimalV5");
+                if (!raw) return false;
+                const o = JSON.parse(raw);
+                if (!o) return false;
+
+                S.mode = o.mode || "coach";
+                S.level = o.level || 1;
+                S.xp = o.xp || 0;
+                S.streak = o.streak || 0;
+                S.coach = o.coach || { hand: null, pos: null, cards: null };
+                S.battle = o.battle || { h: null, v: null, hCards: null, vCards: null };
+                S.daily = Object.assign({ dateKey: "", correct: 0, goal: 20, dayStreak: 0, didAwardToday: false }, o.daily || {});
+                return true;
+            } catch { return false; }
+        }
+        function resetProgress() {
+            localStorage.removeItem("pokerTrainerMinimalV5");
+            S.mode = "coach"; S.level = 1; S.xp = 0; S.streak = 0;
+            S.coach = { hand: null, pos: null, cards: null };
+            S.battle = { h: null, v: null, hCards: null, vCards: null };
+            S.daily = { dateKey: "", correct: 0, goal: 20, dayStreak: 0, didAwardToday: false };
+            init();
+        }
+
+        /* ----------------- init ----------------- */
+        function initRounds() {
+            if (!S.coach.hand || !S.coach.pos) { newCoach(); }
+            else if (!S.coach.cards || !Array.isArray(S.coach.cards) || S.coach.cards.length !== 2) {
+                S.coach.cards = dealUnicodeCards(S.coach.hand);
+                save();
+            }
+
+            if (!S.battle.h || !S.battle.v) { newBattle(); }
+            else {
+                if (!S.battle.hCards || !Array.isArray(S.battle.hCards) || S.battle.hCards.length !== 2) S.battle.hCards = dealUnicodeCards(S.battle.h);
+                if (!S.battle.vCards || !Array.isArray(S.battle.vCards) || S.battle.vCards.length !== 2) S.battle.vCards = dealUnicodeCards(S.battle.v);
+                save();
+            }
+        }
+        function showHelp() { showOverlay('ovHelp'); }
+        function init() {
+            load();
+            ensureDaily();
+            initRounds();
+
+            document.getElementById("tabCoach").classList.toggle("active", S.mode === "coach");
+            document.getElementById("tabBattle").classList.toggle("active", S.mode === "battle");
+            document.getElementById("diff").textContent = diffName();
+            render();
+        }
+        init();
+    </script>
+</body>
+
+</html>
