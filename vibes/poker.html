@@ -219,7 +219,7 @@
   font-family: "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", system-ui, sans-serif;
   font-size: 54px;        /* keep base size */
   line-height: 1;
-  transform: scale(5);    /* 5x visual size, without huge layout boxes */
+  transform: scale(3);    /* 5x visual size, without huge layout boxes */
   transform-origin: center;
   pointer-events: none;   /* never steal taps from buttons */
 }
@@ -386,6 +386,7 @@
             gap: 10px;
             flex-wrap: wrap;
             align-items: center;
+            justify-content: center;
             color: var(--muted);
             font-size: 12px;
         }
@@ -451,7 +452,7 @@
         <header>
             <div>
                 <div class="h1">Poker Trainer</div>
-                <div class="sub">Minimal. Fundamentals only. Training-only.</div>
+                <div class="sub">Fundamentals.</div>
             </div>
             <div class="stats">
                 <div class="chip">LV <b id="lv">1</b></div>
@@ -994,7 +995,6 @@
     <div class="two">
       <div class="fighter">
         <div class="name">Hero</div>
-        <div class="h">${h}</div>
         <div class="cardsSmall" aria-label="Hero cards">
           <span>${hc[0].char}</span><span>${hc[1].char}</span>
         </div>
@@ -1002,7 +1002,6 @@
       </div>
       <div class="fighter">
         <div class="name">Villain</div>
-        <div class="h">${v}</div>
         <div class="cardsSmall" aria-label="Villain cards">
           <span>${vc[0].char}</span><span>${vc[1].char}</span>
         </div>
