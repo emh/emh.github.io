@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Wave Editor</title>
+
+<meta name="description" content="Wave Editor - combine backbones and travelling waves to create complex animated curves">
+<meta name="theme-color" content="#000000">
+<link rel="canonical" href="https://emh.io/vibes/waves.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Wave Editor">
+<meta property="og:description" content="Wave Editor - combine backbones and travelling waves to create complex animated curves">
+<meta property="og:url" content="https://emh.io/vibes/waves.html">
+<meta property="og:image" content="https://emh.io/vibes/waves.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Wave Editor">
+<meta name="twitter:description" content="Wave Editor - combine backbones and travelling waves to create complex animated curves">
+<meta name="twitter:image" content="https://emh.io/vibes/waves.png">
+
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  canvas{display:block;width:100vw;height:100vh}
+
+  .hud{
+    position:fixed;left:12px;top:12px;z-index:10;
+    width:min(460px,calc(100vw - 24px));
+    background:rgba(255,255,255,0.92);
+    border:1px solid rgba(0,0,0,0.12);
+    border-radius:12px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.10);
+    padding:10px;
+    user-select:none;
+  }
+  .hud.hidden{display:none}
+
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row + .row{margin-top:8px}
+
+  button{
+    appearance:none;border:1px solid rgba(0,0,0,0.18);
+    background:#fff;border-radius:10px;padding:8px 10px;
+    font-weight:600;cursor:pointer
+  }
+  button:active{transform:translateY(1px)}
+
+  .small{font-size:12px;color:rgba(0,0,0,0.65)}
+  .title{font-weight:700}
+  .chip{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid rgba(0,0,0,0.12);color:rgba(0,0,0,0.7)}
+  .btnbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  .list{margin-top:10px;max-height:min(62vh,560px);overflow:auto;padding-right:4px}
+  .card{
+    border:1px solid rgba(0,0,0,0.12);
+    border-radius:12px;
+    padding:10px;
+    margin-top:10px;
+    background:#fff;
+  }
+  .cardHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .danger{border-color:rgba(200,0,0,0.25);color:#a40000}
+  .muted{opacity:0.55}
+
+  /* control rows: label | (value) | slider (right aligned) */
+  .controlStack{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+  .controlRow{display:flex;align-items:center;gap:10px}
+  .controlLabel{
+    flex:1;min-width:120px;
+    font-size:12px;color:rgba(0,0,0,0.75);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .controlValue{
+    width:70px;text-align:right;
+    font-size:12px;color:rgba(0,0,0,0.65);
+    font-variant-numeric: tabular-nums;white-space:nowrap;
+  }
+  .controlSlider{
+    width:210px;max-width:42vw;margin-left:auto;
+  }
+  @media (max-width: 420px){
+    .controlSlider{width:170px}
+    .controlValue{width:60px}
+  }
+</style>
+</head>
+<body>
+<div class="hud" id="hud">
+  <div class="row" style="justify-content:space-between;">
+    <div>
+      <div style="font-weight:800;">Wave Editor</div>
+      <div class="small">Esc toggles HUD.</div>
+    </div>
+    <div class="chip" id="fpsChip">FPS</div>
+  </div>
+
+  <div class="row" style="margin-top:10px;">
+    <div class="btnbar">
+      <button id="addBackbone">+ Backbone</button>
+      <button id="addWave">+ Wave</button>
+      <button id="togglePause">Pause</button>
+      <button id="resetAll" class="danger">Reset</button>
+    </div>
+  </div>
+
+  <!-- global scale control -->
+  <div class="controlStack" style="margin-top:10px;">
+    <div class="controlRow">
+      <div class="controlLabel">Scale</div>
+      <div class="controlValue" id="scaleVal"></div>
+      <input class="controlSlider" id="scale" type="range" min="0.05" max="2.0" step="0.005" value="1" />
+    </div>
+  </div>
+
+  <div class="list" id="list"></div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+let DPR = devicePixelRatio || 1;
+let W = 0, H = 0;
+
+function resize(){
+  DPR = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  canvas.width  = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  canvas.style.width  = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  autoFitScale(); // refit on resize as well (keeps intent)
+}
+addEventListener("resize", resize);
+
+// --------------------------- state ------------------------------------------
+let state = {
+  paused: false,
+  hudVisible: true,
+
+  // internal render tuning
+  trail: 0.12,
+  spp: 0.35,
+
+  // whip envelope applied to waves
+  whipStrength: 0.75,
+  whipSharpness: 2.4,
+
+  // global scale applied to final offset (user can tweak; auto-refit when adding components)
+  scale: 1.0,
+
+  backbones: [],
+  waves: [],
+  nextId: 1
+};
+
+// ------------------------- UI helpers ---------------------------------------
+const $ = (id) => document.getElementById(id);
+function fmt(x, d=3){ return (+x).toFixed(d); }
+
+function makeSlider({min,max,step,value,oninput}){
+  const r = document.createElement("input");
+  r.type = "range";
+  r.className = "controlSlider";
+  r.min = min; r.max = max; r.step = step;
+  r.value = value;
+  r.addEventListener("input", () => oninput(+r.value));
+  return r;
+}
+
+function makeButton(text, cls, onclick){
+  const b = document.createElement("button");
+  b.textContent = text;
+  if (cls) b.className = cls;
+  b.addEventListener("click", onclick);
+  return b;
+}
+
+function makeCheckbox(checked, onchange){
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = !!checked;
+  cb.addEventListener("change", () => onchange(cb.checked));
+  return cb;
+}
+
+function makeControlRow(labelText, sliderEl, valueEl){
+  const row = document.createElement("div");
+  row.className = "controlRow";
+
+  const lab = document.createElement("div");
+  lab.className = "controlLabel";
+  lab.textContent = labelText;
+
+  valueEl.classList.add("controlValue");
+
+  row.appendChild(lab);
+  row.appendChild(valueEl);
+  row.appendChild(sliderEl);
+  return row;
+}
+
+// ---------------------- scale auto-fit --------------------------------------
+function currentSpan(){
+  const portrait = H > W;
+  return portrait ? W : H;
+}
+
+function envelope(t){
+  const ramp = Math.pow(t, state.whipSharpness);
+  return (1.0 - state.whipStrength) + state.whipStrength * ramp;
+}
+
+// conservative upper bound on |offset| as a fraction of span
+function estimateMaxAbsOffsetFrac(){
+  // backbone: sum_i amp_i * |sin| <= sum_i amp_i
+  let bb = 0;
+  for (const b of state.backbones) if (b.on) bb += Math.abs(b.amp);
+
+  // waves: each wave contributes <= mix_i * maxEnv (<= 1) * |sin| (<=1)
+  // since env <= 1, sum of mix is a safe bound.
+  let ww = 0;
+  for (const w of state.waves) if (w.on) ww += Math.abs(w.mix);
+
+  // total fraction of span
+  return bb + ww;
+}
+
+function autoFitScale(){
+  // Aim to keep within +/- (span * marginFrac)
+  const span = currentSpan();
+  if (span <= 0) return;
+
+  // how much of the cross-axis we allow the curve to occupy (half span minus margins)
+  const marginPx = 14; // small safety margin from edges
+  const maxAbsPx = Math.max(1, (span * 0.5) - marginPx);
+
+  const frac = estimateMaxAbsOffsetFrac();
+  if (frac <= 1e-9){
+    // zero state: default scale to 1
+    setScale(1.0, /*fromAuto*/true);
+    return;
+  }
+
+  const predictedAbsPx = frac * span;
+  const s = clamp(maxAbsPx / predictedAbsPx, 0.05, 2.0);
+
+  setScale(s, /*fromAuto*/true);
+}
+
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+function setScale(v, fromAuto=false){
+  state.scale = v;
+
+  const slider = $("scale");
+  if (slider){
+    slider.value = String(v);
+  }
+  if ($("scaleVal")){
+    $("scaleVal").textContent = `(${fmt(v,3)})` + (fromAuto ? "" : "");
+  }
+}
+
+// --------------------------- component UI -----------------------------------
+function renderList(){
+  const list = $("list");
+  list.innerHTML = "";
+
+  // Backbones
+  const bbHeader = document.createElement("div");
+  bbHeader.className = "row";
+  bbHeader.style.justifyContent = "space-between";
+  bbHeader.innerHTML = `<div class="title">Backbones</div><div class="small">${state.backbones.length}</div>`;
+  list.appendChild(bbHeader);
+
+  for (const bb of state.backbones){
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const head = document.createElement("div");
+    head.className = "cardHead";
+
+    const left = document.createElement("div");
+    left.className = "row";
+    const cb = makeCheckbox(bb.on, (v)=>{ bb.on = v; autoFitScale(); });
+    const name = document.createElement("div");
+    name.className = "title";
+    name.textContent = `Backbone #${bb.id}`;
+    left.appendChild(cb);
+    left.appendChild(name);
+
+    const right = document.createElement("div");
+    right.className = "btnbar";
+    right.appendChild(makeButton("Delete", "danger", ()=>{
+      state.backbones = state.backbones.filter(x => x !== bb);
+      renderList();
+      autoFitScale();
+    }));
+
+    head.appendChild(left);
+    head.appendChild(right);
+    card.appendChild(head);
+
+    const stack = document.createElement("div");
+    stack.className = "controlStack";
+
+    // amp
+    {
+      const val = document.createElement("div");
+      val.textContent = `(${fmt(bb.amp,3)})`;
+      const slider = makeSlider({
+        min:0, max:0.5, step:0.005, value:bb.amp,
+        oninput:(v)=>{ bb.amp = v; val.textContent = `(${fmt(v,3)})`; autoFitScale(); }
+      });
+      stack.appendChild(makeControlRow("amp (0..1)", slider, val));
+    }
+
+    // freq
+    {
+      const val = document.createElement("div");
+      val.textContent = `(${fmt(bb.freq,2)})`;
+      const slider = makeSlider({
+        min:0, max:6, step:0.01, value:bb.freq,
+        oninput:(v)=>{ bb.freq = v; val.textContent = `(${fmt(v,2)})`; }
+      });
+      stack.appendChild(makeControlRow("freq (cycles along length)", slider, val));
+    }
+
+    // phase
+    {
+      const val = document.createElement("div");
+      val.textContent = `(${fmt(bb.phase,2)})`;
+      const slider = makeSlider({
+        min:-2, max:2, step:0.01, value:bb.phase,
+        oninput:(v)=>{ bb.phase = v; val.textContent = `(${fmt(v,2)})`; }
+      });
+      stack.appendChild(makeControlRow("phase (cycles)", slider, val));
+    }
+
+    card.appendChild(stack);
+    list.appendChild(card);
+  }
+
+  // Waves
+  const wHeader = document.createElement("div");
+  wHeader.className = "row";
+  wHeader.style.justifyContent = "space-between";
+  wHeader.style.marginTop = "12px";
+  wHeader.innerHTML = `<div class="title">Waves</div><div class="small">${state.waves.length}</div>`;
+  list.appendChild(wHeader);
+
+  for (const wv of state.waves){
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const head = document.createElement("div");
+    head.className = "cardHead";
+
+    const left = document.createElement("div");
+    left.className = "row";
+    const cb = makeCheckbox(wv.on, (v)=>{ wv.on = v; autoFitScale(); });
+    const name = document.createElement("div");
+    name.className = "title";
+    name.textContent = `Wave #${wv.id}`;
+    left.appendChild(cb);
+    left.appendChild(name);
+
+    const right = document.createElement("div");
+    right.className = "btnbar";
+    right.appendChild(makeButton("Delete", "danger", ()=>{
+      state.waves = state.waves.filter(x => x !== wv);
+      renderList();
+      autoFitScale();
+    }));
+
+    head.appendChild(left);
+    head.appendChild(right);
+    card.appendChild(head);
+
+    const stack = document.createElement("div");
+    stack.className = "controlStack";
+
+    // speed
+    {
+      const val = document.createElement("div");
+      val.textContent = `(${fmt(wv.speed,2)})`;
+      const slider = makeSlider({
+        min:-2, max:2, step:0.01, value:wv.speed,
+        oninput:(v)=>{ wv.speed = v; val.textContent = `(${fmt(v,2)})`; }
+      });
+      stack.appendChild(makeControlRow("speed (cycles/sec)", slider, val));
+    }
+
+    // freq
+    {
+      const val = document.createElement("div");
+      val.textContent = `(${fmt(wv.freq,2)})`;
+      const slider = makeSlider({
+        min:0, max:12, step:0.01, value:wv.freq,
+        oninput:(v)=>{ wv.freq = v; val.textContent = `(${fmt(v,2)})`; }
+      });
+      stack.appendChild(makeControlRow("frequency (periods along length)", slider, val));
+    }
+
+    // mix (amp)
+    {
+      const val = document.createElement("div");
+      val.textContent = `(${fmt(wv.mix,3)})`;
+      const slider = makeSlider({
+        min:0, max:1, step:0.005, value:wv.mix,
+        oninput:(v)=>{ wv.mix = v; val.textContent = `(${fmt(v,3)})`; autoFitScale(); }
+      });
+      stack.appendChild(makeControlRow("mix / amp (0..1 of span)", slider, val));
+    }
+
+    card.appendChild(stack);
+    list.appendChild(card);
+  }
+
+  if (state.backbones.length === 0 && state.waves.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "card muted";
+    empty.innerHTML = `<div class="title">Zero state</div><div class="small">Flat line. Add a backbone and/or waves.</div>`;
+    list.appendChild(empty);
+  }
+}
+
+function addBackbone(){
+  state.backbones.push({
+    id: state.nextId++,
+    on: true,
+    amp: 0.08,
+    freq: 1.3,
+    phase: 0.15
+  });
+  renderList();
+  autoFitScale();
+}
+
+function addWave(){
+  state.waves.push({
+    id: state.nextId++,
+    on: true,
+    speed: 0.28,
+    freq: 2.2,
+    mix: 0.20
+  });
+  renderList();
+  autoFitScale();
+}
+
+// --------------------------- rope math --------------------------------------
+function ropeOffset(t, timeSec, span){
+  let backbone = 0;
+  for (const bb of state.backbones){
+    if (!bb.on) continue;
+    backbone += (bb.amp * span) * Math.sin(2*Math.PI*(bb.freq * t + bb.phase));
+  }
+
+  let waves = 0;
+  const env = envelope(t);
+  for (const wv of state.waves){
+    if (!wv.on) continue;
+    const ph = 2*Math.PI*(wv.freq * t - wv.speed * timeSec);
+    waves += (wv.mix * span) * env * Math.sin(ph);
+  }
+
+  return state.scale * (backbone + waves);
+}
+
+function drawCurve(timeMs){
+  const portrait = H > W;
+  const len  = portrait ? H : W;
+  const span = portrait ? W : H;
+
+  const steps = Math.max(140, Math.floor(len * state.spp));
+  const timeSec = timeMs * 0.001;
+
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++){
+    const t = i / steps;
+    const o = ropeOffset(t, timeSec, span);
+
+    const x = portrait ? (W * 0.5 + o) : (t * W);
+    const y = portrait ? (t * H)       : (H * 0.5 + o);
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// --------------------------- animation --------------------------------------
+let lastFpsT = performance.now();
+let frames = 0;
+
+function tick(tMs){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+
+  if (state.trail > 0){
+    ctx.fillStyle = `rgba(255,255,255,${state.trail})`;
+    ctx.fillRect(0,0,W,H);
+  } else {
+    ctx.clearRect(0,0,W,H);
+  }
+
+  drawCurve(tMs);
+
+  frames++;
+  const now = performance.now();
+  if (now - lastFpsT > 500){
+    const fps = frames * 1000 / (now - lastFpsT);
+    $("fpsChip").textContent = `FPS ${fps.toFixed(0)}`;
+    frames = 0;
+    lastFpsT = now;
+  }
+
+  if (!state.paused) requestAnimationFrame(tick);
+}
+
+// --------------------------- wiring -----------------------------------------
+document.getElementById("addBackbone").addEventListener("click", addBackbone);
+document.getElementById("addWave").addEventListener("click", addWave);
+
+document.getElementById("togglePause").addEventListener("click", () => {
+  state.paused = !state.paused;
+  document.getElementById("togglePause").textContent = state.paused ? "Resume" : "Pause";
+  if (!state.paused) requestAnimationFrame(tick);
+});
+
+document.getElementById("resetAll").addEventListener("click", () => {
+  state.backbones = [];
+  state.waves = [];
+  state.nextId = 1;
+  renderList();
+  autoFitScale();
+});
+
+// Scale slider (user can tweak; will be overwritten when components are added/toggled)
+document.getElementById("scale").addEventListener("input", (e) => {
+  const v = +e.target.value;
+  state.scale = v;
+  $("scaleVal").textContent = `(${fmt(v,3)})`;
+});
+$("scaleVal").textContent = `(${fmt(state.scale,3)})`;
+
+// Esc toggles HUD
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape"){
+    state.hudVisible = !state.hudVisible;
+    $("hud").classList.toggle("hidden", !state.hudVisible);
+  }
+});
+
+// init
+resize();
+renderList();
+autoFitScale();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
