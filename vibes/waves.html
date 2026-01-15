@@ -4,7 +4,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Wave Editor</title>
-
 <meta name="description" content="Wave Editor - combine backbones and travelling waves to create complex animated curves">
 <meta name="theme-color" content="#000000">
 <link rel="canonical" href="https://emh.io/vibes/waves.html">
@@ -17,14 +16,13 @@
 <meta name="twitter:title" content="Wave Editor">
 <meta name="twitter:description" content="Wave Editor - combine backbones and travelling waves to create complex animated curves">
 <meta name="twitter:image" content="https://emh.io/vibes/waves.png">
-
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
   canvas{display:block;width:100vw;height:100vh}
 
   .hud{
     position:fixed;left:12px;top:12px;z-index:10;
-    width:min(460px,calc(100vw - 24px));
+    width:min(480px,calc(100vw - 24px));
     background:rgba(255,255,255,0.92);
     border:1px solid rgba(0,0,0,0.12);
     border-radius:12px;
@@ -61,7 +59,7 @@
   .danger{border-color:rgba(200,0,0,0.25);color:#a40000}
   .muted{opacity:0.55}
 
-  /* control rows: label | (value) | slider (right aligned) */
+  /* control rows: label | (value) | slider/checkbox right-aligned */
   .controlStack{margin-top:8px;display:flex;flex-direction:column;gap:8px}
   .controlRow{display:flex;align-items:center;gap:10px}
   .controlLabel{
@@ -70,16 +68,20 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .controlValue{
-    width:70px;text-align:right;
+    width:78px;text-align:right;
     font-size:12px;color:rgba(0,0,0,0.65);
     font-variant-numeric: tabular-nums;white-space:nowrap;
   }
   .controlSlider{
-    width:210px;max-width:42vw;margin-left:auto;
+    width:220px;max-width:44vw;margin-left:auto;
+  }
+  .controlCheck{
+    margin-left:auto;
+    width:18px;height:18px;
   }
   @media (max-width: 420px){
-    .controlSlider{width:170px}
-    .controlValue{width:60px}
+    .controlSlider{width:180px}
+    .controlValue{width:68px}
   }
 </style>
 </head>
@@ -88,7 +90,7 @@
   <div class="row" style="justify-content:space-between;">
     <div>
       <div style="font-weight:800;">Wave Editor</div>
-      <div class="small">Esc toggles HUD.</div>
+      <div class="small">Esc toggles HUD. URL stays in sync for sharing.</div>
     </div>
     <div class="chip" id="fpsChip">FPS</div>
   </div>
@@ -102,12 +104,48 @@
     </div>
   </div>
 
-  <!-- global scale control -->
+  <!-- global controls -->
   <div class="controlStack" style="margin-top:10px;">
+    <div class="controlRow">
+      <div class="controlLabel">Noise</div>
+      <div class="controlValue"></div>
+      <input class="controlCheck" id="noise" type="checkbox" />
+    </div>
+
+    <div class="controlRow">
+      <div class="controlLabel">Noise influence</div>
+      <div class="controlValue" id="noiseAmtVal"></div>
+      <input class="controlSlider" id="noiseAmt" type="range" min="0" max="0.5" step="0.005" value="0.12" />
+    </div>
+
+    <div class="controlRow">
+      <div class="controlLabel">Whip strength</div>
+      <div class="controlValue" id="whipStrVal"></div>
+      <input class="controlSlider" id="whipStr" type="range" min="0" max="1" step="0.005" value="0.75" />
+    </div>
+
+    <div class="controlRow">
+      <div class="controlLabel">Whip sharpness</div>
+      <div class="controlValue" id="whipShaVal"></div>
+      <input class="controlSlider" id="whipSha" type="range" min="0.2" max="6" step="0.01" value="2.4" />
+    </div>
+
     <div class="controlRow">
       <div class="controlLabel">Scale</div>
       <div class="controlValue" id="scaleVal"></div>
       <input class="controlSlider" id="scale" type="range" min="0.05" max="2.0" step="0.005" value="1" />
+    </div>
+
+    <div class="controlRow">
+      <div class="controlLabel">Trail</div>
+      <div class="controlValue" id="trailVal"></div>
+      <input class="controlSlider" id="trail" type="range" min="0" max="0.25" step="0.005" value="0.12" />
+    </div>
+
+    <div class="controlRow">
+      <div class="controlLabel">Samples / px</div>
+      <div class="controlValue" id="sppVal"></div>
+      <input class="controlSlider" id="spp" type="range" min="0.1" max="1.2" step="0.01" value="0.35" />
     </div>
   </div>
 
@@ -131,7 +169,7 @@ function resize(){
   canvas.style.width  = W + "px";
   canvas.style.height = H + "px";
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  autoFitScale(); // refit on resize as well (keeps intent)
+  autoFitScale();
 }
 addEventListener("resize", resize);
 
@@ -140,26 +178,156 @@ let state = {
   paused: false,
   hudVisible: true,
 
-  // internal render tuning
+  // render tuning
   trail: 0.12,
   spp: 0.35,
 
-  // whip envelope applied to waves
+  // envelope
   whipStrength: 0.75,
   whipSharpness: 2.4,
 
-  // global scale applied to final offset (user can tweak; auto-refit when adding components)
+  // global scale (user can tweak; auto-refit when components added/toggled)
   scale: 1.0,
+
+  // noise
+  noiseOn: false,
+  noiseRate: 0.12,     // speed of drift
+  noiseAmount: 0.12,   // influence (0..0.5)
 
   backbones: [],
   waves: [],
   nextId: 1
 };
 
-// ------------------------- UI helpers ---------------------------------------
+// ------------------------- utilities ---------------------------------------
 const $ = (id) => document.getElementById(id);
-function fmt(x, d=3){ return (+x).toFixed(d); }
+const fmt = (x, d=3) => (+x).toFixed(d);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// ---------------------- URL state (share) -----------------------------------
+function b64urlEncode(str){
+  const b64 = btoa(unescape(encodeURIComponent(str)));
+  return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64urlDecode(b64url){
+  const b64 = b64url.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((b64url.length + 3) % 4);
+  return decodeURIComponent(escape(atob(b64)));
+}
+
+function serializeState(){
+  return {
+    v: 1,
+    trail: state.trail,
+    spp: state.spp,
+    whipStrength: state.whipStrength,
+    whipSharpness: state.whipSharpness,
+    scale: state.scale,
+    noiseOn: state.noiseOn,
+    noiseAmount: state.noiseAmount,
+    noiseRate: state.noiseRate,
+    backbones: state.backbones.map(b => ({ on: !!b.on, amp: b.amp, freq: b.freq, phase: b.phase })),
+    waves: state.waves.map(w => ({ on: !!w.on, speed: w.speed, freq: w.freq, mix: w.mix }))
+  };
+}
+
+function applySerialized(obj){
+  if (!obj || typeof obj !== "object") return;
+
+  const num = (x, dflt) => (typeof x === "number" && isFinite(x)) ? x : dflt;
+  const bool = (x, dflt) => (typeof x === "boolean") ? x : dflt;
+
+  state.trail = clamp(num(obj.trail, state.trail), 0, 0.25);
+  state.spp   = clamp(num(obj.spp, state.spp), 0.1, 1.2);
+
+  state.whipStrength  = clamp(num(obj.whipStrength, state.whipStrength), 0, 1);
+  state.whipSharpness = clamp(num(obj.whipSharpness, state.whipSharpness), 0.2, 6);
+
+  state.scale = clamp(num(obj.scale, state.scale), 0.05, 2);
+
+  state.noiseOn     = bool(obj.noiseOn, state.noiseOn);
+  state.noiseAmount = clamp(num(obj.noiseAmount, state.noiseAmount), 0, 0.5);
+  state.noiseRate   = clamp(num(obj.noiseRate, state.noiseRate), 0.01, 1.0);
+
+  state.backbones = Array.isArray(obj.backbones) ? obj.backbones.slice(0, 200).map((b,i)=>({
+    id: i+1,
+    on: !!b.on,
+    amp: clamp(num(b.amp, 0.08), 0, 0.5),
+    freq: clamp(num(b.freq, 1.3), 0, 6),
+    phase: clamp(num(b.phase, 0.15), -2, 2),
+    _no: (i+1) * 17.37
+  })) : [];
+
+  state.waves = Array.isArray(obj.waves) ? obj.waves.slice(0, 200).map((w,i)=>({
+    id: state.backbones.length + i + 1,
+    on: !!w.on,
+    speed: clamp(num(w.speed, 0.28), -2, 2),
+    freq: clamp(num(w.freq, 2.2), 0, 12),
+    mix: clamp(num(w.mix, 0.20), 0, 1),
+    _no: (state.backbones.length + i + 1) * 23.11
+  })) : [];
+
+  state.nextId = state.backbones.length + state.waves.length + 1;
+}
+
+let urlDirty = false;
+let urlTimer = 0;
+
+function markUrlDirty(){
+  urlDirty = true;
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(()=> {
+    if (!urlDirty) return;
+    urlDirty = false;
+    const payload = b64urlEncode(JSON.stringify(serializeState()));
+    const u = new URL(location.href);
+    u.searchParams.set("s", payload);
+    history.replaceState(null, "", u.toString());
+  }, 120);
+}
+
+function loadFromUrl(){
+  const u = new URL(location.href);
+  const s = u.searchParams.get("s");
+  if (!s) return;
+  try{
+    const obj = JSON.parse(b64urlDecode(s));
+    applySerialized(obj);
+  }catch(e){
+    // ignore bad URL state
+  }
+}
+
+// ---------------------- perlin-ish noise (1D) -------------------------------
+function makePerlin1D(seed = 1337){
+  let s = seed >>> 0;
+  const rnd = () => (s = (1664525 * s + 1013904223) >>> 0) / 4294967296;
+
+  const p = new Uint8Array(512);
+  const perm = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) perm[i] = i;
+  for (let i = 255; i > 0; i--){
+    const j = (rnd() * (i + 1)) | 0;
+    const tmp = perm[i]; perm[i] = perm[j]; perm[j] = tmp;
+  }
+  for (let i = 0; i < 512; i++) p[i] = perm[i & 255];
+
+  const fade = (t) => t*t*t*(t*(t*6-15)+10);
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const grad = (hash, x) => ((hash & 1) === 0 ? x : -x);
+
+  return function noise(x){
+    const X = Math.floor(x) & 255;
+    const xf = x - Math.floor(x);
+    const u = fade(xf);
+    const a = p[X], b = p[X+1];
+    const g1 = grad(a, xf);
+    const g2 = grad(b, xf - 1);
+    return lerp(g1, g2, u); // ~[-1,1]
+  };
+}
+const perlin = makePerlin1D(20260114);
+
+// ------------------------- UI helpers ---------------------------------------
 function makeSlider({min,max,step,value,oninput}){
   const r = document.createElement("input");
   r.type = "range";
@@ -169,7 +337,6 @@ function makeSlider({min,max,step,value,oninput}){
   r.addEventListener("input", () => oninput(+r.value));
   return r;
 }
-
 function makeButton(text, cls, onclick){
   const b = document.createElement("button");
   b.textContent = text;
@@ -177,7 +344,6 @@ function makeButton(text, cls, onclick){
   b.addEventListener("click", onclick);
   return b;
 }
-
 function makeCheckbox(checked, onchange){
   const cb = document.createElement("input");
   cb.type = "checkbox";
@@ -185,17 +351,13 @@ function makeCheckbox(checked, onchange){
   cb.addEventListener("change", () => onchange(cb.checked));
   return cb;
 }
-
 function makeControlRow(labelText, sliderEl, valueEl){
   const row = document.createElement("div");
   row.className = "controlRow";
-
   const lab = document.createElement("div");
   lab.className = "controlLabel";
   lab.textContent = labelText;
-
   valueEl.classList.add("controlValue");
-
   row.appendChild(lab);
   row.appendChild(valueEl);
   row.appendChild(sliderEl);
@@ -207,64 +369,83 @@ function currentSpan(){
   const portrait = H > W;
   return portrait ? W : H;
 }
-
-function envelope(t){
-  const ramp = Math.pow(t, state.whipSharpness);
-  return (1.0 - state.whipStrength) + state.whipStrength * ramp;
-}
-
-// conservative upper bound on |offset| as a fraction of span
 function estimateMaxAbsOffsetFrac(){
-  // backbone: sum_i amp_i * |sin| <= sum_i amp_i
   let bb = 0;
   for (const b of state.backbones) if (b.on) bb += Math.abs(b.amp);
-
-  // waves: each wave contributes <= mix_i * maxEnv (<= 1) * |sin| (<=1)
-  // since env <= 1, sum of mix is a safe bound.
   let ww = 0;
   for (const w of state.waves) if (w.on) ww += Math.abs(w.mix);
-
-  // total fraction of span
   return bb + ww;
 }
-
+function setScale(v){
+  state.scale = v;
+  $("scale").value = String(v);
+  $("scaleVal").textContent = `(${fmt(v,3)})`;
+  markUrlDirty();
+}
 function autoFitScale(){
-  // Aim to keep within +/- (span * marginFrac)
   const span = currentSpan();
   if (span <= 0) return;
 
-  // how much of the cross-axis we allow the curve to occupy (half span minus margins)
-  const marginPx = 14; // small safety margin from edges
+  const marginPx = 14;
   const maxAbsPx = Math.max(1, (span * 0.5) - marginPx);
 
   const frac = estimateMaxAbsOffsetFrac();
   if (frac <= 1e-9){
-    // zero state: default scale to 1
-    setScale(1.0, /*fromAuto*/true);
+    setScale(1.0);
     return;
   }
 
   const predictedAbsPx = frac * span;
   const s = clamp(maxAbsPx / predictedAbsPx, 0.05, 2.0);
-
-  setScale(s, /*fromAuto*/true);
+  setScale(s);
 }
 
-function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+// ---------------------- noise application -----------------------------------
+function drifted(base, min, max, t, offset){
+  if (!state.noiseOn) return base;
+  const range = max - min;
+  const amp = state.noiseAmount * range;
+  const n = perlin(t * state.noiseRate + offset);
+  return clamp(base + amp * n, min, max);
+}
+function updateDisplayedValues(timeSec){
+  // global displayed values reflect effective (drifted) values when noise is on
+  const effScale = drifted(state.scale, 0.05, 2.0, timeSec, 11.1);
+  state._effScale = effScale;
+  $("scaleVal").textContent = `(${fmt(effScale,3)})`;
 
-function setScale(v, fromAuto=false){
-  state.scale = v;
+  $("noiseAmtVal").textContent = `(${fmt(state.noiseAmount,3)})`;
+  $("whipStrVal").textContent  = `(${fmt(state.whipStrength,3)})`;
+  $("whipShaVal").textContent  = `(${fmt(state.whipSharpness,2)})`;
+  $("trailVal").textContent    = `(${fmt(state.trail,3)})`;
+  $("sppVal").textContent      = `(${fmt(state.spp,2)})`;
 
-  const slider = $("scale");
-  if (slider){
-    slider.value = String(v);
+  for (const bb of state.backbones){
+    bb._effAmp   = drifted(bb.amp,   0.0, 0.5, timeSec, bb._no + 1.1);
+    bb._effFreq  = drifted(bb.freq,  0.0, 6.0, timeSec, bb._no + 2.2);
+    bb._effPhase = drifted(bb.phase, -2.0, 2.0, timeSec, bb._no + 3.3);
+
+    if (bb._ui){
+      bb._ui.ampVal.textContent   = `(${fmt(bb._effAmp,3)})`;
+      bb._ui.freqVal.textContent  = `(${fmt(bb._effFreq,2)})`;
+      bb._ui.phaseVal.textContent = `(${fmt(bb._effPhase,2)})`;
+    }
   }
-  if ($("scaleVal")){
-    $("scaleVal").textContent = `(${fmt(v,3)})` + (fromAuto ? "" : "");
+
+  for (const wv of state.waves){
+    wv._effSpeed = drifted(wv.speed, -2.0, 2.0, timeSec, wv._no + 4.4);
+    wv._effFreq  = drifted(wv.freq,   0.0, 12.0, timeSec, wv._no + 5.5);
+    wv._effMix   = drifted(wv.mix,    0.0, 1.0, timeSec, wv._no + 6.6);
+
+    if (wv._ui){
+      wv._ui.speedVal.textContent = `(${fmt(wv._effSpeed,2)})`;
+      wv._ui.freqVal.textContent  = `(${fmt(wv._effFreq,2)})`;
+      wv._ui.mixVal.textContent   = `(${fmt(wv._effMix,3)})`;
+    }
   }
 }
 
-// --------------------------- component UI -----------------------------------
+// --------------------------- components UI ----------------------------------
 function renderList(){
   const list = $("list");
   list.innerHTML = "";
@@ -285,7 +466,7 @@ function renderList(){
 
     const left = document.createElement("div");
     left.className = "row";
-    const cb = makeCheckbox(bb.on, (v)=>{ bb.on = v; autoFitScale(); });
+    const cb = makeCheckbox(bb.on, (v)=>{ bb.on = v; autoFitScale(); markUrlDirty(); });
     const name = document.createElement("div");
     name.className = "title";
     name.textContent = `Backbone #${bb.id}`;
@@ -298,6 +479,7 @@ function renderList(){
       state.backbones = state.backbones.filter(x => x !== bb);
       renderList();
       autoFitScale();
+      markUrlDirty();
     }));
 
     head.appendChild(left);
@@ -306,39 +488,28 @@ function renderList(){
 
     const stack = document.createElement("div");
     stack.className = "controlStack";
+    const ui = bb._ui = {};
 
-    // amp
-    {
-      const val = document.createElement("div");
-      val.textContent = `(${fmt(bb.amp,3)})`;
-      const slider = makeSlider({
-        min:0, max:0.5, step:0.005, value:bb.amp,
-        oninput:(v)=>{ bb.amp = v; val.textContent = `(${fmt(v,3)})`; autoFitScale(); }
-      });
-      stack.appendChild(makeControlRow("amp (0..1)", slider, val));
-    }
+    ui.ampVal = document.createElement("div");
+    ui.ampVal.textContent = `(${fmt(bb.amp,3)})`;
+    stack.appendChild(makeControlRow("amp (0..1)",
+      makeSlider({min:0,max:0.5,step:0.005,value:bb.amp,oninput:(v)=>{ bb.amp=v; ui.ampVal.textContent=`(${fmt(v,3)})`; autoFitScale(); markUrlDirty(); }}),
+      ui.ampVal
+    ));
 
-    // freq
-    {
-      const val = document.createElement("div");
-      val.textContent = `(${fmt(bb.freq,2)})`;
-      const slider = makeSlider({
-        min:0, max:6, step:0.01, value:bb.freq,
-        oninput:(v)=>{ bb.freq = v; val.textContent = `(${fmt(v,2)})`; }
-      });
-      stack.appendChild(makeControlRow("freq (cycles along length)", slider, val));
-    }
+    ui.freqVal = document.createElement("div");
+    ui.freqVal.textContent = `(${fmt(bb.freq,2)})`;
+    stack.appendChild(makeControlRow("freq (cycles along length)",
+      makeSlider({min:0,max:6,step:0.01,value:bb.freq,oninput:(v)=>{ bb.freq=v; ui.freqVal.textContent=`(${fmt(v,2)})`; markUrlDirty(); }}),
+      ui.freqVal
+    ));
 
-    // phase
-    {
-      const val = document.createElement("div");
-      val.textContent = `(${fmt(bb.phase,2)})`;
-      const slider = makeSlider({
-        min:-2, max:2, step:0.01, value:bb.phase,
-        oninput:(v)=>{ bb.phase = v; val.textContent = `(${fmt(v,2)})`; }
-      });
-      stack.appendChild(makeControlRow("phase (cycles)", slider, val));
-    }
+    ui.phaseVal = document.createElement("div");
+    ui.phaseVal.textContent = `(${fmt(bb.phase,2)})`;
+    stack.appendChild(makeControlRow("phase (cycles)",
+      makeSlider({min:-2,max:2,step:0.01,value:bb.phase,oninput:(v)=>{ bb.phase=v; ui.phaseVal.textContent=`(${fmt(v,2)})`; markUrlDirty(); }}),
+      ui.phaseVal
+    ));
 
     card.appendChild(stack);
     list.appendChild(card);
@@ -361,7 +532,7 @@ function renderList(){
 
     const left = document.createElement("div");
     left.className = "row";
-    const cb = makeCheckbox(wv.on, (v)=>{ wv.on = v; autoFitScale(); });
+    const cb = makeCheckbox(wv.on, (v)=>{ wv.on = v; autoFitScale(); markUrlDirty(); });
     const name = document.createElement("div");
     name.className = "title";
     name.textContent = `Wave #${wv.id}`;
@@ -374,6 +545,7 @@ function renderList(){
       state.waves = state.waves.filter(x => x !== wv);
       renderList();
       autoFitScale();
+      markUrlDirty();
     }));
 
     head.appendChild(left);
@@ -382,39 +554,28 @@ function renderList(){
 
     const stack = document.createElement("div");
     stack.className = "controlStack";
+    const ui = wv._ui = {};
 
-    // speed
-    {
-      const val = document.createElement("div");
-      val.textContent = `(${fmt(wv.speed,2)})`;
-      const slider = makeSlider({
-        min:-2, max:2, step:0.01, value:wv.speed,
-        oninput:(v)=>{ wv.speed = v; val.textContent = `(${fmt(v,2)})`; }
-      });
-      stack.appendChild(makeControlRow("speed (cycles/sec)", slider, val));
-    }
+    ui.speedVal = document.createElement("div");
+    ui.speedVal.textContent = `(${fmt(wv.speed,2)})`;
+    stack.appendChild(makeControlRow("speed (cycles/sec)",
+      makeSlider({min:-2,max:2,step:0.01,value:wv.speed,oninput:(v)=>{ wv.speed=v; ui.speedVal.textContent=`(${fmt(v,2)})`; markUrlDirty(); }}),
+      ui.speedVal
+    ));
 
-    // freq
-    {
-      const val = document.createElement("div");
-      val.textContent = `(${fmt(wv.freq,2)})`;
-      const slider = makeSlider({
-        min:0, max:12, step:0.01, value:wv.freq,
-        oninput:(v)=>{ wv.freq = v; val.textContent = `(${fmt(v,2)})`; }
-      });
-      stack.appendChild(makeControlRow("frequency (periods along length)", slider, val));
-    }
+    ui.freqVal = document.createElement("div");
+    ui.freqVal.textContent = `(${fmt(wv.freq,2)})`;
+    stack.appendChild(makeControlRow("frequency (periods along length)",
+      makeSlider({min:0,max:12,step:0.01,value:wv.freq,oninput:(v)=>{ wv.freq=v; ui.freqVal.textContent=`(${fmt(v,2)})`; markUrlDirty(); }}),
+      ui.freqVal
+    ));
 
-    // mix (amp)
-    {
-      const val = document.createElement("div");
-      val.textContent = `(${fmt(wv.mix,3)})`;
-      const slider = makeSlider({
-        min:0, max:1, step:0.005, value:wv.mix,
-        oninput:(v)=>{ wv.mix = v; val.textContent = `(${fmt(v,3)})`; autoFitScale(); }
-      });
-      stack.appendChild(makeControlRow("mix / amp (0..1 of span)", slider, val));
-    }
+    ui.mixVal = document.createElement("div");
+    ui.mixVal.textContent = `(${fmt(wv.mix,3)})`;
+    stack.appendChild(makeControlRow("mix / amp (0..1 of span)",
+      makeSlider({min:0,max:1,step:0.005,value:wv.mix,oninput:(v)=>{ wv.mix=v; ui.mixVal.textContent=`(${fmt(v,3)})`; autoFitScale(); markUrlDirty(); }}),
+      ui.mixVal
+    ));
 
     card.appendChild(stack);
     list.appendChild(card);
@@ -429,46 +590,63 @@ function renderList(){
 }
 
 function addBackbone(){
+  const id = state.nextId++;
   state.backbones.push({
-    id: state.nextId++,
+    id,
     on: true,
     amp: 0.08,
     freq: 1.3,
-    phase: 0.15
+    phase: 0.15,
+    _no: id * 17.37
   });
   renderList();
   autoFitScale();
+  markUrlDirty();
 }
-
 function addWave(){
+  const id = state.nextId++;
   state.waves.push({
-    id: state.nextId++,
+    id,
     on: true,
     speed: 0.28,
     freq: 2.2,
-    mix: 0.20
+    mix: 0.20,
+    _no: id * 23.11
   });
   renderList();
   autoFitScale();
+  markUrlDirty();
 }
 
 // --------------------------- rope math --------------------------------------
+function envelope(t){
+  const ramp = Math.pow(t, state.whipSharpness);
+  return (1.0 - state.whipStrength) + state.whipStrength * ramp;
+}
+
 function ropeOffset(t, timeSec, span){
   let backbone = 0;
   for (const bb of state.backbones){
     if (!bb.on) continue;
-    backbone += (bb.amp * span) * Math.sin(2*Math.PI*(bb.freq * t + bb.phase));
+    const amp   = state.noiseOn ? (bb._effAmp   ?? bb.amp)   : bb.amp;
+    const freq  = state.noiseOn ? (bb._effFreq  ?? bb.freq)  : bb.freq;
+    const phase = state.noiseOn ? (bb._effPhase ?? bb.phase) : bb.phase;
+    backbone += (amp * span) * Math.sin(2*Math.PI*(freq * t + phase));
   }
 
   let waves = 0;
   const env = envelope(t);
   for (const wv of state.waves){
     if (!wv.on) continue;
-    const ph = 2*Math.PI*(wv.freq * t - wv.speed * timeSec);
-    waves += (wv.mix * span) * env * Math.sin(ph);
+    const speed = state.noiseOn ? (wv._effSpeed ?? wv.speed) : wv.speed;
+    const freq  = state.noiseOn ? (wv._effFreq  ?? wv.freq)  : wv.freq;
+    const mix   = state.noiseOn ? (wv._effMix   ?? wv.mix)   : wv.mix;
+    const ph = 2*Math.PI*(freq * t - speed * timeSec);
+    waves += (mix * span) * env * Math.sin(ph);
   }
 
-  return state.scale * (backbone + waves);
+  const scale = state.noiseOn ? (state._effScale ?? state.scale) : state.scale;
+  return scale * (backbone + waves);
 }
 
 function drawCurve(timeMs){
@@ -478,6 +656,8 @@ function drawCurve(timeMs){
 
   const steps = Math.max(140, Math.floor(len * state.spp));
   const timeSec = timeMs * 0.001;
+
+  updateDisplayedValues(timeSec);
 
   ctx.beginPath();
   for (let i = 0; i <= steps; i++){
@@ -525,30 +705,62 @@ function tick(tMs){
 }
 
 // --------------------------- wiring -----------------------------------------
-document.getElementById("addBackbone").addEventListener("click", addBackbone);
-document.getElementById("addWave").addEventListener("click", addWave);
+$("addBackbone").addEventListener("click", addBackbone);
+$("addWave").addEventListener("click", addWave);
 
-document.getElementById("togglePause").addEventListener("click", () => {
+$("togglePause").addEventListener("click", () => {
   state.paused = !state.paused;
-  document.getElementById("togglePause").textContent = state.paused ? "Resume" : "Pause";
+  $("togglePause").textContent = state.paused ? "Resume" : "Pause";
   if (!state.paused) requestAnimationFrame(tick);
 });
 
-document.getElementById("resetAll").addEventListener("click", () => {
+$("resetAll").addEventListener("click", () => {
   state.backbones = [];
   state.waves = [];
   state.nextId = 1;
   renderList();
   autoFitScale();
+  markUrlDirty();
 });
 
-// Scale slider (user can tweak; will be overwritten when components are added/toggled)
-document.getElementById("scale").addEventListener("input", (e) => {
-  const v = +e.target.value;
-  state.scale = v;
-  $("scaleVal").textContent = `(${fmt(v,3)})`;
+// globals -> state + URL
+$("noise").addEventListener("change", (e) => { state.noiseOn = !!e.target.checked; markUrlDirty(); });
+
+$("noiseAmt").addEventListener("input", (e) => {
+  state.noiseAmount = +e.target.value;
+  $("noiseAmtVal").textContent = `(${fmt(state.noiseAmount,3)})`;
+  markUrlDirty();
 });
-$("scaleVal").textContent = `(${fmt(state.scale,3)})`;
+
+$("whipStr").addEventListener("input", (e) => {
+  state.whipStrength = +e.target.value;
+  $("whipStrVal").textContent = `(${fmt(state.whipStrength,3)})`;
+  markUrlDirty();
+});
+
+$("whipSha").addEventListener("input", (e) => {
+  state.whipSharpness = +e.target.value;
+  $("whipShaVal").textContent = `(${fmt(state.whipSharpness,2)})`;
+  markUrlDirty();
+});
+
+$("scale").addEventListener("input", (e) => {
+  state.scale = +e.target.value;
+  $("scaleVal").textContent = `(${fmt(state.scale,3)})`;
+  markUrlDirty();
+});
+
+$("trail").addEventListener("input", (e) => {
+  state.trail = +e.target.value;
+  $("trailVal").textContent = `(${fmt(state.trail,3)})`;
+  markUrlDirty();
+});
+
+$("spp").addEventListener("input", (e) => {
+  state.spp = +e.target.value;
+  $("sppVal").textContent = `(${fmt(state.spp,2)})`;
+  markUrlDirty();
+});
 
 // Esc toggles HUD
 addEventListener("keydown", (e) => {
@@ -558,10 +770,38 @@ addEventListener("keydown", (e) => {
   }
 });
 
-// init
+// init (URL -> state -> UI)
+loadFromUrl();
 resize();
 renderList();
+
+// push state into global UI controls (and keep URL correct even if none was provided)
+$("noise").checked = state.noiseOn;
+
+$("noiseAmt").value = String(state.noiseAmount);
+$("noiseAmtVal").textContent = `(${fmt(state.noiseAmount,3)})`;
+
+$("whipStr").value = String(state.whipStrength);
+$("whipStrVal").textContent = `(${fmt(state.whipStrength,3)})`;
+
+$("whipSha").value = String(state.whipSharpness);
+$("whipShaVal").textContent = `(${fmt(state.whipSharpness,2)})`;
+
+$("trail").value = String(state.trail);
+$("trailVal").textContent = `(${fmt(state.trail,3)})`;
+
+$("spp").value = String(state.spp);
+$("sppVal").textContent = `(${fmt(state.spp,2)})`;
+
+$("scale").value = String(state.scale);
+$("scaleVal").textContent = `(${fmt(state.scale,3)})`;
+
+// make sure scale is sane for loaded config
 autoFitScale();
+
+// ensure URL is present/synced on first load too
+markUrlDirty();
+
 requestAnimationFrame(tick);
 </script>
 </body>
