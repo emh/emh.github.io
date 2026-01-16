@@ -56,7 +56,7 @@ async function startCamera() {
 
         const isFront = stream.getVideoTracks()[0].getSettings().facingMode === "user";
 
-        video.style.transform = isFront ? "none" : "scaleX(-1)";
+        video.style.transform = isFront ? "scaleX(-1)" : "none";
 
         await video.play();
     } catch (e) {
