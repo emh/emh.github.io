@@ -53,10 +53,7 @@ async function startCamera() {
         state.stream = stream;
         video.srcObject = stream;
         video.style.display = 'block';
-
-        const isFront = stream.getVideoTracks()[0].getSettings().facingMode === "user";
-
-        video.style.transform = isFront ? "scaleX(-1)" : "none";
+        video.style.transform = "scaleX(-1)";
 
         await video.play();
     } catch (e) {
