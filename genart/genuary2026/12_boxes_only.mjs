@@ -35,7 +35,12 @@ const waveOffsetAt = (t, timeSec, span) =>
 function clear() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    if (H > W) {
+        ctx.setTransform(DPR, 0, 0, -DPR, 0, canvas.height);
+    } else {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
 }
 
 const MIN_SIZE = 2;

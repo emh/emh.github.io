@@ -10,8 +10,8 @@ let DPR = 1, W = 0, H = 0;
 
 const STAMP_SIZE = 16;
 const STAMP_ALPHA = 0.10;
-const MAX_ITERS = 50000;
-const ITERS_PER_FRAME = 200;
+const MAX_ITERS = 150000;
+const ITERS_PER_FRAME = 100;
 const SAMPLE_STEP = 2;
 
 let sourceData = null;
