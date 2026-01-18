@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Infinite Hex Minesweeper</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#fff; overflow:hidden; }
+    canvas { display:block; width:100vw; height:100vh; touch-action:none; }
+    #hud {
+      position: fixed; left: 12px; top: 12px;
+      font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color:#111; background: rgba(255,255,255,0.9);
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 10px;
+      padding: 10px 12px;
+      user-select:none;
+      max-width: min(520px, calc(100vw - 24px));
+    }
+    #hud b { font-weight: 700; }
+    #hud .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+    #hud .pill {
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: rgba(255,255,255,0.75);
+    }
+    #overlay {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.85);
+      font: 22px/1.3 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color:#111;
+      user-select:none;
+    }
+    #overlay .box {
+      border: 1px solid rgba(0,0,0,0.18);
+      background: #fff;
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 16px 60px rgba(0,0,0,0.12);
+      max-width: min(560px, calc(100vw - 36px));
+      text-align: center;
+    }
+    #overlay .box .small {
+      margin-top: 10px;
+      font-size: 14px;
+      opacity: 0.85;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    input[type="range"] { width: 160px; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="hud">
+    <div><b>Infinite Hex Minesweeper</b></div>
+    <div class="row">
+      <span class="pill" id="status">ready</span>
+      <span class="pill" id="counts">revealed: 0 · flags: 0</span>
+      <span class="pill" id="seed">seed: -</span>
+    </div>
+    <div class="row">
+      <label class="pill">mine p:
+        <input id="p" type="range" min="0.06" max="0.25" step="0.01" value="0.15">
+        <span id="pval">0.15</span>
+      </label>
+      <span class="pill">zoom: <span id="zval">1.00</span></span>
+    </div>
+    <div style="margin-top:8px; opacity:0.9">
+      Tap/click: reveal · Right click / long-press: flag<br/>
+      Drag: pan (one finger / mouse drag) · Wheel/pinch: zoom<br/>
+      Keys: <b>R</b> restart · <b>H</b> toggle HUD
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div class="box">
+      <div id="ovTitle" style="font-weight:700; font-size:26px">Game Over</div>
+      <div id="ovBody" style="margin-top:8px">You hit a mine.</div>
+      <div class="small">Press R to restart</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  const hud = document.getElementById('hud');
+  const statusEl = document.getElementById('status');
+  const countsEl = document.getElementById('counts');
+  const seedEl = document.getElementById('seed');
+  const pSlider = document.getElementById('p');
+  const pVal = document.getElementById('pval');
+  const zVal = document.getElementById('zval');
+
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovBody  = document.getElementById('ovBody');
+
+  // --- Hex math (pointy-top axial) -----------------------------------------
+  // Axial (q, r). Pixel:
+  // x = size*(sqrt(3)*q + sqrt(3)/2*r)
+  // y = size*(3/2*r)
+  const SQRT3 = Math.sqrt(3);
+
+  const dirs = [
+    {q: 1, r: 0}, {q: 1, r:-1}, {q: 0, r:-1},
+    {q:-1, r: 0}, {q:-1, r: 1}, {q: 0, r: 1}
+  ];
+
+  // Precompute unit corners (pointy-top)
+  const unitCorners = Array.from({length:6}, (_,i) => {
+    const a = (Math.PI/180) * (60*i - 30);
+    return { x: Math.cos(a), y: Math.sin(a) };
+  });
+
+  function axialToPixel(q, r, size) {
+    return {
+      x: size * (SQRT3 * q + (SQRT3/2) * r),
+      y: size * (1.5 * r),
+    };
+  }
+
+  function pixelToAxial(x, y, size) {
+    // invert:
+    // q = (sqrt(3)/3 * x - 1/3 * y) / size
+    // r = (2/3 * y) / size
+    const q = ((SQRT3/3) * x - (1/3) * y) / size;
+    const r = ((2/3) * y) / size;
+    return axialRound(q, r);
+  }
+
+  function axialRound(qf, rf) {
+    // cube coords: x=q, z=r, y=-x-z
+    let x = qf, z = rf, y = -x - z;
+    let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+
+    const dx = Math.abs(rx - x);
+    const dy = Math.abs(ry - y);
+    const dz = Math.abs(rz - z);
+
+    if (dx > dy && dx > dz) rx = -ry - rz;
+    else if (dy > dz) ry = -rx - rz;
+    else rz = -rx - ry;
+
+    return { q: rx, r: rz };
+  }
+
+  function keyOf(q, r) { return q + "," + r; }
+  function parseKey(k) {
+    const i = k.indexOf(',');
+    return { q: (k.slice(0,i)|0), r: (k.slice(i+1)|0) };
+  }
+
+  // --- Deterministic minefield ---------------------------------------------
+  function mix32(n) {
+    n |= 0;
+    n ^= n >>> 16;
+    n = Math.imul(n, 0x7feb352d);
+    n ^= n >>> 15;
+    n = Math.imul(n, 0x846ca68b);
+    n ^= n >>> 16;
+    return n >>> 0;
+  }
+
+  function hashCoord(q, r, seed) {
+    // Stable 32-bit hash of (q,r,seed)
+    // Use odd large constants to spread bits.
+    let h = (seed >>> 0) ^ mix32(Math.imul(q|0, 0x9E3779B1) ^ Math.imul(r|0, 0x85EBCA77));
+    return mix32(h);
+  }
+
+  // --- Game state -----------------------------------------------------------
+  let DPR = 1, W = 0, H = 0;
+
+  let view = {
+    // world-space camera center (in pixels of axialToPixel output)
+    cx: 0,
+    cy: 0,
+    zoom: 1.0
+  };
+
+  const config = {
+    baseSize: 26,        // hex radius in world pixels at zoom=1
+    stroke: 1.25,
+    mineP: 0.15,
+    safeRadius: 1        // make first click safe for this radius (0=only clicked)
+  };
+
+  let state = null;
+
+  function newGame() {
+    const seed = (crypto.getRandomValues(new Uint32Array(1))[0]) >>> 0;
+    state = {
+      seed,
+      started: false,
+      gameOver: false,
+      explodedAt: null, // key
+      revealed: new Set(),
+      flagged: new Set(),
+      // overrides: key -> boolean mine (used for first-click safety)
+      mineOverride: new Map(),
+      // optional caches (speed)
+      countCache: new Map()
+    };
+    overlay.style.display = "none";
+    updateHud();
+    dirty = true;
+  }
+
+  function mineAtKey(k) {
+    if (state.mineOverride.has(k)) return state.mineOverride.get(k);
+    const {q,r} = parseKey(k);
+    const h = hashCoord(q, r, state.seed);
+    const u = h / 4294967296; // [0,1)
+    return u < config.mineP;
+  }
+
+  function mineAt(q, r) { return mineAtKey(keyOf(q,r)); }
+
+  function neighborKeys(q, r) {
+    const out = [];
+    for (const d of dirs) out.push(keyOf(q + d.q, r + d.r));
+    return out;
+  }
+
+  function countAtKey(k) {
+    if (state.countCache.has(k)) return state.countCache.get(k);
+    const {q,r} = parseKey(k);
+    let c = 0;
+    for (const d of dirs) {
+      if (mineAt(q + d.q, r + d.r)) c++;
+    }
+    state.countCache.set(k, c);
+    return c;
+  }
+
+  function applyFirstClickSafety(q0, r0) {
+    // Override mines inside radius <= safeRadius around first click to false.
+    // (This slightly biases the infinite field; acceptable for play.)
+    const rad = config.safeRadius|0;
+
+    const queue = [{q:q0, r:r0, dist:0}];
+    const seen = new Set([keyOf(q0,r0)]);
+
+    while (queue.length) {
+      const cur = queue.shift();
+      const k = keyOf(cur.q, cur.r);
+      state.mineOverride.set(k, false);
+      state.countCache.delete(k);
+
+      if (cur.dist >= rad) continue;
+      for (const d of dirs) {
+        const nq = cur.q + d.q, nr = cur.r + d.r;
+        const nk = keyOf(nq,nr);
+        if (seen.has(nk)) continue;
+        seen.add(nk);
+        queue.push({q:nq, r:nr, dist: cur.dist + 1});
+      }
+    }
+
+    // Counts near overrides may change. Clear a small neighborhood cache.
+    // (Cheap and safe)
+    for (const k of seen) {
+      const {q,r} = parseKey(k);
+      for (const d of dirs) state.countCache.delete(keyOf(q+d.q, r+d.r));
+    }
+  }
+
+  function revealAt(q, r) {
+    if (state.gameOver) return;
+    const k = keyOf(q,r);
+    if (state.flagged.has(k) || state.revealed.has(k)) return;
+
+    if (!state.started) {
+      state.started = true;
+      applyFirstClickSafety(q, r);
+    }
+
+    if (mineAtKey(k)) {
+      state.gameOver = true;
+      state.explodedAt = k;
+      state.revealed.add(k);
+      showOverlay("Game Over", "You hit a mine.");
+      updateHud();
+      dirty = true;
+      return;
+    }
+
+    floodReveal(k);
+    updateHud();
+    dirty = true;
+  }
+
+  function floodReveal(startKey) {
+    const q = [startKey];
+    while (q.length) {
+      const k = q.pop();
+      if (state.revealed.has(k) || state.flagged.has(k)) continue;
+      if (mineAtKey(k)) continue;
+
+      state.revealed.add(k);
+
+      const n = countAtKey(k);
+      if (n !== 0) continue;
+
+      const {q:aq, r:ar} = parseKey(k);
+      for (const d of dirs) {
+        const nk = keyOf(aq + d.q, ar + d.r);
+        if (!state.revealed.has(nk) && !state.flagged.has(nk) && !mineAtKey(nk)) {
+          q.push(nk);
+        }
+      }
+    }
+  }
+
+  function toggleFlag(q, r) {
+    if (state.gameOver) return;
+    const k = keyOf(q,r);
+    if (state.revealed.has(k)) return;
+    if (state.flagged.has(k)) state.flagged.delete(k);
+    else state.flagged.add(k);
+    updateHud();
+    dirty = true;
+  }
+
+  function showOverlay(title, body) {
+    ovTitle.textContent = title;
+    ovBody.textContent = body;
+    overlay.style.display = "flex";
+  }
+
+  // --- View / interaction ---------------------------------------------------
+  function resize() {
+    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    W = Math.floor(window.innerWidth);
+    H = Math.floor(window.innerHeight);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    dirty = true;
+    updateHud();
+  }
+
+  function screenToWorld(sx, sy) {
+    // screen px -> world px
+    const wx = (sx - W/2) / view.zoom + view.cx;
+    const wy = (sy - H/2) / view.zoom + view.cy;
+    return {x: wx, y: wy};
+  }
+
+  function worldToScreen(wx, wy) {
+    const sx = (wx - view.cx) * view.zoom + W/2;
+    const sy = (wy - view.cy) * view.zoom + H/2;
+    return {x:sx, y:sy};
+  }
+
+  function zoomAt(factor, sx, sy) {
+    const before = screenToWorld(sx, sy);
+    view.zoom = clamp(view.zoom * factor, 0.25, 3.5);
+    const after = screenToWorld(sx, sy);
+    // keep the world point under cursor stable
+    view.cx += (before.x - after.x);
+    view.cy += (before.y - after.y);
+    dirty = true;
+    updateHud();
+  }
+
+  function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
+
+  // Pointer handling: tap reveals, long press flags, drag pans.
+  let pointers = new Map();
+  let gesture = {
+    active: false,
+    mode: "none", // "pan" | "pinch"
+    startDist: 0,
+    startZoom: 1,
+    lastCenter: null
+  };
+
+  const TAP_MAX_MOVE = 8;     // px
+  const LONG_PRESS_MS = 450;
+
+  function onPointerDown(e) {
+    canvas.setPointerCapture(e.pointerId);
+    const p = {
+      id: e.pointerId,
+      type: e.pointerType,
+      startX: e.clientX,
+      startY: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+      longPressFired: false,
+      t0: performance.now(),
+      longTimer: null
+    };
+
+    // long-press => flag (mostly for touch)
+    p.longTimer = setTimeout(() => {
+      if (p.moved) return;
+      p.longPressFired = true;
+      const w = screenToWorld(p.x, p.y);
+      const size = config.baseSize;
+      const {q,r} = pixelToAxial(w.x, w.y, size);
+      toggleFlag(q,r);
+    }, LONG_PRESS_MS);
+
+    pointers.set(e.pointerId, p);
+
+    // start gesture
+    if (pointers.size === 1) {
+      gesture.active = true;
+      gesture.mode = "pan";
+      gesture.lastCenter = {x: e.clientX, y: e.clientY};
+    } else if (pointers.size === 2) {
+      // pinch-zoom
+      const ps = Array.from(pointers.values());
+      const a = ps[0], b = ps[1];
+      gesture.mode = "pinch";
+      gesture.startDist = Math.hypot(b.x - a.x, b.y - a.y);
+      gesture.startZoom = view.zoom;
+      gesture.lastCenter = {x: (a.x+b.x)/2, y: (a.y+b.y)/2};
+    }
+  }
+
+  function onPointerMove(e) {
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+    p.x = e.clientX; p.y = e.clientY;
+
+    const dx = p.x - p.startX;
+    const dy = p.y - p.startY;
+    if (!p.moved && (dx*dx + dy*dy) > (TAP_MAX_MOVE*TAP_MAX_MOVE)) p.moved = true;
+
+    if (!gesture.active) return;
+
+    if (gesture.mode === "pan" && pointers.size === 1) {
+      const c = {x: p.x, y: p.y};
+      const lc = gesture.lastCenter || c;
+      const ddx = c.x - lc.x;
+      const ddy = c.y - lc.y;
+      view.cx -= ddx / view.zoom;
+      view.cy -= ddy / view.zoom;
+      gesture.lastCenter = c;
+      dirty = true;
+      updateHud();
+    } else if (gesture.mode === "pinch" && pointers.size === 2) {
+      const ps = Array.from(pointers.values());
+      const a = ps[0], b = ps[1];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      const center = {x: (a.x+b.x)/2, y: (a.y+b.y)/2};
+
+      const factor = dist / (gesture.startDist || dist);
+      const targetZoom = clamp(gesture.startZoom * factor, 0.25, 3.5);
+
+      // zoom around center
+      const before = screenToWorld(center.x, center.y);
+      view.zoom = targetZoom;
+      const after = screenToWorld(center.x, center.y);
+      view.cx += (before.x - after.x);
+      view.cy += (before.y - after.y);
+
+      dirty = true;
+      updateHud();
+    }
+  }
+
+  function onPointerUp(e) {
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+
+    clearTimeout(p.longTimer);
+
+    // Tap => reveal (unless long-press already flagged)
+    const dt = performance.now() - p.t0;
+    const dx = p.x - p.startX;
+    const dy = p.y - p.startY;
+    const moved = (dx*dx + dy*dy) > (TAP_MAX_MOVE*TAP_MAX_MOVE);
+
+    // For mouse: right click is handled separately.
+    if (!p.longPressFired && !moved && dt < 350 && e.button === 0) {
+      const w = screenToWorld(p.x, p.y);
+      const size = config.baseSize;
+      const {q,r} = pixelToAxial(w.x, w.y, size);
+      revealAt(q,r);
+    }
+
+    pointers.delete(e.pointerId);
+
+    if (pointers.size === 0) {
+      gesture.active = false;
+      gesture.mode = "none";
+      gesture.lastCenter = null;
+    } else if (pointers.size === 1) {
+      // go back to pan with remaining pointer
+      const rem = Array.from(pointers.values())[0];
+      gesture.mode = "pan";
+      gesture.lastCenter = {x: rem.x, y: rem.y};
+    }
+  }
+
+  function onWheel(e) {
+    e.preventDefault();
+    const scale = Math.exp(-e.deltaY * 0.0012);
+    zoomAt(scale, e.clientX, e.clientY);
+  }
+
+  // Right click: flag
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 2) {
+      const w = screenToWorld(e.clientX, e.clientY);
+      const size = config.baseSize;
+      const {q,r} = pixelToAxial(w.x, w.y, size);
+      toggleFlag(q,r);
+    }
+  });
+
+  // Pointer events (touch + mouse unified)
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
+
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+
+  // Keyboard
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') newGame();
+    if (e.key === 'h' || e.key === 'H') {
+      hud.style.display = (hud.style.display === 'none') ? 'block' : 'none';
+      dirty = true;
+    }
+  });
+
+  // Mine probability slider (restart to avoid field inconsistency)
+  pSlider.addEventListener('input', () => {
+    config.mineP = parseFloat(pSlider.value);
+    pVal.textContent = config.mineP.toFixed(2);
+    // Keep current game running; mine distribution changes only for unseen tiles.
+    // If you want strict consistency, press R after adjusting.
+    dirty = true;
+  });
+
+  // --- Rendering ------------------------------------------------------------
+  let dirty = true;
+
+  function updateHud() {
+    pVal.textContent = config.mineP.toFixed(2);
+    zVal.textContent = view.zoom.toFixed(2);
+    seedEl.textContent = "seed: " + (state ? state.seed.toString(16).padStart(8,'0') : "-");
+    countsEl.textContent = `revealed: ${state ? state.revealed.size : 0} · flags: ${state ? state.flagged.size : 0}`;
+    if (!state) statusEl.textContent = "ready";
+    else if (state.gameOver) statusEl.textContent = "game over";
+    else if (!state.started) statusEl.textContent = "ready";
+    else statusEl.textContent = "playing";
+  }
+
+  function drawHex(cx, cy, radius) {
+    ctx.beginPath();
+    const p0 = unitCorners[0];
+    ctx.moveTo(cx + p0.x * radius, cy + p0.y * radius);
+    for (let i = 1; i < 6; i++) {
+      const p = unitCorners[i];
+      ctx.lineTo(cx + p.x * radius, cy + p.y * radius);
+    }
+    ctx.closePath();
+  }
+
+  function numberGray(n) {
+    // subtle, readable
+    const g = 20 + (6 - n) * 22; // 1->130ish, 6->20ish
+    return `rgb(${g},${g},${g})`;
+  }
+
+  function render() {
+    if (!dirty) { requestAnimationFrame(render); return; }
+    dirty = false;
+
+    // Clear
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // World->screen transform
+    ctx.save();
+    ctx.translate(W/2, H/2);
+    ctx.scale(view.zoom, view.zoom);
+    ctx.translate(-view.cx, -view.cy);
+
+    const size = config.baseSize;
+    const rHex = size; // radius
+
+    // Determine visible axial bounds (approx) by sampling corners in world space
+    const cornersS = [
+      {x:0,y:0}, {x:W,y:0}, {x:0,y:H}, {x:W,y:H}
+    ].map(p => screenToWorld(p.x, p.y));
+
+    let qmin = Infinity, qmax = -Infinity, rmin = Infinity, rmax = -Infinity;
+    for (const c of cornersS) {
+      const a = pixelToAxial(c.x, c.y, size);
+      qmin = Math.min(qmin, a.q); qmax = Math.max(qmax, a.q);
+      rmin = Math.min(rmin, a.r); rmax = Math.max(rmax, a.r);
+    }
+    const pad = 4;
+    qmin -= pad; qmax += pad;
+    rmin -= pad; rmax += pad;
+
+    // Background faint grid
+    ctx.lineWidth = config.stroke / view.zoom;
+    ctx.strokeStyle = "rgba(0,0,0,0.14)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${Math.max(9, Math.floor(14 / view.zoom))}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
+
+    // Draw tiles in bounding box (approx). Good enough and fast.
+    for (let r = rmin; r <= rmax; r++) {
+      for (let q = qmin; q <= qmax; q++) {
+        const k = keyOf(q,r);
+        const wp = axialToPixel(q, r, size);
+        const x = wp.x, y = wp.y;
+
+        const isRevealed = state.revealed.has(k);
+        const isFlagged = state.flagged.has(k);
+
+        // Face color
+        if (!isRevealed) {
+          // unrevealed: very light gray
+          ctx.fillStyle = "rgb(128,128,128)";
+        } else {
+          ctx.fillStyle = "rgb(255,255,255)";
+        }
+
+        drawHex(x, y, rHex * 0.98);
+        ctx.fill();
+
+        // stroke
+        ctx.stroke();
+
+        // Content
+        if (!isRevealed) {
+          if (isFlagged) {
+            // flag marker
+            ctx.save();
+            ctx.translate(x, y);
+            const s = rHex * 0.52;
+            ctx.beginPath();
+            ctx.moveTo(-s*0.15, -s*0.65);
+            ctx.lineTo(s*0.60, -s*0.25);
+            ctx.lineTo(-s*0.15, s*0.05);
+            ctx.closePath();
+            ctx.fillStyle = "rgba(0,0,0,0.70)";
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(-s*0.15, -s*0.65);
+            ctx.lineTo(-s*0.15, s*0.70);
+            ctx.strokeStyle = "rgba(0,0,0,0.70)";
+            ctx.lineWidth = Math.max(1, 2.0 / view.zoom);
+            ctx.stroke();
+            ctx.restore();
+          }
+          continue;
+        }
+
+        // Revealed:
+        const isMine = mineAt(q,r);
+        if (isMine) {
+          // mine marker
+          ctx.save();
+          ctx.translate(x, y);
+          const s = rHex * 0.36;
+          ctx.beginPath();
+          ctx.arc(0, 0, s, 0, Math.PI*2);
+          ctx.fillStyle = (state.explodedAt === k) ? "rgba(0,0,0,0.90)" : "rgba(0,0,0,0.65)";
+          ctx.fill();
+
+          // small rays
+          ctx.strokeStyle = "rgba(0,0,0,0.55)";
+          ctx.lineWidth = Math.max(1, 1.6 / view.zoom);
+          ctx.beginPath();
+          for (let i=0;i<6;i++){
+            const a = (Math.PI/3)*i;
+            ctx.moveTo(Math.cos(a)*s*1.15, Math.sin(a)*s*1.15);
+            ctx.lineTo(Math.cos(a)*s*1.65, Math.sin(a)*s*1.65);
+          }
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          const n = countAtKey(k);
+          if (n > 0) {
+            ctx.fillStyle = numberGray(n);
+            ctx.fillText(String(n), x, y + 0.5);
+          }
+        }
+      }
+    }
+
+    ctx.restore();
+    requestAnimationFrame(render);
+  }
+
+  // --- Init -----------------------------------------------------------------
+  function centerView() {
+    // keep (0,0) in center
+    view.cx = 0;
+    view.cy = 0;
+    view.zoom = 1.0;
+  }
+
+  window.addEventListener('resize', resize);
+
+  centerView();
+  resize();
+  newGame();
+  render();
+})();
+</script>
+</body>
+</html>
