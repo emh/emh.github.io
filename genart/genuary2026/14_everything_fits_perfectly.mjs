@@ -24,7 +24,8 @@ function init() {
 
 function clear() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
@@ -187,3 +188,37 @@ init();
 
 if (raf) cancelAnimationFrame(raf);
 raf = requestAnimationFrame(tick);
+
+function saveCanvasPNG(canvas) {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+
+    // filename with timestamp
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    a.download = `canvas-${stamp}.png`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+// Hotkey: "P" (no modifiers) saves PNG
+window.addEventListener("keydown", (e) => {
+  // ignore if user is typing in an input/textarea
+  const t = e.target;
+  const typing =
+    t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+  if (typing) return;
+
+  if (e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    saveCanvasPNG(canvas);
+  }
+});
