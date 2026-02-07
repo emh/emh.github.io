@@ -32,6 +32,15 @@ header span {
     font-size: small;
 }
 
+header a {
+    text-transform: uppercase;
+    border: solid 1px var(--border);
+    padding: 0.25rem;
+    color: var(--text);
+    width: fit-content;
+    margin-top: var(--padd);
+}
+
 main {
     display: flex;
     flex-wrap: wrap;
@@ -151,15 +160,11 @@ nav {
         }
 
         li:has(> a):hover {
-            background: var(--border);
+            border-color: var(--text);
 
-            a {
-                color: white;
+            span {
+                color: var(--text);
             }
-        }
-
-        li:not(:has(> a)) {
-            padding: var(--padd);
         }
 
         li {
@@ -167,20 +172,31 @@ nav {
             border: 1px solid var(--border);
             text-transform: uppercase;
             color: var(--border);
+            position: relative;
 
             a {
                 display: block;
-                padding: var(--padd);
                 color: var(--text);
             }
         }
 
-        li.active {
-            background: var(--border);
+        img {
+            border: solid 1px var(--border);
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+            object-position: center;
+        }
 
-            a {
-                color: white;
-            }
+        span {
+            position: absolute;
+            bottom: 1px;
+            left: 1px;
+            right: 1px;
+            color: var(--border);
+            display: inline-block;
+            background-color: white;
+            padding: 0.25rem;
         }
     }
 }

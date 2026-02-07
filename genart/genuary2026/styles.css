@@ -45,7 +45,7 @@ nav {
         }
 
         li {
-            display: flex;
+            display: inline-block;
             border: 1px solid var(--border);
             text-transform: uppercase;
             color: var(--border);
