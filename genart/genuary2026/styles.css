@@ -37,27 +37,42 @@ nav {
         }
 
         li:has(> a):hover {
-            background: var(--border);
+            border-color: var(--text);
 
-            a {
-                color: white;
+            span {
+                color: var(--text);
             }
         }
 
-        li:not(:has(> a)) {
-            padding: var(--padd);
-        }
-
         li {
-            display: inline-block;
+            display: flex;
             border: 1px solid var(--border);
             text-transform: uppercase;
             color: var(--border);
+            position: relative;
 
             a {
                 display: block;
-                padding: var(--padd);
                 color: var(--text);
+            }
+
+            img {
+                border: solid 1px var(--border);
+                width: 200px;
+                height: 200px;
+                object-fit: cover;
+                object-position: center;
+            }
+
+            span {
+                position: absolute;
+                bottom: 1px;
+                left: 1px;
+                right: 1px;
+                color: var(--border);
+                display: inline-block;
+                background-color: white;
+                padding: 0.25rem;
             }
         }
 
