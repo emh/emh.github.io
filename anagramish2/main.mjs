@@ -92,7 +92,13 @@ export const getHistory = () => JSON.parse(localStorage.getItem('history')) ?? {
 
 export const putHistory = (history) => localStorage.setItem('history', JSON.stringify(history));
 
-const loadGame = () => getHistory()[key()];
+const loadGame = () => {
+    if (state.isPractice) {
+        return JSON.parse(localStorage.getItem('practice'));
+    }
+
+    return getHistory()[key()];
+};
 
 const initTodaysGame = () => {
     const puzzleNumber = calcIndex(new Date(key()), pairs.length);
@@ -108,7 +114,67 @@ const initTodaysGame = () => {
     };
 };
 
+const initPracticeGame = () => ({
+    pair: randomPair(),
+    state: STATES.PLAYING,
+    numSeconds: 0,
+    words: [],
+    mistakes: 0
+});
+
+const hydrateGameState = (game, isPractice) => {
+    state.puzzleNumber = game.puzzleNumber ?? (isPractice ? state.puzzleNumber : 1);
+    state.pair = game.pair;
+    state.board = resetBoard(state.pair);
+
+    let i = game.words.length - 3;
+
+    if (game.state === STATES.FINISHED) i--;
+
+    while (i > 0) {
+        state.board.splice(state.board.length - 1, 0, emptyRow());
+        i -= 1;
+    }
+
+    game.words.forEach((word, i) => {
+        state.board[i + 1] = word.split('');
+    });
+
+    state.position = { x: 0, y: game.words.length + 1 };
+    state.state = game.state === STATES.FINISHED ? STATES.FINISHED : STATES.PLAYING;
+    state.numSeconds = game.numSeconds;
+    state.mistakes = game.mistakes;
+
+    renderKeyboard();
+    if (state.state === STATES.PLAYING) startClock();
+    render();
+};
+
+const startGame = (isPractice) => {
+    stopClock();
+
+    if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+
+    state.isPractice = isPractice;
+
+    let game = loadGame();
+
+    if (!game) {
+        game = isPractice ? initPracticeGame() : initTodaysGame();
+        saveGame(game);
+    }
+
+    hydrateGameState(game, isPractice);
+};
+
 const saveGame = (game) => {
+    if (state.isPractice) {
+        localStorage.setItem('practice', JSON.stringify(game));
+        return;
+    }
+
     const history = getHistory();
 
     history[key()] = game;
@@ -117,10 +183,6 @@ const saveGame = (game) => {
 };
 
 const updateSavedGame = () => {
-    if (state.isPractice) {
-        return;
-    }
-
     const game = loadGame();
 
     game.pair = state.pair;
@@ -294,49 +356,11 @@ const renderWelcome = (app) => {
     app.appendChild(template.content.cloneNode(true));
 
     get('#play').addEventListener('click', () => {
-        let game = loadGame();
-
-        if (!game) {
-            game = initTodaysGame();
-            saveGame(game);
-        }
-
-        state.puzzleNumber = game.puzzleNumber ?? 1;
-        state.pair = game.pair;
-        state.board = resetBoard(state.pair);
-
-        let i = game.words.length - 3;
-
-        if (game.state === STATES.FINISHED) i--;
-
-        while (i > 0) {
-            state.board.splice(state.board.length - 1, 0, emptyRow());
-            i -= 1;
-        }
-
-        game.words.forEach((word, i) => {
-            state.board[i + 1] = word.split('');
-        });
-
-        state.position = { x: 0, y: game.words.length + 1 };
-        state.state = game.state === STATES.FINISHED ? STATES.FINISHED : STATES.PLAYING;
-        state.isPractice = false;
-        state.numSeconds = game.numSeconds;
-        state.mistakes = game.mistakes;
-
-        renderKeyboard();
-        if (state.state === STATES.PLAYING) startClock();
-        render();
+        startGame(false);
     });
 
     get('#practice').addEventListener('click', () => {
-        state.pair = randomPair();
-        state.board = resetBoard(state.pair);
-        state.position = { x: 0, y: 1 };
-        state.state = STATES.PLAYING;
-        state.isPractice = true;
-        renderKeyboard();
-        render();
+        startGame(true);
     });
 
     get('#history').addEventListener('click', () => {
@@ -363,13 +387,7 @@ const renderFinish = (app) => {
     get('#board-container').appendChild(boardEl);
 
     get('#practice').addEventListener('click', () => {
-        state.pair = randomPair();
-        state.board = resetBoard(state.pair);
-        state.position = { x: 0, y: 1 };
-        state.state = STATES.PLAYING;
-        state.isPractice = true;
-        renderKeyboard();
-        render();
+        startGame(true);
     });
 
     get('#history').addEventListener('click', () => {
@@ -439,19 +457,22 @@ const renderCell = (char, y, x) => set(`div.${[getPositionClass(y, x), getCharCl
 const renderRow = (chars, y) => chars.map((c, x) => renderCell(c, y, x));
 const renderBoard = (board) => set('div.board', {}, ...board.flatMap((row, y) => renderRow(row, y)));
 
+const renderHeaderButtons = () => {
+    get('#back').style.display = state.state === STATES.WELCOME ? 'none' : 'inline-block';
+    get('#reset').style.display = state.isPractice && state.state === STATES.PLAYING ? 'inline-block' : 'none';
+};
+
 const render = () => {
     const app = get('main');
+    renderHeaderButtons();
 
     if (state.state === STATES.WELCOME) {
-        get('#back').style.display = 'none';
         renderWelcome(app);
         return;
     } else if (state.state === STATES.FINISHED) {
-        get('#back').style.display = 'inline-block';
         renderFinish(app);
         return;
     } else if (state.state === STATES.HISTORY) {
-        get('#back').style.display = 'inline-block';
         renderHistory(app);
         return;
     }
@@ -469,6 +490,15 @@ get('#back').addEventListener('click', () => {
     stopClock();
     state.state = STATES.WELCOME;
     render();
+});
+
+get('#reset').addEventListener('click', () => {
+    if (!state.isPractice) {
+        return;
+    }
+
+    localStorage.removeItem('practice');
+    startGame(true);
 });
 
 setupHandlers();

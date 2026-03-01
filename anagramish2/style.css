@@ -188,6 +188,31 @@ button#back svg {
     margin: 0 auto;
 }
 
+button#reset {
+    position: absolute;
+    left: 52px;
+    top: 20px;
+    height: 24px;
+    width: 24px;
+    border: solid 1px var(--fg);
+    border-radius: 12px;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 0;
+    padding: 0;
+    box-shadow: 0 2px 5px var(--fg);
+    background-color: var(--end);
+    display: none;
+}
+
+button#reset svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    margin: 0 auto;
+}
+
 button#back.visible {
     display: block;
 }
