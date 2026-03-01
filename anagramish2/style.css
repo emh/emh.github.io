@@ -26,7 +26,6 @@ body {
     color: var(--fg);
     background-color: var(--bg);
     font-family: ui-sans-serif, system-ui, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    text-transform: uppercase;
     touch-action: manipulation;
     user-select: none;
 }
@@ -60,6 +59,7 @@ header h1 {
     font-size: 24px;
     font-weight: normal;
     letter-spacing: 0.2em;
+    text-transform: uppercase;
 }
 
 #message {
@@ -224,6 +224,7 @@ button#history {
     align-items: center;
     justify-content: center;
     font-size: 24px;
+    text-transform: uppercase;
 }
 
 .cell.current {
@@ -258,7 +259,7 @@ button#history {
     cursor: pointer;
     font-size: 16px;
     box-shadow: 0 2px 5px var(--fg);
-    ;
+    text-transform: uppercase;
 }
 
 button:hover {
