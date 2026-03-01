@@ -322,8 +322,8 @@ h2 {
 }
 
 .history-entry {
-    white-space: nowrap;
-    overflow-x: auto;
+    white-space: normal;
+    margin-bottom: 8px;
 }
 
 .history-top,
@@ -331,21 +331,10 @@ h2 {
     display: inline;
 }
 
-.history-bottom::before {
-    content: " in ";
+.history-bottom {
+    display: block;
 }
 
-@media (max-width: 700px) {
-    .history-entry {
-        white-space: normal;
-        margin-bottom: 8px;
-    }
-
-    .history-bottom {
-        display: block;
-    }
-
-    .history-bottom::before {
-        content: "";
-    }
+.history-bottom::before {
+    content: "";
 }
