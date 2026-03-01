@@ -174,9 +174,18 @@ button#back {
     color: white;
     cursor: pointer;
     font-size: 16px;
+    line-height: 0;
+    padding: 0;
     box-shadow: 0 2px 5px var(--fg);
     background-color: red;
     display: none;
+}
+
+button#back svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    margin: 0 auto;
 }
 
 button#back.visible {

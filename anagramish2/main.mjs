@@ -149,6 +149,13 @@ const startClock = () => {
     state.timer = setInterval(fn, 1000);
 };
 
+const stopClock = () => {
+    if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+    }
+};
+
 const resetBoard = (pair) => {
     const board = emptyBoard();
     board[0] = pair[0].split('');
@@ -279,6 +286,7 @@ const killKeyboard = () => {
 };
 
 const renderWelcome = (app) => {
+    stopClock();
     killKeyboard();
 
     const template = get('#welcome-template');
@@ -311,7 +319,7 @@ const renderWelcome = (app) => {
         });
 
         state.position = { x: 0, y: game.words.length + 1 };
-        state.state = game.state ?? STATES.PLAYING;
+        state.state = game.state === STATES.FINISHED ? STATES.FINISHED : STATES.PLAYING;
         state.isPractice = false;
         state.numSeconds = game.numSeconds;
         state.mistakes = game.mistakes;
@@ -339,11 +347,7 @@ const renderWelcome = (app) => {
 
 const renderFinish = (app) => {
     killKeyboard();
-
-    if (state.timer) {
-        clearInterval(state.timer);
-        state.timer = null;
-    }
+    stopClock();
 
     const template = get('#finish-template');
     app.innerHTML = '';
@@ -397,6 +401,7 @@ const renderFinish = (app) => {
 };
 
 const renderHistory = (app) => {
+    stopClock();
     killKeyboard();
 
     const template = get('#history-template');
@@ -461,6 +466,7 @@ const render = () => {
 };
 
 get('#back').addEventListener('click', () => {
+    stopClock();
     state.state = STATES.WELCOME;
     render();
 });
