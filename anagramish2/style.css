@@ -140,13 +140,19 @@ main section {
     padding: 0 20px;
 }
 
+section.history-screen {
+    width: 100%;
+    padding: 20px;
+    gap: 12px;
+}
+
 .buttons {
     display: flex;
     justify-content: space-evenly;
     gap: 10px;
 }
 
-#play, #share, #practice {
+#play, #share, #copy, #practice, #history {
     flex: 1;
     height: 32px;
     border: solid 1px var(--fg);
@@ -185,8 +191,16 @@ button#share {
     background-color: var(--start);
 }
 
+button#copy {
+    background-color: var(--misc);
+}
+
 button#practice {
     background-color: var(--end);
+}
+
+button#history {
+    background-color: var(--misc);
 }
 
 .board {
@@ -292,4 +306,46 @@ h2 {
 .stats dd {
     margin: 0;
     text-align: left;
+}
+
+#history-list {
+    width: 100%;
+    margin: 0;
+    padding: 12px;
+    text-align: left;
+    text-transform: none;
+    display: flex;
+    flex-direction: column;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.history-entry {
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.history-top,
+.history-bottom {
+    display: inline;
+}
+
+.history-bottom::before {
+    content: " in ";
+}
+
+@media (max-width: 700px) {
+    .history-entry {
+        white-space: normal;
+        margin-bottom: 8px;
+    }
+
+    .history-bottom {
+        display: block;
+    }
+
+    .history-bottom::before {
+        content: "";
+    }
 }

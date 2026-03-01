@@ -4,7 +4,8 @@ import { compareWords, emptyBoard, emptyRow } from './utils.js';
 const STATES = {
     WELCOME: 'welcome',
     PLAYING: 'playing',
-    FINISHED: 'finished'
+    FINISHED: 'finished',
+    HISTORY: 'history'
 };
 
 const state = {
@@ -40,7 +41,52 @@ const calcIndex = (seed, n) => {
 
 const randomPair = () => pairs[rnd(pairs.length)];
 
-const todaysPair = () => pairs[calcIndex(new Date(key()), pairs.length)];
+const todaysPair = (puzzleNumber) => pairs[puzzleNumber];
+
+const formatElapsedTime = (numSeconds) => {
+    const minutes = Math.floor(numSeconds / 60);
+    const seconds = numSeconds % 60;
+
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const getShareText = () => [
+    `Anagramish #${state.puzzleNumber} in ${formatElapsedTime(state.numSeconds)}`,
+    ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟦' : state.pair[1].includes(c) ? '🟧' : '⬜').join(''))
+].join('\n');
+
+const copyShareText = async () => {
+    try {
+        await navigator.clipboard.writeText(getShareText());
+        renderMessage('The share was copied.');
+    } catch {
+        renderMessage('Unable to copy share.');
+    }
+};
+
+const getSavedPuzzleNumber = (date, game) => {
+    if (Number.isInteger(game?.puzzleNumber)) {
+        return game.puzzleNumber;
+    }
+
+    const puzzleNumber = calcIndex(new Date(date), pairs.length);
+
+    return Number.isFinite(puzzleNumber) ? puzzleNumber : 1;
+};
+
+const formatHistoryEntry = (date, game) => {
+    const puzzleNumber = getSavedPuzzleNumber(date, game);
+    const start = (game?.pair?.[0] ?? '').toUpperCase();
+    const end = (game?.pair?.[1] ?? '').toUpperCase();
+    const time = formatElapsedTime(game?.numSeconds ?? 0);
+    const words = Array.isArray(game?.words) ? game.words.length : 0;
+    const mistakes = Number.isFinite(game?.mistakes) ? game.mistakes : 0;
+
+    return {
+        top: `${date} #${puzzleNumber} ${start} ${end}`,
+        bottom: `${time} ${words} words ${mistakes} mistakes`
+    };
+};
 
 export const getHistory = () => JSON.parse(localStorage.getItem('history')) ?? {};
 
@@ -49,10 +95,13 @@ export const putHistory = (history) => localStorage.setItem('history', JSON.stri
 const loadGame = () => getHistory()[key()];
 
 const initTodaysGame = () => {
-    const pair = todaysPair();
+    const puzzleNumber = calcIndex(new Date(key()), pairs.length);
+    const pair = todaysPair(puzzleNumber);
 
     return {
         pair,
+        puzzleNumber,
+        state: STATES.PLAYING,
         numSeconds: 0,
         words: [],
         mistakes: 0
@@ -75,6 +124,7 @@ const updateSavedGame = () => {
     const game = loadGame();
 
     game.pair = state.pair;
+    game.puzzleNumber = state.puzzleNumber;
     game.numSeconds = state.numSeconds;
     game.state = state.state;
 
@@ -95,8 +145,6 @@ const startClock = () => {
 
         updateSavedGame();
     };
-
-    fn();
 
     state.timer = setInterval(fn, 1000);
 };
@@ -137,6 +185,10 @@ const colorKeyboard = () => {
 };
 
 const handleKey = (key) => {
+    if (state.state !== STATES.PLAYING || state.position === null) {
+        return;
+    }
+
     if (key === 'Backspace') {
         if (state.position.x > 0) {
             state.board[state.position.y][state.position.x - 1] = null;
@@ -183,6 +235,24 @@ const setupHandlers = () => {
         if (e.target.dataset.key) handleKey(e.target.dataset.key);
     });
 
+    get('main').addEventListener('click', (e) => {
+        if (!(e.target instanceof Element)) {
+            return;
+        }
+
+        const cell = e.target.closest('.cell');
+
+        if (!cell) {
+            return;
+        }
+
+        const letter = cell.textContent.trim().toLowerCase();
+
+        if (letter.length === 1 && letter >= 'a' && letter <= 'z') {
+            handleKey(letter);
+        }
+    });
+
     document.addEventListener('keydown', (e) => handleKey(e.key));
 };
 
@@ -190,7 +260,7 @@ const renderKeyboard = () => {
     const footer = get('footer');
     footer.innerHTML = '';
 
-    if (state === STATES.PLAYING) {
+    if (state.state !== STATES.PLAYING) {
         return;
     }
 
@@ -223,6 +293,7 @@ const renderWelcome = (app) => {
             saveGame(game);
         }
 
+        state.puzzleNumber = game.puzzleNumber ?? 1;
         state.pair = game.pair;
         state.board = resetBoard(state.pair);
 
@@ -240,7 +311,7 @@ const renderWelcome = (app) => {
         });
 
         state.position = { x: 0, y: game.words.length + 1 };
-        state.state = game.state;
+        state.state = game.state ?? STATES.PLAYING;
         state.isPractice = false;
         state.numSeconds = game.numSeconds;
         state.mistakes = game.mistakes;
@@ -259,6 +330,11 @@ const renderWelcome = (app) => {
         renderKeyboard();
         render();
     });
+
+    get('#history').addEventListener('click', () => {
+        state.state = STATES.HISTORY;
+        render();
+    });
 };
 
 const renderFinish = (app) => {
@@ -273,9 +349,10 @@ const renderFinish = (app) => {
     app.innerHTML = '';
     app.appendChild(template.content.cloneNode(true));
 
-    get('#time').textContent = state.numSeconds;
+    get('#time').textContent = formatElapsedTime(state.numSeconds);
     get('#mistakes').textContent = state.mistakes;
     get('#words').textContent = state.board.length - 2;
+    get('#puzzle-number').textContent = `#${state.puzzleNumber}`;
 
     const boardEl = renderBoard(state.board);
 
@@ -291,28 +368,63 @@ const renderFinish = (app) => {
         render();
     });
 
-    if (!state.isPractice) {
-        get('#share').addEventListener('click', () => {
-            const share = [
-                `Anagramish #${state.puzzleNumber}`,
-                ...state.board.map((row) => row.map((c) => state.pair[0].includes(c) ? '🟦' : state.pair[1].includes(c) ? '🟧' : '⬜').join(''))
-            ];
+    get('#history').addEventListener('click', () => {
+        state.state = STATES.HISTORY;
+        render();
+    });
 
+    if (!state.isPractice) {
+        get('#copy').addEventListener('click', () => {
+            copyShareText();
+        });
+
+        get('#share').addEventListener('click', () => {
             const data = {
-                text: share.join('\n')
+                text: getShareText()
             };
 
             if (navigator.canShare && navigator.canShare(data)) {
-                navigator.share(data);
+                navigator.share(data).catch(() => {});
             } else {
-                renderMessage('Share copied to clipboard');
-
-                navigator.clipboard.writeText(data.text);
+                copyShareText();
             }
         });
     } else {
         get('#share').style.display = 'none';
+        get('#copy').style.display = 'none';
+        get('#puzzle-number').style.display = 'none';
     }
+};
+
+const renderHistory = (app) => {
+    killKeyboard();
+
+    const template = get('#history-template');
+    app.innerHTML = '';
+    app.appendChild(template.content.cloneNode(true));
+
+    const history = getHistory();
+    const entries = Object.entries(history)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, game]) => formatHistoryEntry(date, game));
+
+    const list = get('#history-list');
+
+    if (entries.length === 0) {
+        list.textContent = 'No games yet.';
+        return;
+    }
+
+    entries.forEach((entry) => {
+        list.appendChild(
+            set(
+                'div.history-entry',
+                {},
+                set('span.history-top', {}, entry.top),
+                set('span.history-bottom', {}, entry.bottom)
+            )
+        );
+    });
 };
 
 const getPositionClass = (y, x) => state.position?.x === x && state.position?.y === y ? 'current' : '';
@@ -332,6 +444,10 @@ const render = () => {
     } else if (state.state === STATES.FINISHED) {
         get('#back').style.display = 'inline-block';
         renderFinish(app);
+        return;
+    } else if (state.state === STATES.HISTORY) {
+        get('#back').style.display = 'inline-block';
+        renderHistory(app);
         return;
     }
 

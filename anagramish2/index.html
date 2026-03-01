@@ -26,8 +26,9 @@
             <p>Welcome to Anagramish!</p>
             
             <div class="buttons">
-                <button id="play">Play Today's Puzzle</button>
+                <button id="play">Play</button>
                 <button id="practice">Practice</button>
+                <button id="history">History</button>
             </div>
             
             <p>Your goal is to create the shortest word ladder possible where each word is only one letter different from the last.</p>
@@ -47,6 +48,7 @@
         <section>
             <p>Congratulations!</p>
             <div id="board-container"></div>
+            <h2 id="puzzle-number"></h2>
             <dl class="stats">
                 <dt>Time:</dt> <dd id="time"></dd>
                 <dt>Words:</dt> <dd id="words"></dd>
@@ -55,8 +57,17 @@
 
             <div class="buttons">
                 <button id="share">Share</button>
+                <button id="copy">Copy</button>
                 <button id="practice">Practice</button>
+                <button id="history">History</button>
             </div>
+        </section>
+    </template>
+
+    <template id="history-template">
+        <section class="history-screen">
+            <h2>History</h2>
+            <div id="history-list"></div>
         </section>
     </template>
 
