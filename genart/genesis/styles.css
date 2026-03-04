@@ -17,6 +17,29 @@ a:visited {
     gap: var(--padd);
 }
 
+.back,
+.back:visited {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    font-size: x-large;
+    line-height: 1;
+    color: var(--text);
+    border: solid 1px var(--border);
+    text-decoration: none;
+    text-transform: none;
+    padding: 0;
+    margin-top: 0;
+}
+
+.back svg {
+    display: block;
+    width: 0.72em;
+    height: 0.72em;
+}
+
 date {
     font-size: x-small;
 }
@@ -244,4 +267,3 @@ p a {
     flex-direction: column;
     gap: 1rem;
 }
-

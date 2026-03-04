@@ -1,7 +1,7 @@
 body {
     display: flex;
     flex-direction: column;
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
 }
 
@@ -10,12 +10,6 @@ a:visited {
     color: var(--link);
     text-decoration: none;
     border-bottom: dotted 1px var(--link);
-}
-
-main {
-    flex: 1;
-    overflow-y: auto;
-    padding-bottom: var(--padd);
 }
 
 h1 {
@@ -32,13 +26,6 @@ h1 {
 .def,
 h1 span {
     line-height: 1;
-}
-
-h2 {
-    margin: 0;
-    padding: var(--padd);
-    border-bottom: solid 1px var(--border);
-    text-transform: uppercase;
 }
 
 .def {
@@ -65,43 +52,48 @@ h2 {
     height: 0.72em;
 }
 
-.vibe-container {
-    display: flex;
-    border-bottom: solid 1px var(--border);
+.games-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--padd);
+    padding: var(--padd);
 }
 
-.vibe-description {
-    flex: 1;
+.game-card {
     display: flex;
     flex-direction: column;
-    border-left: solid 1px var(--border);
+    background: #eee;
 }
 
-.vibe-description p {
-    flex: 1;
-    padding: var(--padd);
+.game-card:hover {
+    background: #ddd;
 }
 
-.vibe-description .footer {
-    border-top: solid 1px var(--border);
+.game-image-link {
+    display: block;
+}
+
+.game-card img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    display: block;
+}
+
+.game-content {
     padding: var(--padd);
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.screenshot {
-    border: solid 1px var(--border);
-    width: 200px;
-    height: 200px;
-    object-fit: cover;
-    object-position: center;
-    display: block;
-    margin: var(--padd);
+.game-content h2 {
+    margin: 0;
+    font-size: large;
+    text-transform: uppercase;
 }
 
-@media (max-width: 600px) {
-    .screenshot {
-        width: 100px;
-        height: 100px;
-    }
+.game-content p {
+    margin: 0;
+    line-height: 1.35;
 }

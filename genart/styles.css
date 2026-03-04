@@ -29,6 +29,26 @@ h1 {
     align-items: center;
 }
 
+.back,
+.back:visited {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    font-size: 1em;
+    line-height: 1;
+    color: var(--link);
+    border: solid 1px var(--border);
+    text-decoration: none;
+}
+
+.back svg {
+    display: block;
+    width: 0.72em;
+    height: 0.72em;
+}
+
 h2 {
     margin: 0;
     padding: var(--padd);
