@@ -77,6 +77,9 @@ a:visited {
 .writing {
     grid-column: 9 / span 3;
     grid-row: 5 / span 4;
+
+    font-size: 24px;
+    font-weight: bold;
 }
 
 .socials {
