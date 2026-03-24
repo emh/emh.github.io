@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Earth Missile Command Prototype</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#75b8ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none;cursor:crosshair}
+  #hud{
+    position:fixed;left:12px;top:12px;z-index:10;color:#fff;
+    background:rgba(0,0,0,.28);backdrop-filter:blur(5px);
+    padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.35;
+    box-shadow:0 6px 20px rgba(0,0,0,.15);user-select:none
+  }
+  #hud b{font-weight:700}
+  #msg{
+    position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:10;
+    color:#fff;background:rgba(0,0,0,.25);padding:8px 12px;border-radius:999px;
+    font-size:13px;opacity:0;transition:opacity .2s ease;pointer-events:none
+  }
+  #msg.show{opacity:1}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "game/vec": "data:text/javascript,export const len=(x,y)=>Math.hypot(x,y);export const dist=(ax,ay,bx,by)=>Math.hypot(bx-ax,by-ay);export const lerp=(a,b,t)=>a+(b-a)*t;export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));export const smooth=(a,b,t)=>{t=Math.max(0,Math.min(1,(t-a)/(b-a)));return t*t*(3-2*t)};",
+    "game/noise": "data:text/javascript,export function hash(n){return (Math.sin(n*127.1+311.7)*43758.5453123)%1} export function noise1(x){const i=Math.floor(x),f=x-i;const a=hash(i),b=hash(i+1);const t=f*f*(3-2*f);return a+(b-a)*t}"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="msg"></div>
+<script type="module">
+import { len, dist, lerp, clamp, smooth } from 'game/vec';
+import { noise1 } from 'game/noise';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+const msg = document.getElementById('msg');
+
+let DPR = 1, W = 0, H = 0;
+function resize(){
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const r = canvas.getBoundingClientRect();
+  W = Math.round(r.width); H = Math.round(r.height);
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  buildGround();
+}
+window.addEventListener('resize', resize);
+
+const rnd = (a=1,b=0)=>b + Math.random()*(a-b);
+const irnd = (a,b)=>Math.floor(rnd(b+1,a));
+
+let state;
+function reset(){
+  state = {
+    score:0, wave:1, paused:false, over:false,
+    enemy:[], player:[], explosions:[], smoke:[], sparks:[], debris:[], clouds:[],
+    launchers:[], cities:[], waveTimer:0, spawnBudget:10, spawnCooldown:0,
+    lastT:performance.now(), flash:0
+  };
+  initScene();
+}
+
+function initScene(){
+  const groundY = H * 0.82;
+  state.launchers = [0.16,0.50,0.84].map((t,i)=>(
+    {x:W*t,y:groundY+8,alive:true,ammo:14,reload:0,id:i}
+  ));
+  const cityXs = [0.07,0.12,0.23,0.31,0.40,0.60,0.69,0.77,0.88,0.93].map(t=>W*t);
+  state.cities = cityXs.map((x,i)=>({x,y:groundY,alive:true,w:rnd(30,20),h:rnd(34,18),id:i}));
+  makeClouds();
+  buildGround();
+}
+
+function makeClouds(){
+  state.clouds.length = 0;
+  for(let i=0;i<7;i++){
+    state.clouds.push({x:rnd(W),y:rnd(H*0.35,40),w:rnd(260,120),h:rnd(55,24),a:rnd(.12,.04),s:rnd(6,2)});
+  }
+}
+
+let skylineBack=[], skylineMid=[], groundPoly=[];
+function buildGround(){
+  skylineBack = [];
+  skylineMid = [];
+  groundPoly = [];
+  const gy = H*0.82;
+  let x=0;
+  while(x<W+40){
+    const w=rnd(55,18), h=rnd(140,28);
+    skylineBack.push({x,w,h}); x+=w*rnd(1.0,.65);
+  }
+  x=0;
+  while(x<W+40){
+    const w=rnd(42,16), h=rnd(96,20);
+    skylineMid.push({x,w,h}); x+=w*rnd(1.0,.65);
+  }
+  const segs = 24;
+  for(let i=0;i<=segs;i++){
+    const t=i/segs;
+    const y=gy + Math.sin(t*Math.PI*2)*4 + noise1(t*11+3)*10;
+    groundPoly.push({x:t*W,y});
+  }
+}
+
+function toast(text){
+  msg.textContent=text;
+  msg.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>msg.classList.remove('show'),1100);
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  if(state.over){ reset(); return; }
+  const r=canvas.getBoundingClientRect();
+  fire((e.clientX-r.left),(e.clientY-r.top));
+});
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space'){ e.preventDefault(); state.paused=!state.paused; }
+  if(e.key==='r' || e.key==='R') reset();
+});
+
+function nearestLauncher(x){
+  let best=null, bestD=1e9;
+  for(const l of state.launchers){
+    if(!l.alive || l.ammo<=0) continue;
+    const d=Math.abs(l.x-x);
+    if(d<bestD){bestD=d;best=l;}
+  }
+  return best;
+}
+
+function fire(tx,ty){
+  if(state.paused||state.over) return;
+  const l=nearestLauncher(tx);
+  if(!l) return;
+  l.ammo--;
+  state.player.push({x:l.x,y:l.y-14,sx:l.x,sy:l.y-14,tx,ty,v:460,done:false,trail:[]});
+}
+
+function spawnEnemy(){
+  const aliveTargets = [
+    ...state.cities.filter(c=>c.alive).map(c=>({x:c.x,y:c.y-8,type:'city',ref:c})),
+    ...state.launchers.filter(l=>l.alive).map(l=>({x:l.x,y:l.y-10,type:'launcher',ref:l}))
+  ];
+  if(!aliveTargets.length) return;
+  const target = aliveTargets[irnd(0, aliveTargets.length-1)];
+  const sx = rnd(W*0.95,W*0.05);
+  const sy = rnd(-60,-10);
+  const speed = rnd(90 + state.wave*8, 65 + state.wave*6);
+  state.enemy.push({x:sx,y:sy,sx,sy,tx:target.x,ty:target.y,v:speed,target,alive:true,trail:[],wob:rnd(1000),split:Math.random()<Math.min(.34,.1+state.wave*0.03)});
+}
+
+function explode(x,y,r,kind='air'){
+  state.explosions.push({x,y,r:0,maxR:r,t:0,life:kind==='ground'?1.2:0.9,kind});
+  for(let i=0;i<Math.round(r*1.1);i++){
+    const a=rnd(Math.PI*2), sp=rnd(r*1.4,r*0.25);
+    state.sparks.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rnd(1.1,.35),t:0,s:rnd(3.8,1.2)});
+  }
+  for(let i=0;i<Math.round(r*0.35);i++){
+    const a=rnd(Math.PI*2), sp=rnd(r*.5,r*.1);
+    state.debris.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-rnd(45,10),life:rnd(1.4,.6),t:0,s:rnd(5,2)});
+  }
+}
+
+function destroyTarget(t){
+  if(!t?.ref?.alive) return;
+  t.ref.alive=false;
+  explode(t.x,t.y,42,'ground');
+  state.flash=1;
+}
+
+function update(dt){
+  if(state.paused||state.over) return;
+
+  state.flash=Math.max(0,state.flash-dt*2.2);
+  state.waveTimer += dt;
+  state.spawnCooldown -= dt;
+  const activeEnemies = state.enemy.filter(m=>m.alive).length;
+
+  if(state.spawnBudget>0 && state.spawnCooldown<=0){
+    spawnEnemy();
+    state.spawnBudget--;
+    state.spawnCooldown = rnd(Math.max(.18,.75-state.wave*0.04), Math.max(.08,.28-state.wave*0.02));
+  }
+  if(state.spawnBudget<=0 && activeEnemies===0){
+    state.wave++;
+    state.spawnBudget = 9 + state.wave*2;
+    for(const l of state.launchers) if(l.alive) l.ammo = Math.min(18, l.ammo + 6);
+    toast('Wave ' + state.wave);
+  }
+
+  for(const l of state.launchers) if(l.alive) l.reload = Math.max(0,l.reload-dt);
+
+  for(const m of state.enemy){
+    if(!m.alive) continue;
+    const dx=m.tx-m.x, dy=m.ty-m.y, d=Math.max(1,len(dx,dy));
+    m.x += dx/d * m.v * dt;
+    m.y += dy/d * m.v * dt;
+    if(Math.random()<0.9) addSmoke(m.x,m.y, 'enemy');
+    if(m.split && d< H*0.35 && !m.didSplit){
+      m.didSplit=true;
+      const aliveCities=state.cities.filter(c=>c.alive);
+      if(aliveCities.length){
+        const c=aliveCities[irnd(0,aliveCities.length-1)];
+        state.enemy.push({x:m.x,y:m.y,sx:m.x,sy:m.y,tx:c.x,ty:c.y-8,v:m.v*1.12,target:{x:c.x,y:c.y-8,type:'city',ref:c},alive:true,trail:[],wob:rnd(1000),split:false});
+      }
+    }
+    if(d<5){
+      m.alive=false;
+      destroyTarget(m.target);
+    }
+  }
+
+  for(const p of state.player){
+    if(p.done) continue;
+    const dx=p.tx-p.x, dy=p.ty-p.y, d=Math.max(1,len(dx,dy));
+    p.x += dx/d * p.v * dt;
+    p.y += dy/d * p.v * dt;
+    if(Math.random()<0.85) addSmoke(p.x,p.y, 'player');
+    if(d<7){ p.done=true; explode(p.x,p.y, rnd(56,38), 'air'); }
+  }
+
+  for(const ex of state.explosions){
+    ex.t += dt;
+    const p = ex.t/ex.life;
+    ex.r = ex.maxR * Math.sin(Math.min(1,p)*Math.PI);
+    if(ex.r>4){
+      for(const m of state.enemy){
+        if(!m.alive) continue;
+        if(dist(ex.x,ex.y,m.x,m.y) < ex.r){
+          m.alive=false;
+          state.score += 25;
+          addBurstSmoke(m.x,m.y,12);
+        }
+      }
+    }
+  }
+  state.explosions = state.explosions.filter(e=>e.t<e.life);
+  state.enemy = state.enemy.filter(e=>e.alive);
+  state.player = state.player.filter(p=>!p.done || Math.random()>0.92);
+
+  for(const s of state.smoke){
+    s.t += dt;
+    s.x += s.vx*dt;
+    s.y += s.vy*dt;
+    s.r += s.grow*dt;
+    s.a *= Math.pow(s.fade, dt*60);
+  }
+  state.smoke = state.smoke.filter(s=>s.t<s.life && s.a>0.01);
+
+  for(const s of state.sparks){
+    s.t += dt;
+    s.x += s.vx*dt;
+    s.y += s.vy*dt;
+    s.vy += 140*dt;
+  }
+  state.sparks = state.sparks.filter(s=>s.t<s.life);
+
+  for(const d of state.debris){
+    d.t += dt;
+    d.x += d.vx*dt;
+    d.y += d.vy*dt;
+    d.vy += 180*dt;
+    d.vx *= Math.pow(.992,dt*60);
+  }
+  state.debris = state.debris.filter(d=>d.t<d.life);
+
+  const livingCities = state.cities.filter(c=>c.alive).length;
+  const livingLaunchers = state.launchers.filter(l=>l.alive).length;
+  if(livingCities===0 && livingLaunchers===0){
+    state.over = true;
+  }
+}
+
+function addSmoke(x,y,type='enemy'){
+  const warm = type==='player';
+  state.smoke.push({
+    x:x+rnd(3,-3), y:y+rnd(3,-3),
+    vx:rnd(5,-5), vy:rnd(-18,-6),
+    r: warm ? rnd(4,2) : rnd(5,2),
+    grow: warm ? rnd(14,8) : rnd(18,9),
+    a: warm ? rnd(.22,.12) : rnd(.28,.14),
+    life: rnd(1.9,0.8), fade:rnd(.985,.972),
+    color: warm ? '255,240,220' : '240,245,255', t:0
+  });
+}
+function addBurstSmoke(x,y,n){ for(let i=0;i<n;i++) addSmoke(x+rnd(10,-10), y+rnd(10,-10), i%3?'enemy':'player'); }
+
+function drawSky(){
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#2d83da');
+  g.addColorStop(0.45,'#63b1ff');
+  g.addColorStop(0.78,'#c9e4ff');
+  g.addColorStop(1,'#e7dfcc');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  const sunX=W*0.79, sunY=H*0.19;
+  const rg=ctx.createRadialGradient(sunX,sunY,8,sunX,sunY,100);
+  rg.addColorStop(0,'rgba(255,245,220,.95)');
+  rg.addColorStop(.2,'rgba(255,230,170,.65)');
+  rg.addColorStop(1,'rgba(255,230,170,0)');
+  ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(sunX,sunY,100,0,Math.PI*2); ctx.fill();
+
+  for(const c of state.clouds){
+    c.x += c.s * 0.002;
+    if(c.x-c.w*0.7>W) c.x=-c.w;
+    const cg = ctx.createRadialGradient(c.x,c.y,10,c.x,c.y,c.w*0.5);
+    cg.addColorStop(0,`rgba(255,255,255,${c.a})`);
+    cg.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=cg;
+    ctx.beginPath();
+    ctx.ellipse(c.x,c.y,c.w,c.h,0,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawSkyline(){
+  ctx.fillStyle='rgba(85,105,125,.20)';
+  for(const b of skylineBack) ctx.fillRect(b.x,H*0.82-b.h,b.w,b.h);
+  ctx.fillStyle='rgba(55,72,92,.34)';
+  for(const b of skylineMid) ctx.fillRect(b.x,H*0.82-b.h,b.w,b.h);
+}
+
+function drawGround(){
+  ctx.beginPath();
+  ctx.moveTo(0,H);
+  for(let i=0;i<groundPoly.length;i++) ctx.lineTo(groundPoly[i].x,groundPoly[i].y);
+  ctx.lineTo(W,H);
+  ctx.closePath();
+  const g=ctx.createLinearGradient(0,H*0.82,0,H);
+  g.addColorStop(0,'#4e5b47');
+  g.addColorStop(1,'#2e3927');
+  ctx.fillStyle=g;
+  ctx.fill();
+}
+
+function drawCities(){
+  for(const c of state.cities){
+    if(c.alive){
+      ctx.fillStyle='#d6d8dc';
+      ctx.fillRect(c.x-c.w/2,c.y-c.h,c.w,c.h);
+      ctx.fillStyle='rgba(255,225,150,.8)';
+      for(let r=0;r<3;r++) for(let col=0;col<Math.max(2,Math.floor(c.w/8));col++){
+        if(Math.random()<0.82) ctx.fillRect(c.x-c.w/2+4+col*7,c.y-c.h+5+r*8,3,4);
+      }
+    } else {
+      ctx.fillStyle='rgba(25,25,25,.9)';
+      ctx.fillRect(c.x-c.w/2,c.y-6,c.w,6);
+    }
+  }
+}
+
+function drawLaunchers(){
+  for(const l of state.launchers){
+    if(l.alive){
+      ctx.fillStyle='#adb7c5';
+      ctx.beginPath();
+      ctx.moveTo(l.x-14,l.y); ctx.lineTo(l.x,l.y-18); ctx.lineTo(l.x+14,l.y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#65758a'; ctx.fillRect(l.x-18,l.y,36,8);
+    } else {
+      ctx.fillStyle='rgba(35,35,35,.95)'; ctx.fillRect(l.x-18,l.y,36,4);
+    }
+  }
+}
+
+function drawSmoke(){
+  ctx.save();
+  ctx.globalCompositeOperation='source-over';
+  for(const s of state.smoke){
+    const g=ctx.createRadialGradient(s.x,s.y,s.r*0.2,s.x,s.y,s.r);
+    g.addColorStop(0,`rgba(${s.color},${s.a})`);
+    g.addColorStop(0.6,`rgba(${s.color},${s.a*0.35})`);
+    g.addColorStop(1,`rgba(${s.color},0)`);
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawMissiles(){
+  for(const m of state.enemy){
+    ctx.strokeStyle='rgba(255,255,255,.9)';
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(m.sx,m.sy);
+    ctx.lineTo(m.x,m.y);
+    ctx.stroke();
+    const g=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,9);
+    g.addColorStop(0,'rgba(255,250,240,1)');
+    g.addColorStop(1,'rgba(255,220,140,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(m.x,m.y,9,0,Math.PI*2); ctx.fill();
+  }
+  for(const p of state.player){
+    ctx.strokeStyle='rgba(245,245,255,.95)';
+    ctx.lineWidth=1.3;
+    ctx.beginPath(); ctx.moveTo(p.sx,p.sy); ctx.lineTo(p.x,p.y); ctx.stroke();
+    const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,8);
+    g.addColorStop(0,'rgba(255,255,255,1)');
+    g.addColorStop(1,'rgba(140,210,255,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,8,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawExplosions(){
+  ctx.save();
+  ctx.globalCompositeOperation='screen';
+  for(const e of state.explosions){
+    const rg=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.r||1);
+    if(e.kind==='ground'){
+      rg.addColorStop(0,'rgba(255,255,245,.95)');
+      rg.addColorStop(.2,'rgba(255,220,160,.85)');
+      rg.addColorStop(.5,'rgba(255,145,60,.45)');
+      rg.addColorStop(1,'rgba(255,100,20,0)');
+    } else {
+      rg.addColorStop(0,'rgba(255,255,255,.95)');
+      rg.addColorStop(.25,'rgba(255,230,160,.75)');
+      rg.addColorStop(.6,'rgba(255,160,70,.35)');
+      rg.addColorStop(1,'rgba(255,110,50,0)');
+    }
+    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  for(const s of state.sparks){
+    const a=1-s.t/s.life;
+    ctx.fillStyle=`rgba(255,${Math.round(180+70*a)},80,${a})`;
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.s*a,0,Math.PI*2); ctx.fill();
+  }
+  for(const d of state.debris){
+    const a=1-d.t/d.life;
+    ctx.fillStyle=`rgba(80,80,80,${a*.9})`;
+    ctx.beginPath(); ctx.arc(d.x,d.y,d.s*a,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawFlash(){
+  if(state.flash<=0) return;
+  ctx.fillStyle=`rgba(255,240,220,${state.flash*0.18})`;
+  ctx.fillRect(0,0,W,H);
+}
+
+function render(){
+  drawSky();
+  drawSkyline();
+  drawSmoke();
+  drawMissiles();
+  drawExplosions();
+  drawCities();
+  drawLaunchers();
+  drawGround();
+  drawFlash();
+
+  hud.innerHTML = `<b>Score</b> ${state.score}<br><b>Wave</b> ${state.wave}<br><b>Cities</b> ${state.cities.filter(c=>c.alive).length}<br><b>Ammo</b> ${state.launchers.filter(l=>l.alive).map(l=>l.ammo).join(' · ') || '0'}<br><b>Controls</b> click/tap fire · space pause · R restart${state.over?'<br><br><b>Game Over</b> click or R':''}${state.paused&&!state.over?'<br><br><b>Paused</b>':''}`;
+}
+
+function frame(t){
+  const dt = Math.min(0.033, (t-state.lastT)/1000 || 0.016);
+  state.lastT=t;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+resize();
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
