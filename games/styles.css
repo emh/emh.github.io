@@ -53,8 +53,8 @@ h1 span {
 }
 
 .games-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--padd);
     padding: var(--padd);
 }
@@ -63,6 +63,7 @@ h1 span {
     display: flex;
     flex-direction: column;
     background: #eee;
+    max-width: 200px;
 }
 
 .game-card:hover {
@@ -75,8 +76,6 @@ h1 span {
 
 .game-card img {
     width: 100%;
-    aspect-ratio: 16 / 10;
-    object-fit: cover;
     display: block;
 }
 
