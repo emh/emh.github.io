@@ -755,6 +755,7 @@ function resize() {
 }
 
 window.addEventListener("resize", resize, { passive: true });
+canvas.addEventListener("click", init);
 
 resize();
 if (raf) cancelAnimationFrame(raf);
