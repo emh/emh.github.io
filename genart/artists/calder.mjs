@@ -606,16 +606,25 @@ function makeSpineShape(index, count, leftPoints, rightPoints, ends) {
     };
 }
 
-function spineRadius(shapes, rodStart, rodEnd) {
+function spineCurveY(t, curveDepth) {
+    return 4 * curveDepth * t * (1 - t);
+}
+
+function spineRadius(shapes, rodPoints) {
+    const rodRadius = rodPoints.reduce((radius, point) =>
+        Math.max(radius, Math.hypot(point.x, point.y))
+    , 0);
+
     return shapes.reduce((radius, shape) =>
         Math.max(radius, Math.hypot(shape.x, shape.y) + shape.radius)
-    , Math.max(Math.abs(rodStart), Math.abs(rodEnd)));
+    , rodRadius);
 }
 
 function makeSpineNode(size, colorOffset = 0) {
     const count = randInt(3, 7);
     const length = size * rand(0.5, 0.9);
     const spacing = count === 1 ? 0 : length / (count - 1);
+    const curveDepth = length * rand(0.015, 0.045) * (Math.random() < 0.5 ? -1 : 1);
     const { left, right } = chooseDistinctShapeKinds();
     const pointCount = 72;
     const leftPoints = sampleClosedPoints(normalizeShapePoints(makeBaseShapePoints(left), 1), pointCount);
@@ -636,22 +645,38 @@ function makeSpineNode(size, colorOffset = 0) {
 
     for (let i = 0; i < shapes.length; i++) {
         const shape = shapes[i];
+        const t = count === 1 ? 0 : i / (count - 1);
+        const slope = (4 * curveDepth * (1 - 2 * t)) / length;
 
         shape.x = i * spacing;
-        shape.y = 0;
+        shape.y = spineCurveY(t, curveDepth);
+        shape.rotation = Math.atan(slope) + rand(-0.18, 0.18);
     }
 
     const weight = sumWeights(shapes);
     const balanceX = shapes.reduce((sum, shape) =>
         sum + shape.weight * shape.x
     , 0) / weight;
+    const balanceT = length === 0 ? 0 : balanceX / length;
+    const balanceY = spineCurveY(balanceT, curveDepth);
 
     for (const shape of shapes) {
         shape.x -= balanceX;
+        shape.y -= balanceY;
     }
 
-    const rodStart = -balanceX;
-    const rodEnd = length - balanceX;
+    const rodStart = {
+        x: -balanceX,
+        y: -balanceY,
+    };
+    const rodControl = {
+        x: length * 0.5 - balanceX,
+        y: curveDepth * 2 - balanceY,
+    };
+    const rodEnd = {
+        x: length - balanceX,
+        y: -balanceY,
+    };
 
     return {
         type: "spine",
@@ -661,12 +686,13 @@ function makeSpineNode(size, colorOffset = 0) {
         angularVelocity: mobileAngularVelocity(size),
         children: shapes,
         weight,
-        radius: spineRadius(shapes, rodStart, rodEnd),
+        radius: spineRadius(shapes, [rodStart, rodControl, rodEnd]),
         balance: {
             x: shapes.reduce((sum, shape) => sum + shape.weight * shape.x, 0),
-            y: 0,
+            y: shapes.reduce((sum, shape) => sum + shape.weight * shape.y, 0),
         },
         rodStart,
+        rodControl,
         rodEnd,
         leftShape: left,
         rightShape: right,
@@ -859,8 +885,13 @@ function renderSpine(spine, isRoot = false) {
     ctx.lineWidth = Math.max(0.7, Math.min(3, spine.size * 0.014));
 
     ctx.beginPath();
-    ctx.moveTo(spine.rodStart, 0);
-    ctx.lineTo(spine.rodEnd, 0);
+    ctx.moveTo(spine.rodStart.x, spine.rodStart.y);
+    ctx.quadraticCurveTo(
+        spine.rodControl.x,
+        spine.rodControl.y,
+        spine.rodEnd.x,
+        spine.rodEnd.y
+    );
     ctx.stroke();
 
     ctx.fillStyle = "black";
