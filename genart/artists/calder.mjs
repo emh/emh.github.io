@@ -259,6 +259,49 @@ function makeBaseShapePoints(kind) {
     return makeBananaPoints();
 }
 
+function sampleClosedPoints(points, count) {
+    return Array.from({ length: count }, (_, i) => {
+        const position = (i / count) * points.length;
+        const index = Math.floor(position);
+        const nextIndex = (index + 1) % points.length;
+        const t = position - index;
+        const a = points[index];
+        const b = points[nextIndex];
+
+        return {
+            x: a.x + (b.x - a.x) * t,
+            y: a.y + (b.y - a.y) * t,
+        };
+    });
+}
+
+function lerpPoints(a, b, t) {
+    return a.map((point, i) => ({
+        x: point.x + (b[i].x - point.x) * t,
+        y: point.y + (b[i].y - point.y) * t,
+    }));
+}
+
+function hexToRgb(hex) {
+    const value = Number.parseInt(hex.slice(1), 16);
+
+    return {
+        r: (value >> 16) & 255,
+        g: (value >> 8) & 255,
+        b: value & 255,
+    };
+}
+
+function mixColor(a, b, t) {
+    const ca = hexToRgb(a);
+    const cb = hexToRgb(b);
+    const r = Math.round(ca.r + (cb.r - ca.r) * t);
+    const g = Math.round(ca.g + (cb.g - ca.g) * t);
+    const blue = Math.round(ca.b + (cb.b - ca.b) * t);
+
+    return `rgb(${r}, ${g}, ${blue})`;
+}
+
 function normalizeAngle(angle) {
     return ((angle % TAU) + TAU) % TAU;
 }
@@ -509,8 +552,12 @@ function balanceFor(items) {
 }
 
 function mobileDepth(item) {
-    if (item.type !== "mobile") {
+    if (item.type === "shape") {
         return 0;
+    }
+
+    if (item.type === "spine") {
+        return 1;
     }
 
     return 1 + Math.max(...item.children.map(mobileDepth));
@@ -521,6 +568,114 @@ function mobileAngularVelocity(size) {
     const maxSpeed = Math.min(0.014, minSpeed * 2.4);
 
     return randomAngularVelocity(minSpeed, maxSpeed);
+}
+
+function chooseDistinctShapeKinds() {
+    const left = LEAF_SHAPES[randInt(0, LEAF_SHAPES.length - 1)];
+    let right = left;
+
+    while (right === left) {
+        right = LEAF_SHAPES[randInt(0, LEAF_SHAPES.length - 1)];
+    }
+
+    return { left, right };
+}
+
+function makeSpineShape(index, count, leftPoints, rightPoints, ends) {
+    const t = count === 1 ? 0 : index / (count - 1);
+    const targetRadius = ends.leftRadius + (ends.rightRadius - ends.leftRadius) * t;
+    const area = Math.PI * targetRadius * targetRadius;
+    const points = normalizeShapePoints(lerpPoints(leftPoints, rightPoints, t), area);
+
+    return {
+        type: "shape",
+        shape: "spine-morph",
+        morphT: t,
+        angle: 0,
+        radius: boundingRadius(points),
+        targetRadius,
+        area,
+        weight: area,
+        torque: 0,
+        rodLength: 0,
+        x: 0,
+        y: 0,
+        rotation: rand(-0.3, 0.3),
+        points,
+        color: mixColor(ends.leftColor, ends.rightColor, t),
+    };
+}
+
+function spineRadius(shapes, rodStart, rodEnd) {
+    return shapes.reduce((radius, shape) =>
+        Math.max(radius, Math.hypot(shape.x, shape.y) + shape.radius)
+    , Math.max(Math.abs(rodStart), Math.abs(rodEnd)));
+}
+
+function makeSpineNode(size, colorOffset = 0) {
+    const count = randInt(3, 7);
+    const length = size * rand(0.5, 0.9);
+    const spacing = count === 1 ? 0 : length / (count - 1);
+    const { left, right } = chooseDistinctShapeKinds();
+    const pointCount = 72;
+    const leftPoints = sampleClosedPoints(normalizeShapePoints(makeBaseShapePoints(left), 1), pointCount);
+    const rightPoints = sampleClosedPoints(normalizeShapePoints(makeBaseShapePoints(right), 1), pointCount);
+    const minRadius = Math.max(0.004, size * 0.035);
+    const maxRadius = Math.max(minRadius + Math.max(0.004, size * 0.012), size * 0.13);
+    const leftColor = PALETTE[colorOffset % PALETTE.length];
+    const rightColor = PALETTE[(colorOffset + randInt(1, PALETTE.length - 1)) % PALETTE.length];
+    const ends = {
+        leftRadius: randomRadius(minRadius, maxRadius),
+        rightRadius: randomRadius(minRadius, maxRadius),
+        leftColor,
+        rightColor,
+    };
+    const shapes = Array.from({ length: count }, (_, i) =>
+        makeSpineShape(i, count, leftPoints, rightPoints, ends)
+    );
+
+    for (let i = 0; i < shapes.length; i++) {
+        const shape = shapes[i];
+
+        shape.x = i * spacing;
+        shape.y = 0;
+    }
+
+    const weight = sumWeights(shapes);
+    const balanceX = shapes.reduce((sum, shape) =>
+        sum + shape.weight * shape.x
+    , 0) / weight;
+
+    for (const shape of shapes) {
+        shape.x -= balanceX;
+    }
+
+    const rodStart = -balanceX;
+    const rodEnd = length - balanceX;
+
+    return {
+        type: "spine",
+        levels: 1,
+        size,
+        rotation: 0,
+        angularVelocity: mobileAngularVelocity(size),
+        children: shapes,
+        weight,
+        radius: spineRadius(shapes, rodStart, rodEnd),
+        balance: {
+            x: shapes.reduce((sum, shape) => sum + shape.weight * shape.x, 0),
+            y: 0,
+        },
+        rodStart,
+        rodEnd,
+        leftShape: left,
+        rightShape: right,
+        angle: 0,
+        torque: 0,
+        rodLength: 0,
+        x: 0,
+        y: 0,
+    };
 }
 
 function branchChance(levels) {
@@ -600,7 +755,19 @@ function makeMobileEndpoints(count, levels, size, colorOffset, forceDepth) {
     return makeFallbackShapeEndpoints(count, size, colorOffset);
 }
 
+function shouldMakeSpine(levels, forceDepth) {
+    if (forceDepth && levels > 1) {
+        return false;
+    }
+
+    return Math.random() < (levels === 1 ? 0.5 : 0.34);
+}
+
 function makeMobileNode(levels, size, colorOffset = 0, forceDepth = false) {
+    if (shouldMakeSpine(levels, forceDepth)) {
+        return makeSpineNode(size, colorOffset);
+    }
+
     const count = randInt(2, 5);
     const children = makeMobileEndpoints(count, levels, size, colorOffset, forceDepth);
 
@@ -669,6 +836,47 @@ function renderShape(shape) {
     ctx.restore();
 }
 
+function renderSubmobile(node, isRoot = false) {
+    if (node.type === "spine") {
+        renderSpine(node, isRoot);
+    } else {
+        renderMobile(node, isRoot);
+    }
+}
+
+function renderSpine(spine, isRoot = false) {
+    ctx.save();
+
+    if (isRoot) {
+        ctx.translate(state.cx, state.cy);
+    } else {
+        ctx.translate(spine.x, spine.y);
+    }
+
+    ctx.rotate(spine.rotation);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = Math.max(0.7, Math.min(3, spine.size * 0.014));
+
+    ctx.beginPath();
+    ctx.moveTo(spine.rodStart, 0);
+    ctx.lineTo(spine.rodEnd, 0);
+    ctx.stroke();
+
+    ctx.fillStyle = "black";
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(1.2, Math.min(4, spine.size * 0.018)), 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = "black";
+
+    for (const shape of spine.children) {
+        renderShape(shape);
+    }
+
+    ctx.restore();
+}
+
 function renderMobile(mobile, isRoot = false) {
     ctx.save();
 
@@ -699,8 +907,8 @@ function renderMobile(mobile, isRoot = false) {
     ctx.strokeStyle = "black";
 
     for (const child of mobile.children) {
-        if (child.type === "mobile") {
-            renderMobile(child);
+        if (child.type === "mobile" || child.type === "spine") {
+            renderSubmobile(child);
         } else {
             renderShape(child);
         }
@@ -711,23 +919,23 @@ function renderMobile(mobile, isRoot = false) {
 
 function render() {
     if (state.root) {
-        renderMobile(state.root, true);
+        renderSubmobile(state.root, true);
     }
 }
 
-function updateMobile(mobile) {
-    mobile.rotation += mobile.angularVelocity;
+function updateSubmobile(node) {
+    node.rotation += node.angularVelocity;
 
-    for (const child of mobile.children) {
-        if (child.type === "mobile") {
-            updateMobile(child);
+    for (const child of node.children) {
+        if (child.type === "mobile" || child.type === "spine") {
+            updateSubmobile(child);
         }
     }
 }
 
 function update(t) {
     if (state.root) {
-        updateMobile(state.root);
+        updateSubmobile(state.root);
     }
 }
 
