@@ -5,6 +5,7 @@ let raf = 0;
 let DPR = 1, W = 0, H = 0;
 const TAU = Math.PI * 2;
 const PALETTE = ["#d84a2b", "#f0c541", "#2f74b5", "#111111", "#e8ecef"];
+const LEAF_SHAPES = ["ellipse", "pinched", "blob", "polygon", "petal", "banana"];
 
 let state = {
     cx: 0,
@@ -27,6 +28,235 @@ function randomRadius(min, max) {
 
 function randomAngularVelocity(min, max) {
     return rand(min, max) * (Math.random() < 0.5 ? -1 : 1);
+}
+
+function polygonArea(points) {
+    let sum = 0;
+
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        sum += a.x * b.y - b.x * a.y;
+    }
+
+    return Math.abs(sum) * 0.5;
+}
+
+function polygonCentroid(points) {
+    let crossSum = 0;
+    let x = 0;
+    let y = 0;
+
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        const cross = a.x * b.y - b.x * a.y;
+
+        crossSum += cross;
+        x += (a.x + b.x) * cross;
+        y += (a.y + b.y) * cross;
+    }
+
+    if (Math.abs(crossSum) < 0.000001) {
+        return { x: 0, y: 0 };
+    }
+
+    return {
+        x: x / (3 * crossSum),
+        y: y / (3 * crossSum),
+    };
+}
+
+function boundingRadius(points) {
+    return points.reduce((radius, point) =>
+        Math.max(radius, Math.hypot(point.x, point.y))
+    , 0);
+}
+
+function normalizeShapePoints(points, targetArea) {
+    const centroid = polygonCentroid(points);
+    const centered = points.map((point) => ({
+        x: point.x - centroid.x,
+        y: point.y - centroid.y,
+    }));
+    const area = polygonArea(centered);
+    const scale = Math.sqrt(targetArea / Math.max(area, 0.000001));
+
+    return centered.map((point) => ({
+        x: point.x * scale,
+        y: point.y * scale,
+    }));
+}
+
+function makeEllipsePoints() {
+    const points = [];
+    const count = 48;
+    const stretch = rand(0.45, 2.35);
+    const shear = rand(-0.35, 0.35);
+
+    for (let i = 0; i < count; i++) {
+        const t = (i / count) * TAU;
+        const x = Math.cos(t) * stretch;
+        const y = Math.sin(t) / stretch;
+
+        points.push({ x: x + y * shear, y });
+    }
+
+    return points;
+}
+
+function makePinchedPoints() {
+    const points = [];
+    const count = 56;
+    const phase = rand(0, TAU);
+    const pinch = rand(0.18, 0.42);
+    const lobes = randInt(2, 4);
+
+    for (let i = 0; i < count; i++) {
+        const t = (i / count) * TAU;
+        const p = Math.cos(t - phase);
+        const r = 1 + 0.1 * Math.sin(lobes * t + phase) - pinch * p * p;
+
+        points.push({
+            x: Math.cos(t) * r,
+            y: Math.sin(t) * r,
+        });
+    }
+
+    return points;
+}
+
+function makeBlobPoints() {
+    const points = [];
+    const count = 44;
+    const phaseA = rand(0, TAU);
+    const phaseB = rand(0, TAU);
+
+    for (let i = 0; i < count; i++) {
+        const t = (i / count) * TAU;
+        const r = 1
+            + 0.18 * Math.sin(3 * t + phaseA)
+            + 0.1 * Math.sin(5 * t + phaseB);
+
+        points.push({
+            x: Math.cos(t) * r,
+            y: Math.sin(t) * r,
+        });
+    }
+
+    return points;
+}
+
+function makeRoundedPolygonPoints() {
+    const sides = randInt(3, 7);
+    const anchors = Array.from({ length: sides }, (_, i) => {
+        const t = (i / sides) * TAU + rand(-0.08, 0.08);
+        const r = rand(0.75, 1.18);
+
+        return {
+            x: Math.cos(t) * r,
+            y: Math.sin(t) * r,
+        };
+    });
+    const points = [];
+
+    for (let i = 0; i < anchors.length; i++) {
+        const p0 = anchors[(i - 1 + anchors.length) % anchors.length];
+        const p1 = anchors[i];
+        const p2 = anchors[(i + 1) % anchors.length];
+        const p3 = anchors[(i + 2) % anchors.length];
+
+        for (let j = 0; j < 8; j++) {
+            const t = j / 8;
+            const t2 = t * t;
+            const t3 = t2 * t;
+
+            points.push({
+                x: 0.5 * (
+                    2 * p1.x
+                    + (-p0.x + p2.x) * t
+                    + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+                    + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+                ),
+                y: 0.5 * (
+                    2 * p1.y
+                    + (-p0.y + p2.y) * t
+                    + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+                    + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+                ),
+            });
+        }
+    }
+
+    return points;
+}
+
+function makePetalPoints() {
+    const points = [];
+    const count = 72;
+    const lobes = randInt(3, 5);
+    const phase = rand(0, TAU);
+    const wobble = rand(0.04, 0.12);
+
+    for (let i = 0; i < count; i++) {
+        const t = (i / count) * TAU;
+        const r = 1
+            + 0.22 * Math.sin(lobes * t + phase)
+            + wobble * Math.sin((lobes + 2) * t - phase);
+
+        points.push({
+            x: Math.cos(t) * r,
+            y: Math.sin(t) * r,
+        });
+    }
+
+    return points;
+}
+
+function makeBananaPoints() {
+    const top = [];
+    const bottom = [];
+    const count = 28;
+
+    for (let i = 0; i < count; i++) {
+        const u = i / (count - 1);
+        const t = -1.18 + u * 2.36;
+        const center = {
+            x: Math.sin(t) * 1.12,
+            y: -Math.cos(t) * 0.55,
+        };
+        const tangent = {
+            x: Math.cos(t) * 1.12,
+            y: Math.sin(t) * 0.55,
+        };
+        const len = Math.hypot(tangent.x, tangent.y) || 1;
+        const normal = {
+            x: -tangent.y / len,
+            y: tangent.x / len,
+        };
+        const taper = Math.sin(u * Math.PI);
+        const width = 0.08 + 0.28 * taper;
+
+        top.push({
+            x: center.x + normal.x * width,
+            y: center.y + normal.y * width,
+        });
+        bottom.push({
+            x: center.x - normal.x * width * 0.58,
+            y: center.y - normal.y * width * 0.58,
+        });
+    }
+
+    return top.concat(bottom.reverse());
+}
+
+function makeBaseShapePoints(kind) {
+    if (kind === "ellipse") return makeEllipsePoints();
+    if (kind === "pinched") return makePinchedPoints();
+    if (kind === "blob") return makeBlobPoints();
+    if (kind === "polygon") return makeRoundedPolygonPoints();
+    if (kind === "petal") return makePetalPoints();
+    return makeBananaPoints();
 }
 
 function normalizeAngle(angle) {
@@ -131,22 +361,28 @@ function makeMobileAnglesAndTorques(count) {
     };
 }
 
-function makeCircle(angle, torque, index, size, colorOffset) {
+function makeLeafShape(angle, torque, index, size, colorOffset, forcedKind = null) {
     const minRadius = Math.max(0.004, size * 0.025);
     const maxRadius = Math.max(minRadius + Math.max(0.004, size * 0.015), size * 0.18);
-    const radius = randomRadius(minRadius, maxRadius);
-    const area = Math.PI * radius * radius;
+    const targetRadius = randomRadius(minRadius, maxRadius);
+    const area = Math.PI * targetRadius * targetRadius;
+    const shape = forcedKind || LEAF_SHAPES[randInt(0, LEAF_SHAPES.length - 1)];
+    const points = normalizeShapePoints(makeBaseShapePoints(shape), area);
 
     return {
-        type: "circle",
+        type: "shape",
+        shape,
         angle,
-        radius,
+        radius: boundingRadius(points),
+        targetRadius,
         area,
         weight: area,
         torque,
         rodLength: 0,
         x: 0,
         y: 0,
+        rotation: rand(0, TAU),
+        points,
         color: PALETTE[(colorOffset + index) % PALETTE.length],
     };
 }
@@ -205,23 +441,28 @@ function placeItems(items, rodScale) {
     }
 }
 
-function makeFallbackCircleEndpoints(count, size, colorOffset) {
-    const radius = Math.max(0.004, size * 0.025);
+function makeFallbackShapeEndpoints(count, size, colorOffset) {
+    const targetRadius = Math.max(0.004, size * 0.025);
     const start = rand(0, TAU);
     const items = Array.from({ length: count }, (_, i) => {
         const angle = normalizeAngle(start + (i / count) * TAU);
-        const area = Math.PI * radius * radius;
+        const area = Math.PI * targetRadius * targetRadius;
+        const points = normalizeShapePoints(makeBaseShapePoints("ellipse"), area);
 
         return {
-            type: "circle",
+            type: "shape",
+            shape: "ellipse",
             angle,
-            radius,
+            radius: boundingRadius(points),
+            targetRadius,
             area,
             weight: area,
             torque: 1,
             rodLength: 0,
             x: 0,
             y: 0,
+            rotation: rand(0, TAU),
+            points,
             color: PALETTE[(colorOffset + i) % PALETTE.length],
         };
     });
@@ -248,9 +489,9 @@ function sumWeights(items) {
 }
 
 function endpointRadius(item) {
-    return item.type === "circle"
-        ? item.radius
-        : Math.max(0.5, item.size * 0.018);
+    return item.type === "mobile"
+        ? Math.max(0.5, item.size * 0.018)
+        : item.radius;
 }
 
 function mobileRadius(items) {
@@ -268,7 +509,7 @@ function balanceFor(items) {
 }
 
 function mobileDepth(item) {
-    if (item.type === "circle") {
+    if (item.type !== "mobile") {
         return 0;
     }
 
@@ -291,7 +532,7 @@ function makeEndpoint(levels, size, childSize, index, colorOffset, forceDepth) {
         return makeMobileNode(levels - 1, childSize, colorOffset + index * 3, forceDepth);
     }
 
-    return makeCircle(0, 0, index, levels === 1 ? size : childSize, colorOffset);
+    return makeLeafShape(0, 0, index, levels === 1 ? size : childSize, colorOffset);
 }
 
 function makeMobileEndpoints(count, levels, size, colorOffset, forceDepth) {
@@ -356,7 +597,7 @@ function makeMobileEndpoints(count, levels, size, colorOffset, forceDepth) {
         }
     }
 
-    return makeFallbackCircleEndpoints(count, size, colorOffset);
+    return makeFallbackShapeEndpoints(count, size, colorOffset);
 }
 
 function makeMobileNode(levels, size, colorOffset = 0, forceDepth = false) {
@@ -405,12 +646,27 @@ function clear() {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
-function renderCircle(circle) {
-    ctx.fillStyle = circle.color;
+function renderShape(shape) {
+    ctx.save();
+    ctx.translate(shape.x, shape.y);
+    ctx.rotate(shape.rotation);
+    ctx.fillStyle = shape.color;
     ctx.beginPath();
-    ctx.arc(circle.x, circle.y, circle.radius, 0, TAU);
+
+    for (let i = 0; i < shape.points.length; i++) {
+        const point = shape.points[i];
+
+        if (i === 0) {
+            ctx.moveTo(point.x, point.y);
+        } else {
+            ctx.lineTo(point.x, point.y);
+        }
+    }
+
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
 }
 
 function renderMobile(mobile, isRoot = false) {
@@ -446,7 +702,7 @@ function renderMobile(mobile, isRoot = false) {
         if (child.type === "mobile") {
             renderMobile(child);
         } else {
-            renderCircle(child);
+            renderShape(child);
         }
     }
 
