@@ -577,11 +577,15 @@ async function startOrientation() {
 startBtn.addEventListener("click", async () => {
   try {
     startBtn.disabled = true;
-    statusEl.textContent = "Requesting permissions...";
+    statusEl.textContent = "Requesting orientation...";
 
-    await startCamera();
-    await startLocation();
     await startOrientation();
+
+    statusEl.textContent = "Requesting camera...";
+    await startCamera();
+
+    statusEl.textContent = "Requesting location...";
+    await startLocation();
 
     startBtn.classList.add("hidden");
     calibrateBtn.classList.remove("hidden");
