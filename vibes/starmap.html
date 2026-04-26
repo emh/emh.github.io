@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>AR Stars Prototype</title>
+<style>
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    color: white;
+  }
+
+  #video, #overlay {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #video {
+    object-fit: cover;
+    transform: scaleX(-1);
+    background: #000;
+  }
+
+  #overlay {
+    pointer-events: none;
+  }
+
+  #hud {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: auto;
+  }
+
+  button {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 12px;
+    background: rgba(20,20,24,0.78);
+    color: white;
+    padding: 12px 14px;
+    font-size: 15px;
+    backdrop-filter: blur(12px);
+  }
+
+  #status {
+    font-size: 12px;
+    line-height: 1.35;
+    color: rgba(255,255,255,0.82);
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 10px 12px;
+    backdrop-filter: blur(12px);
+  }
+
+  .hidden {
+    display: none;
+  }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="overlay"></canvas>
+
+<div id="hud">
+  <button id="start">Start AR Sky</button>
+  <button id="calibrate" class="hidden">Set Current View as North</button>
+  <div id="status">Camera, location, and orientation permissions required.</div>
+</div>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("overlay");
+const ctx = canvas.getContext("2d");
+const startBtn = document.getElementById("start");
+const calibrateBtn = document.getElementById("calibrate");
+const statusEl = document.getElementById("status");
+
+let W = 0;
+let H = 0;
+let DPR = 1;
+
+let lat = null;
+let lon = null;
+
+let headingDeg = 0;
+let pitchDeg = 0;
+let rollDeg = 0;
+let haveOrientation = false;
+let haveLocation = false;
+
+let headingOffset = 0;
+
+const FOV_X = 62;
+const FOV_Y = 48;
+
+// Bright star catalog: name, right ascension hours, declination degrees.
+// Small catalog for prototype clarity.
+const STARS = [
+  ["Sirius",        6.7525, -16.7161],
+  ["Canopus",      6.3992, -52.6957],
+  ["Arcturus",    14.2610,  19.1825],
+  ["Vega",        18.6156,  38.7837],
+  ["Capella",      5.2782,  45.9980],
+  ["Rigel",        5.2423,  -8.2016],
+  ["Procyon",      7.6550,   5.2250],
+  ["Betelgeuse",   5.9195,   7.4071],
+  ["Achernar",     1.6286, -57.2368],
+  ["Hadar",       14.0637, -60.3730],
+  ["Altair",      19.8464,   8.8683],
+  ["Acrux",       12.4433, -63.0991],
+  ["Aldebaran",    4.5987,  16.5093],
+  ["Spica",       13.4199, -11.1613],
+  ["Antares",     16.4901, -26.4320],
+  ["Pollux",       7.7553,  28.0262],
+  ["Fomalhaut",   22.9608, -29.6222],
+  ["Deneb",       20.6905,  45.2803],
+  ["Regulus",     10.1395,  11.9672],
+  ["Castor",       7.5767,  31.8883],
+  ["Gacrux",      12.5194, -57.1132],
+  ["Bellatrix",    5.4189,   6.3497],
+  ["Elnath",       5.4382,  28.6075],
+  ["Miaplacidus",  9.2201, -69.7172],
+  ["Alnilam",      5.6036,  -1.2019],
+  ["Alnair",      22.1372, -46.9609],
+  ["Alioth",      12.9005,  55.9598],
+  ["Dubhe",       11.0621,  61.7510],
+  ["Mirfak",       3.4054,  49.8612],
+  ["Wezen",        7.1399, -26.3932],
+];
+
+const PLANET_ELEMENTS = {
+  Mercury: {
+    N: [48.3313, 3.24587e-5],
+    i: [7.0047, 5.00e-8],
+    w: [29.1241, 1.01444e-5],
+    a: [0.387098, 0],
+    e: [0.205635, 5.59e-10],
+    M: [168.6562, 4.0923344368]
+  },
+  Venus: {
+    N: [76.6799, 2.46590e-5],
+    i: [3.3946, 2.75e-8],
+    w: [54.8910, 1.38374e-5],
+    a: [0.723330, 0],
+    e: [0.006773, -1.302e-9],
+    M: [48.0052, 1.6021302244]
+  },
+  Mars: {
+    N: [49.5574, 2.11081e-5],
+    i: [1.8497, -1.78e-8],
+    w: [286.5016, 2.92961e-5],
+    a: [1.523688, 0],
+    e: [0.093405, 2.516e-9],
+    M: [18.6021, 0.5240207766]
+  },
+  Jupiter: {
+    N: [100.4542, 2.76854e-5],
+    i: [1.3030, -1.557e-7],
+    w: [273.8777, 1.64505e-5],
+    a: [5.20256, 0],
+    e: [0.048498, 4.469e-9],
+    M: [19.8950, 0.0830853001]
+  },
+  Saturn: {
+    N: [113.6634, 2.38980e-5],
+    i: [2.4886, -1.081e-7],
+    w: [339.3939, 2.97661e-5],
+    a: [9.55475, 0],
+    e: [0.055546, -9.499e-9],
+    M: [316.9670, 0.0334442282]
+  }
+};
+
+function resize() {
+  DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+function rad(d) { return d * Math.PI / 180; }
+function deg(r) { return r * 180 / Math.PI; }
+function sin(d) { return Math.sin(rad(d)); }
+function cos(d) { return Math.cos(rad(d)); }
+function atan2d(y, x) { return deg(Math.atan2(y, x)); }
+function asind(x) { return deg(Math.asin(x)); }
+
+function norm360(x) {
+  return ((x % 360) + 360) % 360;
+}
+
+function norm180(x) {
+  x = norm360(x);
+  return x > 180 ? x - 360 : x;
+}
+
+function julianDate(date = new Date()) {
+  return date.getTime() / 86400000 + 2440587.5;
+}
+
+function daysSinceJ2000(date = new Date()) {
+  return julianDate(date) - 2451545.0;
+}
+
+function gmstDeg(date = new Date()) {
+  const jd = julianDate(date);
+  const d = jd - 2451545.0;
+  return norm360(280.46061837 + 360.98564736629 * d);
+}
+
+function localSiderealDeg(date, longitudeDeg) {
+  return norm360(gmstDeg(date) + longitudeDeg);
+}
+
+function raDecToAltAz(raHours, decDeg, date, latitudeDeg, longitudeDeg) {
+  const lst = localSiderealDeg(date, longitudeDeg);
+  const raDeg = raHours * 15;
+  const H = norm180(lst - raDeg);
+
+  const alt = asind(
+    sin(decDeg) * sin(latitudeDeg) +
+    cos(decDeg) * cos(latitudeDeg) * cos(H)
+  );
+
+  const az = norm360(
+    atan2d(
+      -sin(H),
+      Math.tan(rad(decDeg)) * cos(latitudeDeg) - sin(latitudeDeg) * cos(H)
+    )
+  );
+
+  return { alt, az };
+}
+
+function eclipticToRaDec(lambdaDeg, betaDeg = 0) {
+  const eps = 23.4393;
+  const x = cos(lambdaDeg) * cos(betaDeg);
+  const y = sin(lambdaDeg) * cos(betaDeg);
+  const z = sin(betaDeg);
+
+  const xe = x;
+  const ye = y * cos(eps) - z * sin(eps);
+  const ze = y * sin(eps) + z * cos(eps);
+
+  const ra = norm360(atan2d(ye, xe)) / 15;
+  const dec = asind(ze);
+
+  return { ra, dec };
+}
+
+function sunRaDec(date = new Date()) {
+  const d = daysSinceJ2000(date);
+  const w = 282.9404 + 4.70935e-5 * d;
+  const e = 0.016709 - 1.151e-9 * d;
+  const M = norm360(356.0470 + 0.9856002585 * d);
+
+  const E = M + deg(e * Math.sin(rad(M)) * (1 + e * Math.cos(rad(M))));
+  const xv = Math.cos(rad(E)) - e;
+  const yv = Math.sqrt(1 - e * e) * Math.sin(rad(E));
+  const v = atan2d(yv, xv);
+  const r = Math.sqrt(xv * xv + yv * yv);
+  const lon = norm360(v + w);
+
+  return eclipticToRaDec(lon, 0);
+}
+
+function moonRaDec(date = new Date()) {
+  const d = daysSinceJ2000(date);
+
+  const N = norm360(125.1228 - 0.0529538083 * d);
+  const i = 5.1454;
+  const w = norm360(318.0634 + 0.1643573223 * d);
+  const a = 60.2666;
+  const e = 0.054900;
+  const M = norm360(115.3654 + 13.0649929509 * d);
+
+  const E = M + deg(e * Math.sin(rad(M)) * (1 + e * Math.cos(rad(M))));
+  const xv = a * (Math.cos(rad(E)) - e);
+  const yv = a * Math.sqrt(1 - e * e) * Math.sin(rad(E));
+
+  const v = atan2d(yv, xv);
+  const r = Math.sqrt(xv * xv + yv * yv);
+
+  const xh = r * (cos(N) * cos(v + w) - sin(N) * sin(v + w) * cos(i));
+  const yh = r * (sin(N) * cos(v + w) + cos(N) * sin(v + w) * cos(i));
+  const zh = r * (sin(v + w) * sin(i));
+
+  const eps = 23.4393;
+  const xe = xh;
+  const ye = yh * cos(eps) - zh * sin(eps);
+  const ze = yh * sin(eps) + zh * cos(eps);
+
+  return {
+    ra: norm360(atan2d(ye, xe)) / 15,
+    dec: asind(ze / Math.sqrt(xe * xe + ye * ye + ze * ze))
+  };
+}
+
+function planetHeliocentric(name, date = new Date()) {
+  const d = daysSinceJ2000(date);
+  const el = PLANET_ELEMENTS[name];
+
+  const N = norm360(el.N[0] + el.N[1] * d);
+  const i = el.i[0] + el.i[1] * d;
+  const w = norm360(el.w[0] + el.w[1] * d);
+  const a = el.a[0] + el.a[1] * d;
+  const e = el.e[0] + el.e[1] * d;
+  const M = norm360(el.M[0] + el.M[1] * d);
+
+  let E = M + deg(e * Math.sin(rad(M)) * (1 + e * Math.cos(rad(M))));
+
+  for (let k = 0; k < 5; k++) {
+    E = E - (E - deg(e * Math.sin(rad(E))) - M) / (1 - e * Math.cos(rad(E)));
+  }
+
+  const xv = a * (Math.cos(rad(E)) - e);
+  const yv = a * Math.sqrt(1 - e * e) * Math.sin(rad(E));
+
+  const v = atan2d(yv, xv);
+  const r = Math.sqrt(xv * xv + yv * yv);
+
+  const xh = r * (cos(N) * cos(v + w) - sin(N) * sin(v + w) * cos(i));
+  const yh = r * (sin(N) * cos(v + w) + cos(N) * sin(v + w) * cos(i));
+  const zh = r * (sin(v + w) * sin(i));
+
+  return { x: xh, y: yh, z: zh };
+}
+
+function earthHeliocentric(date = new Date()) {
+  const d = daysSinceJ2000(date);
+  const w = 282.9404 + 4.70935e-5 * d;
+  const e = 0.016709 - 1.151e-9 * d;
+  const M = norm360(356.0470 + 0.9856002585 * d);
+  const a = 1.000000;
+
+  const E = M + deg(e * Math.sin(rad(M)) * (1 + e * Math.cos(rad(M))));
+  const xv = a * (Math.cos(rad(E)) - e);
+  const yv = a * Math.sqrt(1 - e * e) * Math.sin(rad(E));
+  const v = atan2d(yv, xv);
+  const r = Math.sqrt(xv * xv + yv * yv);
+  const lon = norm360(v + w);
+
+  return {
+    x: r * cos(lon),
+    y: r * sin(lon),
+    z: 0
+  };
+}
+
+function planetRaDec(name, date = new Date()) {
+  const p = planetHeliocentric(name, date);
+  const e = earthHeliocentric(date);
+
+  const xg = p.x - e.x;
+  const yg = p.y - e.y;
+  const zg = p.z - e.z;
+
+  const eps = 23.4393;
+  const xe = xg;
+  const ye = yg * cos(eps) - zg * sin(eps);
+  const ze = yg * sin(eps) + zg * cos(eps);
+
+  return {
+    ra: norm360(atan2d(ye, xe)) / 15,
+    dec: asind(ze / Math.sqrt(xe * xe + ye * ye + ze * ze))
+  };
+}
+
+function getObjects(date) {
+  const objects = [];
+
+  for (const [name, ra, dec] of STARS) {
+    objects.push({ name, type: "star", ra, dec });
+  }
+
+  objects.push({ name: "Sun", type: "planet", ...sunRaDec(date) });
+  objects.push({ name: "Moon", type: "planet", ...moonRaDec(date) });
+
+  for (const name of Object.keys(PLANET_ELEMENTS)) {
+    objects.push({ name, type: "planet", ...planetRaDec(name, date) });
+  }
+
+  return objects;
+}
+
+function eventToOrientation(e) {
+  // Heading:
+  // iOS exposes webkitCompassHeading where 0 = north, clockwise.
+  // Else alpha is often usable but inconsistent.
+  let h;
+
+  if (typeof e.webkitCompassHeading === "number") {
+    h = e.webkitCompassHeading;
+  } else if (typeof e.alpha === "number") {
+    h = 360 - e.alpha;
+  } else {
+    h = headingDeg;
+  }
+
+  headingDeg = norm360(h + headingOffset);
+
+  // Approximate phone camera pitch.
+  // beta: front/back tilt, gamma: left/right tilt.
+  // This mapping is intentionally simple for a prototype.
+  if (typeof e.beta === "number") {
+    pitchDeg = clamp(e.beta, -90, 90);
+  }
+
+  if (typeof e.gamma === "number") {
+    rollDeg = e.gamma;
+  }
+
+  haveOrientation = true;
+}
+
+function clamp(x, a, b) {
+  return Math.max(a, Math.min(b, x));
+}
+
+function projectAltAz(alt, az) {
+  const dx = norm180(az - headingDeg);
+
+  // Camera horizon model:
+  // pitchDeg near 0 means looking forward at horizon.
+  // positive beta often means tilted upward/downward depending device/browser.
+  // This sign may need flipping on some devices.
+  const centerAlt = -pitchDeg;
+  const dy = alt - centerAlt;
+
+  if (Math.abs(dx) > FOV_X / 2 || Math.abs(dy) > FOV_Y / 2) {
+    return null;
+  }
+
+  const x = W / 2 + (dx / (FOV_X / 2)) * (W / 2);
+  const y = H / 2 - (dy / (FOV_Y / 2)) * (H / 2);
+
+  return { x, y };
+}
+
+function drawLabel(obj, x, y) {
+  ctx.save();
+
+  ctx.font = obj.type === "planet"
+    ? "600 15px system-ui, sans-serif"
+    : "500 13px system-ui, sans-serif";
+
+  const text = obj.name;
+  const metrics = ctx.measureText(text);
+  const padX = 7;
+  const padY = 4;
+  const boxW = metrics.width + padX * 2;
+  const boxH = 22;
+
+  ctx.globalAlpha = obj.type === "planet" ? 0.95 : 0.78;
+
+  ctx.beginPath();
+  ctx.roundRect(x - boxW / 2, y - boxH / 2, boxW, boxH, 8);
+  ctx.fillStyle = obj.type === "planet"
+    ? "rgba(20, 40, 80, 0.58)"
+    : "rgba(0, 0, 0, 0.45)";
+  ctx.fill();
+
+  ctx.strokeStyle = obj.type === "planet"
+    ? "rgba(160, 205, 255, 0.9)"
+    : "rgba(255, 255, 255, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = "white";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x, y + 0.5);
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (haveLocation && haveOrientation) {
+    const date = new Date();
+    const objects = getObjects(date);
+
+    const visible = [];
+
+    for (const obj of objects) {
+      const { alt, az } = raDecToAltAz(obj.ra, obj.dec, date, lat, lon);
+      if (alt < -8) continue;
+
+      const p = projectAltAz(alt, az);
+      if (!p) continue;
+
+      visible.push({ obj, x: p.x, y: p.y, alt, az });
+    }
+
+    // Draw stars first, planets on top.
+    visible.sort((a, b) => {
+      if (a.obj.type === b.obj.type) return b.alt - a.alt;
+      return a.obj.type === "star" ? -1 : 1;
+    });
+
+    for (const v of visible) {
+      drawLabel(v.obj, v.x, v.y);
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    audio: false
+  });
+
+  video.srcObject = stream;
+}
+
+function startLocation() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.watchPosition(
+      pos => {
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+        haveLocation = true;
+        resolve();
+      },
+      err => reject(err),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 15000
+      }
+    );
+  });
+}
+
+async function startOrientation() {
+  if (
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function"
+  ) {
+    const result = await DeviceOrientationEvent.requestPermission();
+    if (result !== "granted") {
+      throw new Error("Orientation permission denied");
+    }
+  }
+
+  window.addEventListener("deviceorientation", eventToOrientation, true);
+}
+
+startBtn.addEventListener("click", async () => {
+  try {
+    startBtn.disabled = true;
+    statusEl.textContent = "Requesting permissions...";
+
+    await startCamera();
+    await startLocation();
+    await startOrientation();
+
+    startBtn.classList.add("hidden");
+    calibrateBtn.classList.remove("hidden");
+
+    statusEl.textContent = "AR sky running. Move slowly. Compass may need calibration.";
+  } catch (err) {
+    startBtn.disabled = false;
+    statusEl.textContent = "Failed: " + err.message;
+    console.error(err);
+  }
+});
+
+calibrateBtn.addEventListener("click", () => {
+  // Crude manual correction:
+  // Tapping this treats the current camera direction as north.
+  headingOffset = norm360(headingOffset - headingDeg);
+});
+
+setInterval(() => {
+  if (!haveLocation || !haveOrientation) return;
+
+  statusEl.textContent =
+    `lat ${lat.toFixed(4)}, lon ${lon.toFixed(4)}\n` +
+    `heading ${headingDeg.toFixed(0)}°, pitch ${pitchDeg.toFixed(0)}°, roll ${rollDeg.toFixed(0)}°`;
+}, 500);
+
+draw();
+</script>
+</body>
+</html>
