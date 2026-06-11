@@ -173,6 +173,7 @@
     <button class="tool" data-tool="duck"><canvas width="16" height="16"></canvas>DUCK</button>
     <button class="tool" data-tool="lily"><canvas width="16" height="16"></canvas>LILY</button>
     <button class="tool" data-tool="jet"><canvas width="16" height="16"></canvas>JET</button>
+    <button class="tool" data-tool="bridge"><canvas width="16" height="16"></canvas>BRIDGE</button>
     <button class="tool" data-tool="palm"><canvas width="16" height="16"></canvas>PALM</button>
     <button id="floatBtn" class="bigBtn">FLOAT !</button>
     <button id="friendBtn" class="smallBtn">+ ADD A FRIEND</button>
@@ -435,6 +436,32 @@ function drawJet(px,py,t){
     ctx.fillRect(Math.round(px+8+Math.cos(ang)*5),Math.round(py+8+Math.sin(ang)*5),1,1);
   }
 }
+function drawBridge(c,r){
+  const px=c*T, py=r*T;
+  const horizWater = isRiver(c+1,r)||isRiver(c-1,r);
+  if(horizWater){
+    // water flows E-W: deck spans N-S
+    ctx.fillStyle='rgba(20,50,80,.35)';                       // shadow on water
+    ctx.fillRect(px+2,py,1,T); ctx.fillRect(px+13,py,1,T);
+    ctx.fillStyle=C.fence; ctx.fillRect(px+3,py,10,T);        // deck
+    ctx.fillStyle=C.fenceDark;
+    for(let i=2;i<T;i+=3) ctx.fillRect(px+3,py+i,10,1);       // plank seams
+    ctx.fillStyle=C.fenceEdge;
+    ctx.fillRect(px+3,py,1,T); ctx.fillRect(px+12,py,1,T);    // railings
+    ctx.fillStyle='#c89b5e';
+    ctx.fillRect(px+4,py,8,1); ctx.fillRect(px+4,py+T-1,8,1); // sunlit end caps
+  } else {
+    ctx.fillStyle='rgba(20,50,80,.35)';
+    ctx.fillRect(px,py+2,T,1); ctx.fillRect(px,py+13,T,1);
+    ctx.fillStyle=C.fence; ctx.fillRect(px,py+3,T,10);
+    ctx.fillStyle=C.fenceDark;
+    for(let i=2;i<T;i+=3) ctx.fillRect(px+i,py+3,1,10);
+    ctx.fillStyle=C.fenceEdge;
+    ctx.fillRect(px,py+3,T,1); ctx.fillRect(px,py+12,T,1);
+    ctx.fillStyle='#c89b5e';
+    ctx.fillRect(px,py+4,1,8); ctx.fillRect(px+T-1,py+4,1,8);
+  }
+}
 function drawPalm(px,py){
   ctx.fillStyle=C.trunk;
   ctx.fillRect(px+7,py+4,3,11);
@@ -639,6 +666,7 @@ const TIPS=[
   'press <b>SPACE</b> to splash',
   'right-click <b>erases</b>',
   'a <b>palm tree</b> changes everything',
+  'float under a <b>bridge</b>. wave at nobody.',
   'no agenda. just <b>float</b>.',
   'try <b>+ ADD A FRIEND</b> while floating',
 ];
@@ -793,6 +821,10 @@ window.addEventListener('keydown',e=>{
     jet:g=>{ g.fillStyle=C.water; g.fillRect(0,0,16,16);
       pixCircle(g,8,8,4,'#8b9aa3'); pixCircle(g,8,8,2,'#cfe9f5');
       g.fillStyle='#fff'; g.fillRect(12,4,1,1); g.fillRect(3,11,1,1); },
+    bridge:g=>{ g.fillStyle=C.water; g.fillRect(0,0,16,16);
+      g.fillStyle=C.fence; g.fillRect(3,0,10,16);
+      g.fillStyle=C.fenceDark; for(let i=2;i<16;i+=3) g.fillRect(3,i,10,1);
+      g.fillStyle=C.fenceEdge; g.fillRect(3,0,1,16); g.fillRect(12,0,1,16); },
     palm:g=>{ g.fillStyle=C.grassA; g.fillRect(0,0,16,16);
       g.fillStyle=C.trunk; g.fillRect(7,6,2,8);
       g.fillStyle=C.leafA; g.fillRect(2,3,6,2); g.fillRect(8,3,6,2); g.fillRect(5,1,6,2); },
@@ -851,6 +883,8 @@ function frame(ts){
   for(const t of rl){ if(tiles[t.r][t.c].feat==='duck') drawDuck(t.c*T+1,t.r*T+2,gameT); }
   // floaters
   for(const f of floaters) drawFloater(f);
+  // bridges draw over floaters — tubers pass underneath
+  for(const t of rl){ if(tiles[t.r][t.c].feat==='bridge') drawBridge(t.c,t.r); }
   // props (land things draw over the water's edge & floaters pass beneath canopies)
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     if(tiles[r][c].prop) drawProp(tiles[r][c].prop,c,r);
