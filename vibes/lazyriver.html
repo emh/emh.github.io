@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LAZY RIVER — backyard construction set</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --wood:#7a4a22; --wood-dark:#5b3517; --cream:#f6e7c6; --cream-dark:#e8d3a4;
+    --coral:#ff6b57; --coral-dark:#d6452f; --ink:#3a2a18;
+    --sky1:#8fd3f0; --sky2:#b9e6f8; --sky3:#dff4fd;
+    --grass:#79b851;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'VT323', monospace;
+    color:var(--ink);
+    background:
+      linear-gradient(to bottom,
+        var(--sky1) 0 18%, var(--sky2) 18% 19%,
+        var(--sky1) 19% 36%, var(--sky2) 36% 38%,
+        var(--sky2) 38% 60%, var(--sky3) 60% 62%,
+        var(--sky3) 62% 100%);
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100%; padding:18px 12px 30px;
+    overflow-x:hidden;
+  }
+
+  /* ---------- header ---------- */
+  header{ display:flex; align-items:center; gap:22px; margin-bottom:16px; user-select:none;}
+  .sun{
+    width:34px; height:34px; background:#ffd23e; position:relative; flex:none;
+    box-shadow:0 0 0 5px #ffc12e, 0 0 0 10px rgba(255,210,62,.35);
+    animation:sunpulse 2.4s steps(2,end) infinite;
+  }
+  @keyframes sunpulse{
+    0%,100%{box-shadow:0 0 0 5px #ffc12e, 0 0 0 10px rgba(255,210,62,.35);}
+    50%{box-shadow:0 0 0 6px #ffc12e, 0 0 0 13px rgba(255,210,62,.45);}
+  }
+  .sign{
+    background:var(--wood); border:4px solid var(--wood-dark);
+    box-shadow:5px 5px 0 rgba(40,25,10,.35), inset 0 0 0 3px #946132;
+    padding:12px 22px 10px; text-align:center; position:relative;
+  }
+  .sign:before,.sign:after{
+    content:""; position:absolute; top:-14px; width:8px; height:14px; background:var(--wood-dark);
+  }
+  .sign:before{left:24px;} .sign:after{right:24px;}
+  h1{
+    font-family:'Press Start 2P', monospace; font-size:26px; color:#ffe9b8;
+    text-shadow:3px 3px 0 var(--wood-dark); letter-spacing:2px; line-height:1;
+  }
+  h1 span{display:inline-block; animation:wave 1.6s steps(3,end) infinite;}
+  h1 span:nth-child(2n){animation-delay:.2s;}
+  h1 span:nth-child(3n){animation-delay:.4s;}
+  h1 span:nth-child(5n){animation-delay:.6s;}
+  @keyframes wave{0%,100%{transform:translateY(0);}50%{transform:translateY(-3px);}}
+  .tagline{font-size:19px; color:#ffd9a0; margin-top:6px; letter-spacing:1px;}
+
+  #sndBtn{
+    font-family:'Press Start 2P',monospace; font-size:10px; padding:10px 12px;
+    background:var(--cream); border:3px solid var(--wood); color:var(--ink);
+    box-shadow:3px 3px 0 rgba(40,25,10,.35); cursor:pointer;
+  }
+  #sndBtn:active{transform:translate(2px,2px); box-shadow:1px 1px 0 rgba(40,25,10,.35);}
+
+  /* ---------- layout ---------- */
+  main{display:flex; gap:18px; align-items:flex-start; justify-content:center; flex-wrap:wrap;}
+
+  #tools{
+    background:var(--cream); border:4px solid var(--wood);
+    box-shadow:6px 6px 0 rgba(40,25,10,.3);
+    padding:12px; width:172px; display:flex; flex-direction:column; gap:7px;
+  }
+  .panelTitle{
+    font-family:'Press Start 2P',monospace; font-size:9px; color:var(--wood);
+    margin:4px 0 4px; letter-spacing:1px;
+  }
+  .panelTitle:first-child{margin-top:0;}
+  .tool{
+    display:flex; align-items:center; gap:9px;
+    font-family:'Press Start 2P',monospace; font-size:9px; text-align:left;
+    background:#fff7e3; color:var(--ink);
+    border:3px solid var(--wood); padding:5px 7px; cursor:pointer;
+    box-shadow:3px 3px 0 rgba(40,25,10,.28);
+  }
+  .tool canvas{width:30px; height:30px; image-rendering:pixelated; flex:none; background:#bfe3f5; border:2px solid var(--wood);}
+  .tool:hover{background:#fffdf4;}
+  .tool:active{transform:translate(2px,2px); box-shadow:1px 1px 0 rgba(40,25,10,.28);}
+  .tool.selected{background:var(--coral); color:#fff; border-color:var(--coral-dark);
+    box-shadow:3px 3px 0 rgba(120,20,5,.4);}
+  .tool.selected canvas{border-color:var(--coral-dark);}
+
+  .bigBtn{
+    font-family:'Press Start 2P',monospace; font-size:13px; padding:14px 8px;
+    border:4px solid var(--coral-dark); background:var(--coral); color:#fff;
+    cursor:pointer; box-shadow:4px 4px 0 rgba(120,20,5,.45);
+    text-shadow:2px 2px 0 var(--coral-dark); margin-top:8px; letter-spacing:1px;
+  }
+  .bigBtn:hover{filter:brightness(1.07);}
+  .bigBtn:active{transform:translate(2px,2px); box-shadow:2px 2px 0 rgba(120,20,5,.45);}
+  .bigBtn.floating{background:#3aa7d9; border-color:#1f7aa6; text-shadow:2px 2px 0 #1f7aa6; box-shadow:4px 4px 0 rgba(10,60,90,.45);}
+  .bigBtn.wiggle{animation:wiggle .35s steps(2,end) 2;}
+  @keyframes wiggle{25%{transform:translateX(-4px);}75%{transform:translateX(4px);}}
+
+  .smallBtn{
+    font-family:'Press Start 2P',monospace; font-size:8px; padding:8px 6px;
+    border:3px solid var(--wood); background:var(--cream-dark); color:var(--ink);
+    cursor:pointer; box-shadow:3px 3px 0 rgba(40,25,10,.28);
+  }
+  .smallBtn:active{transform:translate(2px,2px); box-shadow:1px 1px 0 rgba(40,25,10,.28);}
+  #friendBtn{display:none; background:#ffd23e; border-color:#b8860b;}
+  body.floatmode #friendBtn{display:block;}
+
+  @media (max-width:1180px){
+    main{flex-direction:column; align-items:center;}
+    #tools{
+      width:min(936px,92vw); flex-direction:row; flex-wrap:wrap;
+      justify-content:center; align-items:stretch; gap:6px;
+    }
+    .panelTitle{display:none;}
+    .bigBtn{margin-top:0; font-size:11px; padding:10px 12px;}
+    .tool{font-size:8px;}
+  }
+
+  /* ---------- stage ---------- */
+  #stage{position:relative;}
+  #game{
+    display:block; width:min(936px, 92vw); aspect-ratio:24/15;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    border:6px solid var(--wood-dark); box-shadow:8px 8px 0 rgba(40,25,10,.3);
+    touch-action:none; cursor:crosshair; background:#79b851;
+  }
+  body.floatmode #game{cursor:pointer;}
+  #stats{
+    position:absolute; top:10px; right:12px; pointer-events:none; text-align:right;
+    font-family:'Press Start 2P',monospace; font-size:10px; color:#fff;
+    text-shadow:2px 2px 0 rgba(20,40,20,.7); line-height:1.9;
+  }
+  #loopBadge{display:none; color:#ffd23e;}
+  #loopBadge.on{display:block; animation:wave 1.2s steps(2,end) infinite;}
+
+  /* ---------- footer tip ---------- */
+  footer{
+    margin-top:16px; background:var(--cream); border:4px solid var(--wood);
+    box-shadow:5px 5px 0 rgba(40,25,10,.3); padding:8px 20px;
+    font-size:21px; letter-spacing:1px; min-width:340px; text-align:center;
+  }
+  footer b{color:var(--coral-dark);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="sun"></div>
+  <div class="sign">
+    <h1 id="title">LAZY RIVER</h1>
+    <div class="tagline">backyard construction set &amp; floatation device</div>
+  </div>
+  <button id="sndBtn">SND<br>ON</button>
+</header>
+
+<main>
+  <aside id="tools">
+    <div class="panelTitle">DIG</div>
+    <button class="tool" data-tool="river"><canvas width="16" height="16"></canvas>RIVER</button>
+    <button class="tool" data-tool="erase"><canvas width="16" height="16"></canvas>ERASE</button>
+    <div class="panelTitle">DROP IN</div>
+    <button class="tool" data-tool="duck"><canvas width="16" height="16"></canvas>DUCK</button>
+    <button class="tool" data-tool="lily"><canvas width="16" height="16"></canvas>LILY</button>
+    <button class="tool" data-tool="jet"><canvas width="16" height="16"></canvas>JET</button>
+    <button class="tool" data-tool="palm"><canvas width="16" height="16"></canvas>PALM</button>
+    <button id="floatBtn" class="bigBtn">FLOAT !</button>
+    <button id="friendBtn" class="smallBtn">+ ADD A FRIEND</button>
+    <div class="panelTitle">YARD</div>
+    <button id="newYardBtn" class="smallBtn">NEW YARD</button>
+    <button id="clearBtn" class="smallBtn">DRAIN RIVER</button>
+  </aside>
+
+  <section id="stage">
+    <canvas id="game" width="384" height="240"></canvas>
+    <div id="stats">
+      <div id="lenStat">RIVER: 0 FT</div>
+      <div id="loopBadge">&infin; LOOP!</div>
+    </div>
+  </section>
+</main>
+
+<footer id="tip">drag the <b>RIVER</b> tool across the grass to dig</footer>
+
+<script>
+"use strict";
+/* ================= constants ================= */
+const T = 16, COLS = 24, ROWS = 15;
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const C = {
+  grassA:'#79b851', grassB:'#6fae49', grassC:'#84c25a', grassDark:'#5f9a3e',
+  water:'#3fa9d9', waterDeep:'#2f86b8', sparkle:'#b5e7ff',
+  sand:'#ecd28e', rim:'#6f5230',
+  fence:'#a87a3e', fenceDark:'#84582a', fenceEdge:'#5e3d1c',
+  trunk:'#7a4a22', leafA:'#3e8f3e', leafB:'#56ab4a', leafC:'#2f7531',
+};
+
+/* ================= state ================= */
+let tiles = [];           // [r][c] = {fence, prop, deco, river, feat, gv}
+let mode = 'build';
+let tool = 'river';
+let floaters = [];
+let ripples = [], sparks = [], bubbles = [];
+let clouds = [], bird = null, birdTimer = 8;
+let hoverTile = null;
+let isLoop = false, wasLoop = false;
+let muted = false;
+let lastT = 0, gameT = 0;
+const ground = document.createElement('canvas');
+ground.width = cv.width; ground.height = cv.height;
+const gtx = ground.getContext('2d');
+
+const R = (a,b)=>a+Math.random()*(b-a);
+const RI = (a,b)=>Math.floor(R(a,b+1));
+const pick = arr=>arr[Math.floor(Math.random()*arr.length)];
+
+/* ================= audio ================= */
+let AC=null;
+function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function tone(f0,f1,dur,type='square',vol=0.12){
+  if(muted) return;
+  try{
+    const a=ac(), o=a.createOscillator(), g=a.createGain();
+    o.type=type;
+    o.frequency.setValueAtTime(f0,a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),a.currentTime+dur);
+    g.gain.setValueAtTime(vol,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+dur);
+    o.connect(g).connect(a.destination);
+    o.start(); o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+function splashSnd(){
+  if(muted) return;
+  try{
+    const a=ac(), len=a.sampleRate*0.35, buf=a.createBuffer(1,len,a.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+    const src=a.createBufferSource(); src.buffer=buf;
+    const f=a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900;
+    const g=a.createGain(); g.gain.value=0.25;
+    src.connect(f).connect(g).connect(a.destination); src.start();
+    tone(200,70,0.3,'sine',0.15);
+  }catch(e){}
+}
+function quack(){ tone(540,200,0.1,'sawtooth',0.1); setTimeout(()=>tone(480,170,0.12,'sawtooth',0.1),110); }
+
+/* ================= helpers ================= */
+function inYard(c,r){ return c>=1 && c<COLS-1 && r>=1 && r<ROWS-1; }
+function tile(c,r){ return (c>=0&&c<COLS&&r>=0&&r<ROWS) ? tiles[r][c] : null; }
+function isRiver(c,r){ const t=tile(c,r); return !!(t&&t.river); }
+function riverList(){
+  const out=[];
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(tiles[r][c].river) out.push({c,r});
+  return out;
+}
+function riverNbrs(c,r){
+  const out=[];
+  if(isRiver(c,r-1)) out.push({c,r:r-1});
+  if(isRiver(c+1,r)) out.push({c:c+1,r});
+  if(isRiver(c,r+1)) out.push({c,r:r+1});
+  if(isRiver(c-1,r)) out.push({c:c-1,r});
+  return out;
+}
+function pixCircle(g,cx,cy,rad,col){
+  g.fillStyle=col;
+  for(let dy=-rad;dy<=rad;dy++){
+    const w=Math.floor(Math.sqrt(rad*rad-dy*dy));
+    g.fillRect(cx-w,cy+dy,w*2+1,1);
+  }
+}
+function pixRing(g,cx,cy,rad,col){
+  g.fillStyle=col;
+  const steps=Math.max(10,Math.floor(rad*5));
+  for(let i=0;i<steps;i++){
+    const a=i/steps*Math.PI*2;
+    g.fillRect(Math.round(cx+Math.cos(a)*rad),Math.round(cy+Math.sin(a)*rad),1,1);
+  }
+}
+
+/* ================= yard generation ================= */
+function generateYard(){
+  tiles=[];
+  for(let r=0;r<ROWS;r++){
+    const row=[];
+    for(let c=0;c<COLS;c++){
+      const fence = (c===0||c===COLS-1||r===0||r===ROWS-1);
+      const band = (Math.floor(c/3)+Math.floor(r/3))%2;
+      let gv = band? C.grassB : C.grassA;
+      if(Math.random()<0.1) gv=C.grassC;
+      row.push({fence, prop:null, deco:null, river:false, feat:null, gv});
+    }
+    tiles.push(row);
+  }
+  // decorations
+  for(let r=1;r<ROWS-1;r++) for(let c=1;c<COLS-1;c++){
+    const p=Math.random();
+    if(p<0.09) tiles[r][c].deco={k:'flower', col:pick(['#ffffff','#ffd1e8','#ffe066','#ff8c69']), ox:RI(3,10), oy:RI(3,10)};
+    else if(p<0.17) tiles[r][c].deco={k:'tuft', ox:RI(2,10), oy:RI(4,10)};
+    else if(p<0.21) tiles[r][c].deco={k:'pebble', ox:RI(3,11), oy:RI(3,11)};
+  }
+  // props
+  const props=[];
+  const addProps=(kind,n)=>{ for(let i=0;i<n;i++) props.push(kind); };
+  addProps('tree',RI(3,5)); addProps('bush',RI(2,4)); addProps('rock',RI(1,3));
+  if(Math.random()<0.65) props.push('gnome');
+  if(Math.random()<0.7) props.push('blanket');
+  for(const kind of props){
+    for(let tries=0;tries<40;tries++){
+      const c=RI(2,COLS-3), r=RI(2,ROWS-3);
+      // keep a little breathing room around props
+      let clear=true;
+      for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
+        const t=tile(c+dc,r+dr); if(t&&t.prop) clear=false;
+      }
+      if(clear && !tiles[r][c].prop){ tiles[r][c].prop=kind; break; }
+    }
+  }
+  prerenderGround();
+  updateStats();
+}
+
+function prerenderGround(){
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const t=tiles[r][c], x=c*T, y=r*T;
+    if(t.fence){
+      gtx.fillStyle=C.fence; gtx.fillRect(x,y,T,T);
+      gtx.fillStyle=C.fenceDark;
+      if(r===0||r===ROWS-1){ for(let i=0;i<T;i+=4) gtx.fillRect(x+i,y,1,T); }
+      else { for(let i=0;i<T;i+=4) gtx.fillRect(x,y+i,T,1); }
+      // inner edge
+      gtx.fillStyle=C.fenceEdge;
+      if(r===0) gtx.fillRect(x,y+T-1,T,1);
+      if(r===ROWS-1) gtx.fillRect(x,y,T,1);
+      if(c===0) gtx.fillRect(x+T-1,y,1,T);
+      if(c===COLS-1) gtx.fillRect(x,y,1,T);
+      continue;
+    }
+    gtx.fillStyle=t.gv; gtx.fillRect(x,y,T,T);
+    // speckles
+    for(let i=0;i<3;i++){
+      gtx.fillStyle=Math.random()<0.5?C.grassDark:C.grassC;
+      gtx.fillRect(x+RI(0,14),y+RI(0,14),1,1);
+    }
+    const d=t.deco;
+    if(d){
+      if(d.k==='flower'){
+        gtx.fillStyle=d.col;
+        gtx.fillRect(x+d.ox-1,y+d.oy,3,1); gtx.fillRect(x+d.ox,y+d.oy-1,1,3);
+        gtx.fillStyle='#ffb300'; gtx.fillRect(x+d.ox,y+d.oy,1,1);
+      } else if(d.k==='tuft'){
+        gtx.fillStyle=C.grassDark;
+        gtx.fillRect(x+d.ox,y+d.oy,1,3); gtx.fillRect(x+d.ox+2,y+d.oy+1,1,2); gtx.fillRect(x+d.ox-2,y+d.oy+1,1,2);
+      } else {
+        gtx.fillStyle='#9b9b9b'; gtx.fillRect(x+d.ox,y+d.oy,2,2);
+        gtx.fillStyle='#c9c9c9'; gtx.fillRect(x+d.ox,y+d.oy,1,1);
+      }
+    }
+  }
+}
+
+/* ================= river drawing ================= */
+function drawRiverTile(c,r){
+  const x=c*T, y=r*T;
+  const n=isRiver(c,r-1), e=isRiver(c+1,r), s=isRiver(c,r+1), w=isRiver(c-1,r);
+  ctx.fillStyle=C.water; ctx.fillRect(x,y,T,T);
+  // banks on disconnected sides
+  if(!n){ ctx.fillStyle=C.rim; ctx.fillRect(x,y,T,1); ctx.fillStyle=C.sand; ctx.fillRect(x,y+1,T,2); ctx.fillStyle=C.waterDeep; ctx.fillRect(x,y+3,T,1); }
+  if(!s){ ctx.fillStyle=C.rim; ctx.fillRect(x,y+T-1,T,1); ctx.fillStyle=C.sand; ctx.fillRect(x,y+T-3,T,2); ctx.fillStyle=C.waterDeep; ctx.fillRect(x,y+T-4,T,1); }
+  if(!w){ ctx.fillStyle=C.rim; ctx.fillRect(x,y,1,T); ctx.fillStyle=C.sand; ctx.fillRect(x+1,y,2,T); ctx.fillStyle=C.waterDeep; ctx.fillRect(x+3,y,1,T); }
+  if(!e){ ctx.fillStyle=C.rim; ctx.fillRect(x+T-1,y,1,T); ctx.fillStyle=C.sand; ctx.fillRect(x+T-3,y,2,T); ctx.fillStyle=C.waterDeep; ctx.fillRect(x+T-4,y,1,T); }
+  // inner corners (two connected sides, missing diagonal) — wrap the bank around
+  const corner=(cx,cy)=>{
+    ctx.fillStyle=C.sand; ctx.fillRect(cx,cy,3,3);
+    ctx.fillStyle=C.rim; ctx.fillRect(cx,cy,1,1);
+  };
+  if(n&&e&&!isRiver(c+1,r-1)) corner(x+T-3,y);
+  if(n&&w&&!isRiver(c-1,r-1)) corner(x,y);
+  if(s&&e&&!isRiver(c+1,r+1)) corner(x+T-3,y+T-3);
+  if(s&&w&&!isRiver(c-1,r+1)) corner(x,y+T-3);
+  // sparkles (deterministic, time-phased)
+  const ph=Math.floor(gameT*2.5);
+  let h=((c*73856093)^(r*19349663)^(ph*83492791))>>>0;
+  ctx.fillStyle=C.sparkle;
+  for(let i=0;i<2;i++){
+    h=(h*1664525+1013904223)>>>0;
+    const sx=4+(h%9); const sy=4+((h>>>8)%9);
+    ctx.fillRect(x+sx,y+sy,2,1);
+  }
+}
+
+/* ================= features & props ================= */
+function drawDuck(px,py,t){
+  const bob=Math.round(Math.sin(t*3+px)*1);
+  py+=bob;
+  ctx.fillStyle='#ffd23e';
+  ctx.fillRect(px+4,py+2,4,3);             // head
+  ctx.fillRect(px+2,py+5,9,4);             // body
+  ctx.fillRect(px+10,py+4,2,2);            // tail tip
+  ctx.fillStyle='#ff8c00';
+  ctx.fillRect(px+2,py+3,2,2);             // beak
+  ctx.fillStyle='#222';
+  ctx.fillRect(px+5,py+3,1,1);             // eye
+  ctx.fillStyle='#ffe98a';
+  ctx.fillRect(px+4,py+6,4,2);             // belly highlight
+  ctx.fillStyle='rgba(255,255,255,.5)';
+  ctx.fillRect(px+1,py+9,11,1);            // waterline
+}
+function drawLily(px,py,t){
+  pixCircle(ctx,px+7,py+8,4,'#3f9a3f');
+  ctx.fillStyle=C.water; ctx.fillRect(px+7,py+5,3,3);   // notch
+  ctx.fillStyle='#ff8fb6'; ctx.fillRect(px+5,py+6,2,2);
+  ctx.fillStyle='#ffd1e8'; ctx.fillRect(px+5,py+6,1,1);
+}
+function drawJet(px,py,t){
+  pixCircle(ctx,px+8,py+8,4,'#8b9aa3');
+  pixCircle(ctx,px+8,py+8,2,'#cfe9f5');
+  ctx.fillStyle='#e8f8ff';
+  const a=gameT*5;
+  for(let i=0;i<3;i++){
+    const ang=a+i*2.1;
+    ctx.fillRect(Math.round(px+8+Math.cos(ang)*5),Math.round(py+8+Math.sin(ang)*5),1,1);
+  }
+}
+function drawPalm(px,py){
+  ctx.fillStyle=C.trunk;
+  ctx.fillRect(px+7,py+4,3,11);
+  ctx.fillStyle='#8f5c2e'; ctx.fillRect(px+7,py+6,1,9);
+  // fronds
+  ctx.fillStyle=C.leafA;
+  ctx.fillRect(px+1,py+1,7,3); ctx.fillRect(px+9,py+1,7,3);
+  ctx.fillRect(px+3,py-2,4,3); ctx.fillRect(px+10,py-2,4,3);
+  ctx.fillStyle=C.leafB;
+  ctx.fillRect(px+1,py+1,5,2); ctx.fillRect(px+11,py+1,4,2);
+  ctx.fillRect(px+4,py-2,3,2);
+  ctx.fillStyle='#b8860b'; ctx.fillRect(px+8,py+2,2,2); // coconut
+}
+function drawProp(kind,c,r){
+  const x=c*T, y=r*T;
+  if(kind==='tree'){
+    ctx.fillStyle='rgba(40,80,30,.3)'; ctx.fillRect(x+3,y+12,11,3);
+    ctx.fillStyle=C.trunk; ctx.fillRect(x+6,y+7,4,8);
+    pixCircle(ctx,x+8,y+2,7,C.leafC);
+    pixCircle(ctx,x+8,y+1,6,C.leafA);
+    pixCircle(ctx,x+5,y-1,3,C.leafB);
+  } else if(kind==='bush'){
+    pixCircle(ctx,x+8,y+10,5,C.leafC);
+    pixCircle(ctx,x+7,y+9,4,C.leafA);
+    pixCircle(ctx,x+5,y+8,2,C.leafB);
+    ctx.fillStyle='#e74c3c'; ctx.fillRect(x+9,y+9,1,1); ctx.fillRect(x+6,y+11,1,1);
+  } else if(kind==='rock'){
+    pixCircle(ctx,x+8,y+10,4,'#8f8f8f');
+    pixCircle(ctx,x+7,y+9,2,'#b5b5b5');
+    ctx.fillStyle='#6f6f6f'; ctx.fillRect(x+5,y+13,7,1);
+  } else if(kind==='gnome'){
+    ctx.fillStyle='rgba(40,80,30,.3)'; ctx.fillRect(x+5,y+13,7,2);
+    ctx.fillStyle='#3a6bc4'; ctx.fillRect(x+6,y+9,5,4);      // body
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+6,y+7,5,3);      // beard
+    ctx.fillStyle='#e8b88a'; ctx.fillRect(x+7,y+6,3,2);      // face
+    ctx.fillStyle='#e02020';                                  // hat
+    ctx.fillRect(x+6,y+4,5,2); ctx.fillRect(x+7,y+2,3,2); ctx.fillRect(x+8,y+1,1,1);
+  } else if(kind==='blanket'){
+    for(let i=0;i<4;i++) for(let j=0;j<4;j++){
+      ctx.fillStyle=(i+j)%2?'#e74c3c':'#fff3e0';
+      ctx.fillRect(x+2+i*3,y+2+j*3,3,3);
+    }
+    ctx.fillStyle='#a93226'; ctx.fillRect(x+2,y+2,12,1); ctx.fillRect(x+2,y+13,12,1);
+    ctx.fillRect(x+2,y+2,1,12); ctx.fillRect(x+13,y+2,1,12);
+  } else if(kind==='palm'){
+    drawPalm(x,y);
+  }
+}
+
+/* ================= floaters ================= */
+const VARIANTS=[
+  {tube1:'#ff5a4e', tube2:'#fff3e0', skin:'#e8b88a', hair:'#5b3a1a', suit:'#2e9e6b'},
+  {tube1:'#34b8a0', tube2:'#fff3e0', skin:'#c98e62', hair:'#1d1d1d', suit:'#ff8c00'},
+  {tube1:'#ff9f1c', tube2:'#fff3e0', skin:'#f0c8a0', hair:'#c44d12', suit:'#3a6bc4'},
+  {tube1:'#e85d9e', tube2:'#fff3e0', skin:'#8d5a3a', hair:'#0d0d0d', suit:'#ffd23e'},
+];
+function makeFloaterSprite(v){
+  const c=document.createElement('canvas'); c.width=16; c.height=16;
+  const g=c.getContext('2d');
+  for(let y=0;y<16;y++) for(let x=0;x<16;x++){
+    const dx=x-7.5, dy=y-7.5, d=Math.hypot(dx,dy);
+    if(d<=7.5 && d>=4.4){
+      const ang=Math.atan2(dy,dx);
+      const stripe=Math.floor(((ang/(Math.PI*2))+1)*8)%2===0;
+      g.fillStyle=stripe? v.tube2 : v.tube1;
+      g.fillRect(x,y,1,1);
+    }
+  }
+  g.fillStyle=v.skin; g.fillRect(5,11,2,4); g.fillRect(9,11,2,4);   // legs
+  g.fillStyle=v.suit; g.fillRect(5,6,6,6);                          // suit
+  g.fillStyle=v.skin; g.fillRect(2,7,3,2); g.fillRect(11,7,3,2);    // arms
+  g.fillStyle=v.skin; g.fillRect(6,2,4,4); g.fillRect(5,3,6,2);     // head
+  g.fillStyle=v.hair; g.fillRect(5,2,6,1); g.fillRect(5,3,1,1); g.fillRect(10,3,1,1); g.fillRect(6,1,4,1);
+  g.fillStyle='#1d2430'; g.fillRect(6,4,2,1); g.fillRect(9,4,1,1);  // shades
+  return c;
+}
+function center(t){ return {x:t.c*T+T/2, y:t.r*T+T/2}; }
+function mid(a,b){ const A=center(a),B=center(b); return {x:(A.x+B.x)/2,y:(A.y+B.y)/2}; }
+function pickNext(cur,prev){
+  const nb=riverNbrs(cur.c,cur.r).filter(n=>!(prev&&n.c===prev.c&&n.r===prev.r));
+  if(nb.length) return pick(nb);
+  if(prev && isRiver(prev.c,prev.r)) return prev;   // dead end: turn around
+  return cur;                                        // isolated tile: bob in place
+}
+function spawnFloater(){
+  const list=riverList();
+  if(!list.length) return;
+  const ends=list.filter(t=>riverNbrs(t.c,t.r).length===1);
+  const start=ends.length? pick(ends) : pick(list);
+  const v=VARIANTS[floaters.length % VARIANTS.length];
+  const cur={c:start.c,r:start.r};
+  const f={
+    prev:cur, cur, next:pickNext(cur,null),
+    t:0.5, ang:R(0,Math.PI*2), spin:R(0.3,0.6)*(Math.random()<0.5?-1:1),
+    boost:1, sprite:makeFloaterSprite(v), rippleT:0,
+  };
+  floaters.push(f);
+  const p=center(cur);
+  addRipple(p.x,p.y); addRipple(p.x,p.y);
+  splashSnd();
+}
+function updateFloater(f,dt){
+  f.boost=Math.max(1, f.boost - dt*1.1);
+  const speed=1.35*f.boost;            // tiles per second
+  f.t += dt*speed;
+  f.ang += f.spin*dt*(0.6+f.boost*0.4);
+  while(f.t>=1){
+    f.t-=1;
+    f.prev=f.cur; f.cur=f.next;
+    f.next=pickNext(f.cur,f.prev);
+    const here=tile(f.cur.c,f.cur.r);
+    if(here&&here.feat==='jet'){ f.boost=2.6; tone(300,900,0.25,'triangle',0.1); jetBurst(f.cur); }
+    if(here&&here.feat==='duck'){ quack(); }
+  }
+  // quadratic through tile center: entry midpoint -> center -> exit midpoint
+  const p0=mid(f.prev,f.cur), p1=center(f.cur), p2=mid(f.cur,f.next);
+  const u=f.t, iu=1-u;
+  f.x = iu*iu*p0.x + 2*iu*u*p1.x + u*u*p2.x;
+  f.y = iu*iu*p0.y + 2*iu*u*p1.y + u*u*p2.y;
+  f.rippleT-=dt;
+  if(f.rippleT<=0){ f.rippleT=0.45/f.boost; addRipple(f.x,f.y); }
+}
+function drawFloater(f){
+  const bob=Math.sin(gameT*2.2+f.ang)*0.8;
+  // shadow
+  ctx.fillStyle='rgba(20,60,90,.3)';
+  ctx.fillRect(Math.round(f.x-6),Math.round(f.y-4+bob),12,9);
+  ctx.save();
+  ctx.translate(Math.round(f.x),Math.round(f.y+bob));
+  ctx.rotate(f.ang);
+  ctx.drawImage(f.sprite,-8,-8);
+  ctx.restore();
+}
+
+/* ================= particles ================= */
+function addRipple(x,y){ ripples.push({x,y,age:0}); }
+function jetBurst(t){
+  const p=center(t);
+  for(let i=0;i<10;i++) bubbles.push({x:p.x+R(-4,4), y:p.y+R(-4,4), vx:R(-14,14), vy:R(-14,14), age:0});
+}
+function celebrate(){
+  const list=riverList();
+  for(let i=0;i<36;i++){
+    const t=pick(list), p=center(t);
+    sparks.push({x:p.x+R(-6,6), y:p.y+R(-6,6), age:R(-0.5,0), col:pick(['#ffd23e','#fff3b0','#ffffff'])});
+  }
+  tone(523,523,0.12,'square',0.1);
+  setTimeout(()=>tone(659,659,0.12,'square',0.1),130);
+  setTimeout(()=>tone(784,1046,0.25,'square',0.1),260);
+}
+
+/* ================= clouds & birds ================= */
+function initClouds(){
+  clouds=[];
+  for(let i=0;i<3;i++){
+    clouds.push({x:R(0,cv.width), y:R(10,60+i*40), spd:R(2.5,5),
+      blobs:[[0,0,7],[8,2,5],[-8,2,5],[3,-3,4]]});
+  }
+}
+function drawClouds(shadowPass){
+  for(const cl of clouds){
+    for(const [bx,by,br] of cl.blobs){
+      if(shadowPass){
+        pixCircle(ctx,Math.round(cl.x+bx+12),Math.round(cl.y+by+26),br,'rgba(30,70,30,.13)');
+      } else {
+        pixCircle(ctx,Math.round(cl.x+bx),Math.round(cl.y+by),br,'rgba(255,255,255,.82)');
+        pixCircle(ctx,Math.round(cl.x+bx),Math.round(cl.y+by-1),br-1,'rgba(255,255,255,.9)');
+      }
+    }
+  }
+}
+
+/* ================= stats / loop detection ================= */
+function checkLoop(){
+  const list=riverList();
+  if(list.length<4){ isLoop=false; return; }
+  for(const t of list) if(riverNbrs(t.c,t.r).length!==2){ isLoop=false; return; }
+  // connectivity
+  const seen=new Set(); const stack=[list[0]];
+  while(stack.length){
+    const t=stack.pop(); const k=t.c+','+t.r;
+    if(seen.has(k)) continue; seen.add(k);
+    for(const n of riverNbrs(t.c,t.r)) stack.push(n);
+  }
+  isLoop = seen.size===list.length;
+}
+function updateStats(){
+  checkLoop();
+  const n=riverList().length;
+  document.getElementById('lenStat').textContent='RIVER: '+(n*5)+' FT';
+  document.getElementById('loopBadge').classList.toggle('on',isLoop);
+  if(isLoop && !wasLoop && n>=8){ celebrate(); setTip('<b>LOOP!</b> infinite chill achieved &infin;'); }
+  wasLoop=isLoop;
+}
+
+/* ================= tips ================= */
+const TIPS=[
+  'drag the <b>RIVER</b> tool across the grass to dig',
+  'tip: rivers love <b>loops</b> &infin;',
+  '<b>ducks</b> appreciate company',
+  'a <b>JET</b> gives you a lil zoom',
+  'press <b>SPACE</b> to splash',
+  'right-click <b>erases</b>',
+  'a <b>palm tree</b> changes everything',
+  'no agenda. just <b>float</b>.',
+  'try <b>+ ADD A FRIEND</b> while floating',
+];
+let tipIdx=0, tipHold=0;
+function setTip(html){ document.getElementById('tip').innerHTML=html; tipHold=6; }
+setInterval(()=>{
+  if(tipHold>0){ tipHold-=1; return; }
+  tipIdx=(tipIdx+1)%TIPS.length;
+  document.getElementById('tip').innerHTML=TIPS[tipIdx];
+},8000);
+
+/* ================= editing ================= */
+function applyTool(c,r){
+  const t=tile(c,r);
+  if(!t || t.fence) return;
+  if(tool==='river'){
+    if(t.prop || t.river) return;
+    t.river=true; tone(500+Math.random()*200,800,0.06,'square',0.06);
+    updateStats();
+  } else if(tool==='erase'){
+    if(t.feat){ t.feat=null; tone(300,200,0.07,'square',0.06); }
+    else if(t.river){ t.river=false; tone(280,160,0.07,'square',0.06); updateStats(); }
+    else if(t.prop){ t.prop=null; tone(280,160,0.07,'square',0.06); }
+  } else if(tool==='palm'){
+    if(t.prop || t.river) return;
+    t.prop='palm'; tone(400,650,0.08,'triangle',0.08);
+  } else { // duck / lily / jet — live on water
+    if(!t.river || t.feat===tool) return;
+    t.feat=tool;
+    if(tool==='duck') quack(); else tone(450,700,0.08,'triangle',0.08);
+  }
+}
+
+let painting=false, lastCell=null;
+function evtCell(e){
+  const rect=cv.getBoundingClientRect();
+  const x=(e.clientX-rect.left)*cv.width/rect.width;
+  const y=(e.clientY-rect.top)*cv.height/rect.height;
+  return {c:Math.floor(x/T), r:Math.floor(y/T), x, y};
+}
+function paintLine(a,b){
+  // walk cell-by-cell (L-shaped steps) so fast drags stay connected
+  let {c,r}=a;
+  applyTool(c,r);
+  let guard=0;
+  while((c!==b.c || r!==b.r) && guard++<200){
+    if(c!==b.c){ c+=Math.sign(b.c-c); applyTool(c,r); }
+    if(r!==b.r){ r+=Math.sign(b.r-r); applyTool(c,r); }
+  }
+}
+cv.addEventListener('pointerdown',e=>{
+  if(AC===null && !muted){ try{ac();}catch(err){} }
+  const cell=evtCell(e);
+  if(mode==='float'){ addRipple(cell.x,cell.y); tone(600,300,0.1,'sine',0.08); return; }
+  painting=true; lastCell=cell;
+  cv.setPointerCapture(e.pointerId);
+  if(e.button===2){ const hold=tool; tool='erase'; applyTool(cell.c,cell.r); tool=hold; }
+  else applyTool(cell.c,cell.r);
+});
+cv.addEventListener('pointermove',e=>{
+  const cell=evtCell(e);
+  hoverTile=cell;
+  if(!painting || mode==='float') return;
+  if(e.buttons&2){ const hold=tool; tool='erase'; paintLine(lastCell,cell); tool=hold; }
+  else paintLine(lastCell,cell);
+  lastCell=cell;
+});
+cv.addEventListener('pointerup',()=>{ painting=false; lastCell=null; });
+cv.addEventListener('pointerleave',()=>{ hoverTile=null; });
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* ================= UI wiring ================= */
+const toolBtns=[...document.querySelectorAll('.tool')];
+toolBtns.forEach(b=>{
+  b.addEventListener('click',()=>{
+    tool=b.dataset.tool;
+    toolBtns.forEach(x=>x.classList.toggle('selected',x===b));
+    tone(700,900,0.05,'square',0.05);
+  });
+});
+toolBtns[0].classList.add('selected');
+
+const floatBtn=document.getElementById('floatBtn');
+floatBtn.addEventListener('click',()=>{
+  if(mode==='build'){
+    if(riverList().length<6){
+      floatBtn.classList.remove('wiggle'); void floatBtn.offsetWidth;
+      floatBtn.classList.add('wiggle');
+      setTip('dig a little more river first! (<b>6+</b> tiles)');
+      tone(220,150,0.15,'square',0.1);
+      return;
+    }
+    mode='float';
+    document.body.classList.add('floatmode');
+    floatBtn.textContent='BACK TO BUILD';
+    floatBtn.classList.add('floating');
+    floaters=[]; spawnFloater();
+    setTip('ahh. press <b>SPACE</b> to splash, or add a friend');
+  } else {
+    mode='build';
+    document.body.classList.remove('floatmode');
+    floatBtn.textContent='FLOAT !';
+    floatBtn.classList.remove('floating');
+    floaters=[];
+    setTip('back to work. (the fun kind)');
+  }
+});
+document.getElementById('friendBtn').addEventListener('click',()=>{
+  if(floaters.length>=4){ setTip('the river is at <b>max chill capacity</b>'); return; }
+  spawnFloater();
+});
+document.getElementById('newYardBtn').addEventListener('click',()=>{
+  generateYard(); floaters=[]; ripples=[]; sparks=[];
+  if(mode==='float') floatBtn.click();
+  tone(350,550,0.12,'triangle',0.08);
+  setTip('fresh yard! same dream.');
+});
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ tiles[r][c].river=false; tiles[r][c].feat=null; }
+  updateStats(); splashSnd();
+  setTip('river drained. the grass remembers.');
+});
+document.getElementById('sndBtn').addEventListener('click',e=>{
+  muted=!muted;
+  e.currentTarget.innerHTML = muted? 'SND<br>OFF' : 'SND<br>ON';
+  if(!muted) tone(600,900,0.08,'square',0.08);
+});
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space' && mode==='float'){
+    e.preventDefault();
+    for(const f of floaters){ addRipple(f.x,f.y); addRipple(f.x+R(-3,3),f.y+R(-3,3)); }
+    splashSnd();
+  }
+});
+
+/* ================= tool icons ================= */
+(function drawIcons(){
+  const draws={
+    river:g=>{ g.fillStyle=C.water; g.fillRect(0,0,16,16);
+      g.fillStyle=C.sand; g.fillRect(0,0,16,2); g.fillRect(0,14,16,2);
+      g.fillStyle=C.sparkle; g.fillRect(3,6,3,1); g.fillRect(9,9,3,1); },
+    erase:g=>{ g.fillStyle=C.grassA; g.fillRect(0,0,16,16);
+      g.fillStyle='#ff8fb6'; g.fillRect(4,5,8,6);
+      g.fillStyle='#e85d9e'; g.fillRect(4,9,8,2); },
+    duck:g=>{ g.fillStyle=C.water; g.fillRect(0,0,16,16);
+      g.fillStyle='#ffd23e'; g.fillRect(5,3,4,3); g.fillRect(3,6,9,4);
+      g.fillStyle='#ff8c00'; g.fillRect(3,4,2,2);
+      g.fillStyle='#222'; g.fillRect(6,4,1,1); },
+    lily:g=>{ g.fillStyle=C.water; g.fillRect(0,0,16,16);
+      pixCircle(g,8,9,4,'#3f9a3f'); g.fillStyle=C.water; g.fillRect(8,6,3,3);
+      g.fillStyle='#ff8fb6'; g.fillRect(5,7,2,2); },
+    jet:g=>{ g.fillStyle=C.water; g.fillRect(0,0,16,16);
+      pixCircle(g,8,8,4,'#8b9aa3'); pixCircle(g,8,8,2,'#cfe9f5');
+      g.fillStyle='#fff'; g.fillRect(12,4,1,1); g.fillRect(3,11,1,1); },
+    palm:g=>{ g.fillStyle=C.grassA; g.fillRect(0,0,16,16);
+      g.fillStyle=C.trunk; g.fillRect(7,6,2,8);
+      g.fillStyle=C.leafA; g.fillRect(2,3,6,2); g.fillRect(8,3,6,2); g.fillRect(5,1,6,2); },
+  };
+  toolBtns.forEach(b=>{
+    const g=b.querySelector('canvas').getContext('2d');
+    g.imageSmoothingEnabled=false;
+    draws[b.dataset.tool](g);
+  });
+})();
+
+/* ================= title wave ================= */
+(function(){
+  const el=document.getElementById('title');
+  el.innerHTML=[...el.textContent].map(ch=>ch===' '?' ':'<span>'+ch+'</span>').join('');
+})();
+
+/* ================= main loop ================= */
+function frame(ts){
+  const dt=Math.min(0.05,(ts-lastT)/1000)||0;
+  lastT=ts; gameT+=dt;
+
+  // update
+  for(const cl of clouds){ cl.x+=cl.spd*dt; if(cl.x>cv.width+30) cl.x=-30; }
+  if(mode==='float') for(const f of floaters) updateFloater(f,dt);
+  ripples=ripples.filter(p=>(p.age+=dt)<0.9);
+  sparks=sparks.filter(p=>(p.age+=dt)<1.0);
+  bubbles=bubbles.filter(p=>{ p.age+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; return p.age<0.6; });
+  birdTimer-=dt;
+  if(birdTimer<=0 && !bird){ bird={x:-10, y:R(15,70), t:0}; birdTimer=R(10,20); }
+  if(bird){ bird.x+=28*dt; bird.t+=dt; if(bird.x>cv.width+10) bird=null; }
+
+  // draw
+  ctx.drawImage(ground,0,0);
+  const rl=riverList();
+  for(const t of rl) drawRiverTile(t.c,t.r);
+  // water-level features
+  for(const t of rl){
+    const f=tiles[t.r][t.c].feat;
+    if(f==='lily') drawLily(t.c*T,t.r*T,gameT);
+    if(f==='jet') drawJet(t.c*T,t.r*T,gameT);
+  }
+  // cloud shadows on the ground/water
+  drawClouds(true);
+  // ripples
+  for(const p of ripples){
+    ctx.globalAlpha=Math.max(0,1-p.age/0.9)*0.7;
+    pixRing(ctx,p.x,p.y,2+p.age*8,'#dff4ff');
+  }
+  ctx.globalAlpha=1;
+  // bubbles
+  ctx.fillStyle='#eafaff';
+  for(const p of bubbles){ ctx.globalAlpha=1-p.age/0.6; ctx.fillRect(Math.round(p.x),Math.round(p.y),1,1); }
+  ctx.globalAlpha=1;
+  // ducks above ripples
+  for(const t of rl){ if(tiles[t.r][t.c].feat==='duck') drawDuck(t.c*T+1,t.r*T+2,gameT); }
+  // floaters
+  for(const f of floaters) drawFloater(f);
+  // props (land things draw over the water's edge & floaters pass beneath canopies)
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    if(tiles[r][c].prop) drawProp(tiles[r][c].prop,c,r);
+  }
+  // sparks
+  for(const p of sparks){
+    if(p.age<0) continue;
+    ctx.globalAlpha=Math.max(0,1-p.age);
+    ctx.fillStyle=p.col;
+    const s=p.age<0.5?2:1;
+    ctx.fillRect(Math.round(p.x),Math.round(p.y),s,s);
+  }
+  ctx.globalAlpha=1;
+  // clouds + bird
+  drawClouds(false);
+  if(bird){
+    ctx.fillStyle='#2b2b2b';
+    const flap=Math.floor(bird.t*7)%2;
+    const bx=Math.round(bird.x), by=Math.round(bird.y);
+    if(flap){ ctx.fillRect(bx-3,by-1,3,1); ctx.fillRect(bx+1,by-1,3,1); ctx.fillRect(bx,by,1,1); }
+    else { ctx.fillRect(bx-3,by+1,3,1); ctx.fillRect(bx+1,by+1,3,1); ctx.fillRect(bx,by,1,1); }
+  }
+  // cursor ghost
+  if(mode==='build' && hoverTile && inYard(hoverTile.c,hoverTile.r)){
+    const t=tiles[hoverTile.r][hoverTile.c];
+    let ok=true;
+    if(tool==='river') ok=!t.prop;
+    else if(tool==='palm') ok=!t.prop && !t.river;
+    else if(tool!=='erase') ok=t.river;
+    const x=hoverTile.c*T, y=hoverTile.r*T;
+    const pulse=0.25+Math.abs(Math.sin(gameT*3))*0.2;
+    ctx.globalAlpha=pulse;
+    ctx.fillStyle=ok?'#ffffff':'#ff3b30';
+    ctx.fillRect(x,y,T,T);
+    ctx.globalAlpha=0.9;
+    ctx.strokeStyle=ok?'#ffffff':'#ff3b30';
+    ctx.lineWidth=1;
+    ctx.strokeRect(x+0.5,y+0.5,T-1,T-1);
+    ctx.globalAlpha=1;
+  }
+
+  requestAnimationFrame(frame);
+}
+
+/* ================= go ================= */
+generateYard();
+initClouds();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
