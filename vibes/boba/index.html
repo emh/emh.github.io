@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boba Stand! ~ A Bubble Tea Adventure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <div id="hud" class="hidden">
+    <div class="hud-left">
+      <span id="hud-day" class="hud-chip"></span>
+      <span id="hud-weather" class="hud-chip"></span>
+    </div>
+    <div class="hud-mid">
+      <span id="hud-rep" class="hud-chip"></span>
+    </div>
+    <div class="hud-right">
+      <span id="hud-money" class="hud-chip money"></span>
+      <button class="hud-btn" onclick="G.showBadges()" title="Badges">🏅</button>
+      <button class="hud-btn" onclick="G.showHelp()" title="How to play">?</button>
+      <button class="hud-btn" id="mute-btn" onclick="G.toggleMute()" title="Sound">♪</button>
+    </div>
+  </div>
+  <div id="screen"></div>
+  <div id="dialog" class="hidden">
+    <div id="dialog-sprite"></div>
+    <div id="dialog-box">
+      <div id="dialog-name">PROF. OOLONG</div>
+      <div id="dialog-text"></div>
+      <button id="dialog-ok" class="btn btn-small" onclick="G.closeDialog()">OK ▸</button>
+    </div>
+  </div>
+  <div id="modal" class="hidden">
+    <div id="modal-card"></div>
+  </div>
+</div>
+<div id="scanlines"></div>
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
