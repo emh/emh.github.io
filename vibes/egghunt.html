@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2a2438">
+<title>EGG HUNT — a tiny pixel adventure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#2a2438;
+    --cream:#fdf3e3;
+    --mint:#bfe8cf;
+    --pink:#f7b6c8;
+    --yellow:#f9dd8f;
+    --sky:#a8d8ea;
+    --shadow:#1a1626;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; overscroll-behavior:none; }
+  body{
+    font-family:'Press Start 2P', monospace;
+    background:#000;
+    color:var(--ink);
+    overflow:hidden;
+    touch-action:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  #hud{
+    position:fixed; top:0; left:0; right:0; z-index:10;
+    display:flex; align-items:center; justify-content:space-between;
+    background:rgba(26,22,38,.92); color:var(--cream);
+    border-bottom:3px solid var(--shadow);
+    padding:8px 12px;
+    padding-top:calc(8px + env(safe-area-inset-top));
+    font-size:11px;
+    image-rendering:pixelated;
+  }
+  #hud .eggs{ color:var(--yellow); display:flex; align-items:center; gap:8px; }
+  #hud canvas{ image-rendering:pixelated; width:22px; height:26px; }
+  #hud .time{ color:var(--sky); }
+  #mute{
+    font-family:inherit; font-size:11px; cursor:pointer;
+    background:var(--pink); color:var(--ink);
+    border:3px solid var(--shadow); box-shadow:0 3px 0 var(--shadow);
+    padding:6px 8px;
+  }
+  #mute:active{ transform:translateY(3px); box-shadow:none; }
+  #stage{
+    position:fixed; inset:0;
+    width:100vw; height:100vh; height:100dvh;
+    background:#000;
+    overflow:hidden;
+  }
+  #game{
+    position:absolute; top:0; left:0;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+  }
+  .overlay{
+    position:absolute; inset:0; z-index:5;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; text-align:center; padding:16px;
+    background:rgba(26,22,38,.88);
+    color:var(--cream);
+  }
+  .overlay.hidden{ display:none; }
+  .overlay h1{
+    font-size:clamp(18px, 5vw, 30px);
+    color:var(--yellow);
+    text-shadow:3px 3px 0 var(--shadow), -2px -2px 0 #d4912f;
+    line-height:1.4;
+  }
+  .overlay h2{ font-size:clamp(12px,3vw,16px); color:var(--pink); line-height:1.6; }
+  .overlay p{ font-size:clamp(8px,2.2vw,10px); line-height:1.9; color:var(--sky); max-width:34ch; }
+  .overlay .blink{ animation:blink 1s steps(2) infinite; color:var(--cream); font-size:clamp(9px,2.4vw,12px); }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .overlay canvas{ image-rendering:pixelated; }
+  #footer{
+    position:fixed; bottom:calc(6px + env(safe-area-inset-bottom)); left:0; right:0; z-index:10;
+    pointer-events:none;
+    font-size:8px; color:var(--cream); opacity:.55; letter-spacing:1px; text-align:center; line-height:1.8;
+    text-shadow:1px 1px 0 var(--shadow);
+  }
+  button.pixel{
+    font-family:inherit; font-size:12px; cursor:pointer;
+    background:var(--yellow); color:var(--ink);
+    border:4px solid var(--shadow); box-shadow:0 5px 0 var(--shadow);
+    padding:12px 18px;
+  }
+  button.pixel:active{ transform:translateY(5px); box-shadow:none; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <span class="eggs"><canvas id="hudEgg" width="11" height="13"></canvas><span id="eggCount">0/12</span></span>
+  <span class="time" id="timer">0:00</span>
+  <button id="mute" aria-label="toggle sound">♪ ON</button>
+</div>
+
+<div id="stage">
+  <canvas id="game" width="256" height="176"></canvas>
+
+  <div class="overlay" id="title">
+    <h1>EGG&nbsp;HUNT</h1>
+    <canvas id="portrait" width="16" height="16" style="width:96px;height:96px"></canvas>
+    <h2>12 eggs are hidden<br>around the house!</h2>
+    <p id="howto"></p>
+    <span class="blink">— press to start —</span>
+  </div>
+
+  <div class="overlay hidden" id="win">
+    <h1>YOU FOUND<br>THEM ALL!</h1>
+    <canvas id="winEgg" width="11" height="13" style="width:66px;height:78px"></canvas>
+    <h2 id="winStats"></h2>
+    <button class="pixel" id="again">PLAY AGAIN</button>
+  </div>
+</div>
+
+<div id="footer">ARROWS / WASD on desktop &nbsp;·&nbsp; SWIPE on mobile &nbsp;·&nbsp; tap to stop</div>
+
+<script>
+"use strict";
+/* ============================================================
+   EGG HUNT — an 8-bit easter egg hunt in a modern house
+   ============================================================ */
+
+const TILE = 16;
+let VIEW_W = 256, VIEW_H = 176;            // recomputed to fill the screen
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+/* ---------- map ----------
+   # wall   W window-wall   G hedge   Y tree
+   . wood   , kitchen tile  ~ bath tile  r rug  g grass  F flowers  x doormat
+   furniture (solid): C couch T tv k shelf t table c counter f fridge s stove
+   S sink i island b bed D dresser p plant B tub o toilet v vanity
+*/
+const MAP = [
+"####WW#########WW#########WW####",
+"#fccscScc,#...kkTTTkk.#bb.....D#",
+"#,,,,,,,,,#...........#bb......#",
+"#,,iii,,,,#...rrrrr...#.......p#",
+"#,,iii,,,,#...rrrrr............#",
+"#,,,,,,,,,#...CCCCC...#..t.....#",
+"#,,tt,,,,,#...........#........#",
+"#,,,,,,,,,#p.........p#........#",
+"#####.#####...........#........#",
+"#kk......p#...........#........#",
+"#.........#...........####.####W",
+"#..tt.....#...........#BB~~~~~o#",
+"#.........#...........#~~~~~~~v#",
+"###.###########..######~~~~~~~~#",
+"#.....................####.####W",
+"#p............................p#",
+"#....t.........................#",
+"#...............x..............#",
+"################.##############G",
+"GggggggggggggggggggggggggggggggG",
+"GggggYggggFggggggggggggggggggggG",
+"GggFggggggggggggggggggggggYggggG",
+"GgggggggggFggggggggggggFgggggggG",
+"GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+];
+const MAP_H = MAP.length, MAP_W = MAP[0].length;
+const WALKABLE = ".,~rgFx";
+const tileAt = (x,y) => (x<0||y<0||x>=MAP_W||y>=MAP_H) ? '#' : MAP[y][x];
+const walkable = (x,y) => WALKABLE.includes(tileAt(x,y));
+
+/* which floor sits under each furniture piece */
+const UNDERLAY = { C:'.',T:'.',k:'.',t:'.',D:'.',b:'.',p:'.',
+                   c:',',f:',',s:',',S:',',i:',',
+                   B:'~',o:'~',v:'~', Y:'g' };
+
+/* ---------- palette ---------- */
+const P = {
+  ink:'#1a1626', wall:'#5b5570', wallHi:'#746d8c', wallLo:'#403a52',
+  wood:'#c89b6a', woodHi:'#d6ad7d', woodLo:'#b78a58',
+  kit:'#e8e3d8', kitLo:'#d2ccbe',
+  bath:'#bcdfe4', bathLo:'#a3ccd3',
+  rug:'#e2766f', rugHi:'#eb9a8e', rugLo:'#c95f5d',
+  grass:'#7ec85f', grassLo:'#6bb44e', grassHi:'#94d977',
+  hedge:'#3e8a3c', hedgeHi:'#54a44d', hedgeLo:'#2c6e2e',
+  glass:'#aee3f5',
+  black:'#16131f', gray:'#8e8e9a', grayHi:'#c9c9d1', grayLo:'#5c5c68',
+  skin:'#e8b27d', skinLo:'#c98f5e',
+  white:'#fdf3e3',
+  couch:'#5a7d9a', couchHi:'#73a0bf', couchLo:'#48657e',
+  wood2:'#8a5a3b', wood2Hi:'#a06f4a', wood2Lo:'#6f4630',
+  steel:'#cfd4dc', steelLo:'#a9aeba',
+  leaf:'#4aa54a', leafHi:'#63c25c', pot:'#c96a3f',
+  bed:'#f0876f', bedHi:'#f7a68e', sheet:'#fdf3e3',
+  porc:'#f4f4ee', porcLo:'#d8d8cf',
+  flower1:'#f7b6c8', flower2:'#f9dd8f',
+};
+
+/* tiny deterministic noise for tile variation */
+function hash2(x,y){ let h=(x*374761393 + y*668265263)|0; h=(h^(h>>13))*1274126177; return ((h^(h>>16))>>>0)/4294967295; }
+
+/* ---------- tile rendering onto a full-map background canvas ---------- */
+const bg = document.createElement('canvas');
+bg.width = MAP_W*TILE; bg.height = MAP_H*TILE;
+const bctx = bg.getContext('2d');
+
+function px(c,x,y,w=1,h=1,col){ c.fillStyle=col; c.fillRect(x,y,w,h); }
+
+function drawFloor(c,ox,oy,ch,mx,my){
+  const r = hash2(mx,my);
+  if(ch==='.'){
+    px(c,ox,oy,16,16,P.wood);
+    for(let i=0;i<4;i++) px(c,ox,oy+i*4,16,1,P.woodLo);
+    const off = (my%2)?8:0;
+    px(c,ox+((off+ (mx%2)*8)%16),oy+ (r>0.5?1:9),1,3,P.woodLo);
+    if(r>0.7) px(c,ox+(r*13|0),oy+5,2,1,P.woodHi);
+  } else if(ch===','){
+    px(c,ox,oy,16,16,P.kit);
+    px(c,ox,oy,16,1,P.kitLo); px(c,ox,oy,1,16,P.kitLo);
+    px(c,ox+8,oy,1,16,P.kitLo); px(c,ox,oy+8,16,1,P.kitLo);
+  } else if(ch==='~'){
+    px(c,ox,oy,16,16,P.bath);
+    px(c,ox,oy,16,1,P.bathLo); px(c,ox,oy,1,16,P.bathLo);
+    px(c,ox+8,oy,1,16,P.bathLo); px(c,ox,oy+8,16,1,P.bathLo);
+    if(r>0.8) px(c,ox+10,oy+11,2,2,P.white);
+  } else if(ch==='r'){
+    px(c,ox,oy,16,16,P.rug);
+    if(hash2(mx*3,my*7)>0.5) px(c,ox+3,oy+3,2,2,P.rugHi);
+    px(c,ox+9,oy+9,2,2,P.rugLo);
+    if(my===3||my===4){ if(my===3) px(c,ox,oy,16,2,P.rugLo); else px(c,ox,oy+14,16,2,P.rugLo); }
+  } else if(ch==='g'||ch==='F'){
+    px(c,ox,oy,16,16,P.grass);
+    for(let i=0;i<5;i++){
+      const rx=hash2(mx*5+i,my*9)*14|0, ry=hash2(mx*9,my*5+i)*14|0;
+      px(c,ox+rx,oy+ry,1,2, i%2?P.grassLo:P.grassHi);
+    }
+    if(ch==='F'){
+      px(c,ox+3,oy+4,3,3,P.flower1); px(c,ox+4,oy+5,1,1,P.yellowDot||'#f9dd8f');
+      px(c,ox+10,oy+9,3,3,P.flower2); px(c,ox+11,oy+10,1,1,P.flower1);
+      px(c,ox+4,oy+11,2,2,P.white);
+    }
+  } else if(ch==='x'){
+    px(c,ox,oy,16,16,P.wood);
+    px(c,ox+1,oy+2,14,12,'#9a4b3f');
+    px(c,ox+2,oy+3,12,10,'#c4685a');
+    px(c,ox+3,oy+5,10,1,'#9a4b3f'); px(c,ox+3,oy+8,10,1,'#9a4b3f'); px(c,ox+3,oy+11,10,1,'#9a4b3f');
+  }
+}
+
+function drawTile(c,ch,mx,my){
+  const ox=mx*TILE, oy=my*TILE;
+  if(WALKABLE.includes(ch)){ drawFloor(c,ox,oy,ch,mx,my); return; }
+  if(ch==='#'||ch==='W'){
+    px(c,ox,oy,16,16,P.wall);
+    px(c,ox,oy,16,2,P.wallHi);
+    px(c,ox,oy+14,16,2,P.wallLo);
+    px(c,ox,oy+5,16,1,P.wallLo); px(c,ox,oy+10,16,1,P.wallLo);
+    const o=(my%2)?8:0; px(c,ox+(o+5)%16,oy+6,1,4,P.wallLo); px(c,ox+(o+12)%16,oy+1,1,4,P.wallLo);
+    if(ch==='W'){
+      px(c,ox+2,oy+3,12,10,P.ink);
+      px(c,ox+3,oy+4,10,8,P.glass);
+      px(c,ox+7,oy+4,1,8,P.ink); px(c,ox+3,oy+7,10,1,P.ink);
+      px(c,ox+4,oy+5,2,2,P.white);
+    }
+    return;
+  }
+  if(ch==='G'){ // hedge
+    px(c,ox,oy,16,16,P.hedge);
+    for(let i=0;i<6;i++){
+      const rx=hash2(mx*7+i,my*3)*13|0, ry=hash2(mx*3,my*7+i)*13|0;
+      px(c,ox+rx,oy+ry,2,2, i%2?P.hedgeHi:P.hedgeLo);
+    }
+    px(c,ox,oy+14,16,2,P.hedgeLo);
+    return;
+  }
+  // furniture: draw underlay floor first
+  drawFloor(c,ox,oy,UNDERLAY[ch]||'.',mx,my);
+  px(c,ox+1,oy+13,14,3,'rgba(26,22,38,.25)'); // contact shadow
+  switch(ch){
+    case 'C': { // couch (horizontal run)
+      const left = tileAt(mx-1,my)!=='C', right = tileAt(mx+1,my)!=='C';
+      px(c,ox,oy+2,16,11,P.couch);
+      px(c,ox,oy+2,16,3,P.couchHi);
+      px(c,ox,oy+8,16,4,P.couchLo);
+      px(c,ox+1,oy+9,14,2,P.couch);
+      if(left){ px(c,ox,oy+1,3,13,P.couchHi); px(c,ox,oy+1,3,2,P.white); }
+      if(right){ px(c,ox+13,oy+1,3,13,P.couchHi); px(c,ox+13,oy+1,3,2,P.white); }
+      px(c,ox+7,oy+4,1,8,P.couchLo);
+      break; }
+    case 'T': { // TV on console
+      px(c,ox,oy+10,16,4,P.wood2); px(c,ox,oy+10,16,1,P.wood2Hi);
+      const left = tileAt(mx-1,my)!=='T', right = tileAt(mx+1,my)!=='T';
+      px(c,ox+(left?1:0),oy+1,16-(left?1:0)-(right?1:0),9,P.ink);
+      px(c,ox+(left?2:0),oy+2,16-(left?2:0)-(right?2:0),7,'#27405e');
+      if(left) px(c,ox+3,oy+3,3,2,'#4a7aa8');
+      break; }
+    case 'k': { // bookshelf
+      px(c,ox+1,oy,14,14,P.wood2);
+      px(c,ox+2,oy+1,12,5,P.wood2Lo);
+      px(c,ox+2,oy+7,12,5,P.wood2Lo);
+      px(c,ox+3,oy+2,2,4,P.rug); px(c,ox+6,oy+2,2,4,P.couch); px(c,ox+9,oy+2,2,4,P.flower2);
+      px(c,ox+3,oy+8,2,4,P.leaf); px(c,ox+6,oy+8,2,4,P.flower1); px(c,ox+9,oy+8,3,4,P.gray);
+      break; }
+    case 't': { // table
+      px(c,ox+1,oy+3,14,8,P.wood2Hi);
+      px(c,ox+1,oy+3,14,2,'#b5825a');
+      px(c,ox+2,oy+11,2,3,P.wood2Lo); px(c,ox+12,oy+11,2,3,P.wood2Lo);
+      break; }
+    case 'c': { // counter
+      px(c,ox,oy,16,12,P.steel);
+      px(c,ox,oy,16,3,P.white);
+      px(c,ox,oy+8,16,4,P.steelLo);
+      px(c,ox+7,oy+9,2,2,P.gray);
+      break; }
+    case 'f': { // fridge
+      px(c,ox+1,oy-1,14,15,P.steel);
+      px(c,ox+1,oy-1,14,1,P.white);
+      px(c,ox+1,oy+5,14,1,P.steelLo);
+      px(c,ox+12,oy+1,1,3,P.gray); px(c,ox+12,oy+7,1,4,P.gray);
+      break; }
+    case 's': { // stove
+      px(c,ox,oy,16,12,P.steel);
+      px(c,ox+1,oy+1,6,6,P.ink); px(c,ox+9,oy+1,6,6,P.ink);
+      px(c,ox+2,oy+2,4,4,'#444'); px(c,ox+10,oy+2,4,4,'#444');
+      px(c,ox,oy+8,16,4,P.steelLo);
+      break; }
+    case 'S': { // kitchen sink
+      px(c,ox,oy,16,12,P.steel);
+      px(c,ox,oy,16,3,P.white);
+      px(c,ox+3,oy+4,10,6,P.steelLo);
+      px(c,ox+4,oy+5,8,4,P.bath);
+      px(c,ox+7,oy+2,2,3,P.gray);
+      break; }
+    case 'i': { // island
+      const left = tileAt(mx-1,my)!=='i', right = tileAt(mx+1,my)!=='i';
+      px(c,ox,oy+1,16,12,P.wood2);
+      px(c,ox,oy+1,16,4,P.white);
+      px(c,ox,oy+4,16,1,P.steelLo);
+      if(left) px(c,ox,oy+1,1,12,P.wood2Lo);
+      if(right) px(c,ox+15,oy+1,1,12,P.wood2Lo);
+      if(!left&&!right){ px(c,ox+5,oy+2,5,2,P.flower2); px(c,ox+6,oy+1,3,1,P.leaf); }
+      break; }
+    case 'b': { // bed (2x2)
+      const top = tileAt(mx,my-1)!=='b', left = tileAt(mx-1,my)!=='b';
+      px(c,ox,oy,16,16,P.bed);
+      if(top){ px(c,ox,oy,16,5,P.sheet); px(c,ox+(left?2:1),oy+1,16-3,3,P.porcLo); }
+      else { px(c,ox,oy+12,16,3,P.bedHi); px(c,ox,oy+15,16,1,'#c46a55'); }
+      px(c,ox,oy+(top?5:0),16,1,P.bedHi);
+      if(left) px(c,ox,oy,1,16,'#c46a55');
+      else px(c,ox+15,oy,1,16,'#c46a55');
+      break; }
+    case 'D': { // dresser
+      px(c,ox+1,oy+1,14,13,P.wood2);
+      px(c,ox+2,oy+2,12,5,P.wood2Hi); px(c,ox+2,oy+8,12,5,P.wood2Hi);
+      px(c,ox+7,oy+4,2,1,P.ink); px(c,ox+7,oy+10,2,1,P.ink);
+      break; }
+    case 'p': { // potted plant
+      px(c,ox+5,oy+9,6,5,P.pot);
+      px(c,ox+5,oy+9,6,1,'#e08a55');
+      px(c,ox+4,oy+2,8,7,P.leaf);
+      px(c,ox+6,oy+1,4,2,P.leafHi); px(c,ox+3,oy+4,2,3,P.leafHi);
+      px(c,ox+10,oy+5,2,2,P.leafHi); px(c,ox+7,oy+5,2,4,'#357a35');
+      break; }
+    case 'B': { // bathtub
+      const left = tileAt(mx-1,my)!=='B', right = tileAt(mx+1,my)!=='B';
+      px(c,ox,oy+1,16,12,P.porc);
+      px(c,ox+(left?2:0),oy+3,16-(left?2:0)-(right?2:0),8,P.bath);
+      px(c,ox+(left?3:0),oy+4,16-(left?3:0)-(right?3:0),2,P.glass);
+      if(left) px(c,ox,oy+1,2,12,P.porcLo);
+      if(right){ px(c,ox+14,oy+1,2,12,P.porcLo); px(c,ox+12,oy,2,4,P.steel); }
+      px(c,ox,oy+12,16,2,P.porcLo);
+      break; }
+    case 'o': { // toilet
+      px(c,ox+4,oy+1,8,5,P.porc);
+      px(c,ox+3,oy+6,10,7,P.porc);
+      px(c,ox+5,oy+7,6,4,P.bath);
+      px(c,ox+3,oy+12,10,1,P.porcLo);
+      break; }
+    case 'v': { // vanity sink
+      px(c,ox+1,oy+1,14,12,P.wood2);
+      px(c,ox+1,oy+1,14,4,P.porc);
+      px(c,ox+5,oy+2,6,2,P.bath);
+      px(c,ox+2,oy+6,12,6,P.wood2Hi);
+      px(c,ox+7,oy+8,2,1,P.ink);
+      break; }
+    case 'Y': { // tree
+      px(c,ox+6,oy+8,4,7,P.wood2Lo);
+      px(c,ox+2,oy,12,10,P.hedge);
+      px(c,ox+4,oy-1,8,3,P.hedgeHi);
+      px(c,ox+3,oy+3,3,3,P.hedgeHi); px(c,ox+9,oy+5,3,3,P.hedgeLo);
+      break; }
+  }
+}
+
+function renderMap(){
+  for(let y=0;y<MAP_H;y++) for(let x=0;x<MAP_W;x++) drawTile(bctx,MAP[y][x],x,y);
+}
+
+/* ---------- sprites: the kid (gray bun, black shades, black robe) ---------- */
+/* hair: mostly black with a subtle grey streak (H) */
+const SPRITE_PAL = { K:P.black, J:'#34303f', G:'#2e2a3a', H:'#9a9aa6', D:'#1d1a28',
+                     F:P.skin, E:P.skinLo, W:'#e8f4ff' };
+
+const SPRITES = {
+down:[[
+"......HGG.......",
+".....GHGGG......",
+".....GGDGG......",
+"......GGG.......",
+".....DDDDD......",
+"....FFFFFFF.....",
+"...KKKKKKKKK....",
+"...KWKKKKKWK....",
+"....FFFFFFF.....",
+".....FEEEF......",
+"....KKKKKKK.....",
+"...KKKKKKKKK....",
+"...KKKKKKKKK....",
+"...JKKKKKKKJ....",
+"....KKKKKKK.....",
+".....KK.KK......",
+],[
+"......HGG.......",
+".....GHGGG......",
+".....GGDGG......",
+"......GGG.......",
+".....DDDDD......",
+"....FFFFFFF.....",
+"...KKKKKKKKK....",
+"...KWKKKKKWK....",
+"....FFFFFFF.....",
+".....FEEEF......",
+"....KKKKKKK.....",
+"...KKKKKKKKK....",
+"...KKKKKKKKK....",
+"...JKKKKKKKJ....",
+"....KKKKKKK.....",
+"....KK...KK.....",
+]],
+up:[[
+"......HGG.......",
+".....GHGGG......",
+".....GGDGG......",
+"......GGG.......",
+".....GGGGG......",
+"....GGGGGGG.....",
+"....GGDGDGG.....",
+"....GGGGGGG.....",
+"....GGGGGGG.....",
+".....GGGGG......",
+"....KKKKKKK.....",
+"...KKKKKKKKK....",
+"...KKKKKKKKK....",
+"...JKKKKKKKJ....",
+"....KKKKKKK.....",
+".....KK.KK......",
+],[
+"......HGG.......",
+".....GHGGG......",
+".....GGDGG......",
+"......GGG.......",
+".....GGGGG......",
+"....GGGGGGG.....",
+"....GGDGDGG.....",
+"....GGGGGGG.....",
+"....GGGGGGG.....",
+".....GGGGG......",
+"....KKKKKKK.....",
+"...KKKKKKKKK....",
+"...KKKKKKKKK....",
+"...JKKKKKKKJ....",
+"....KKKKKKK.....",
+"....KK...KK.....",
+]],
+left:[[
+"......HGG.......",
+".....GHGGG......",
+".....GGDGG......",
+"......GGG.......",
+".....DDDGG......",
+"....FFFFFGG.....",
+"...KKKKKKGG.....",
+"...KWKKKKGG.....",
+"....FFFFFG......",
+"....FEEFF.......",
+"....KKKKKK......",
+"....KKKKKKK.....",
+"....KKKKKKK.....",
+"....JKKKKKK.....",
+".....KKKKK......",
+".....KK.KK......",
+],[
+"......HGG.......",
+".....GHGGG......",
+".....GGDGG......",
+"......GGG.......",
+".....DDDGG......",
+"....FFFFFGG.....",
+"...KKKKKKGG.....",
+"...KWKKKKGG.....",
+"....FFFFFG......",
+"....FEEFF.......",
+"....KKKKKK......",
+"....KKKKKKK.....",
+"....KKKKKKK.....",
+"....JKKKKKK.....",
+".....KKKKK......",
+"....KK...KK.....",
+]],
+};
+SPRITES.right = SPRITES.left.map(f => f.map(row => row.split('').reverse().join('')));
+
+function bakeSprite(frame){
+  const c = document.createElement('canvas'); c.width=16; c.height=16;
+  const g = c.getContext('2d');
+  frame.forEach((row,y)=>{ [...row].forEach((ch,x)=>{
+    if(ch!=='.'){ g.fillStyle=SPRITE_PAL[ch]; g.fillRect(x,y,1,1); }
+  });});
+  return c;
+}
+const SPRITE_CVS = {};
+for(const dir in SPRITES) SPRITE_CVS[dir] = SPRITES[dir].map(bakeSprite);
+
+/* ---------- eggs ---------- */
+const EGG_ART = [
+"...XXXX....",
+"..XXXXXX...",
+".XWXXXXXX..",
+".XWXAAAXX..",
+"XXAAXXXAAX.",
+"XXXXXXXXXX.",
+"XXAXXAXXAX.",
+".XXXXXXXX..",
+".XXAAAAXX..",
+"..XXXXXX...",
+"...XXXX....",
+];
+const EGG_COLORS = [
+  {X:'#f7b6c8',A:'#e2766f'}, {X:'#a8d8ea',A:'#5a7d9a'},
+  {X:'#f9dd8f',A:'#e0a13e'}, {X:'#bfe8cf',A:'#5cab74'},
+  {X:'#d9c2f0',A:'#9a76c4'}, {X:'#ffd2a8',A:'#e08a55'},
+];
+function bakeEgg(pal){
+  const c=document.createElement('canvas'); c.width=11; c.height=13;
+  const g=c.getContext('2d');
+  g.fillStyle='rgba(26,22,38,.3)'; g.fillRect(2,11,8,2);
+  EGG_ART.forEach((row,y)=>{ [...row].forEach((ch,x)=>{
+    if(ch==='.') return;
+    g.fillStyle = ch==='W' ? '#ffffff' : pal[ch];
+    g.fillRect(x,y,1,1);
+  });});
+  return c;
+}
+const EGG_CVS = EGG_COLORS.map(bakeEgg);
+
+/* hiding spots: tucked behind furniture, in flower beds, beside appliances */
+const EGG_SPOTS = [
+  [2,5],[4,7],          // kitchen: by the island, under the breakfast table
+  [17,2],[16,6],        // living: behind the TV, behind the couch
+  [11,8],[21,8],        // living: behind the plants
+  [25,2],[30,4],        // bedroom: beside the bed, behind the plant
+  [29,11],[23,12],      // bathroom: behind the toilet, by the tub
+  [1,10],[9,10],        // study: by the shelves, behind the plant
+  [1,16],[30,16],       // hallway: behind the entry plants
+  [5,21],[27,22],       // backyard: behind the trees
+  [10,20],[22,22],      // backyard: in the flowers
+];
+const EGG_TOTAL = 12;
+
+/* ---------- audio (tiny chiptune) ---------- */
+let AC=null, masterGain=null, musicOn=true, musicTimer=null;
+function audioInit(){
+  if(AC) return;
+  AC = new (window.AudioContext||window.webkitAudioContext)();
+  masterGain = AC.createGain(); masterGain.gain.value = musicOn?1:0;
+  masterGain.connect(AC.destination);
+}
+function beep(freq, t0, dur, type='square', vol=0.12){
+  if(!AC) return;
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+  o.connect(g); g.connect(masterGain);
+  o.start(t0); o.stop(t0+dur+0.02);
+}
+const NOTE = n => 440*Math.pow(2,(n-69)/12);
+function sfxCollect(){ if(!AC)return; const t=AC.currentTime;
+  beep(NOTE(76),t,.09,'square',.14); beep(NOTE(83),t+.08,.12,'square',.14); beep(NOTE(88),t+.16,.18,'square',.12); }
+function sfxStep(){ if(!AC)return; beep(140+Math.random()*40, AC.currentTime, .03,'triangle',.03); }
+function sfxWin(){ if(!AC)return; const t=AC.currentTime;
+  [72,76,79,84,79,84,88].forEach((n,i)=> beep(NOTE(n), t+i*.12, .22,'square',.13));
+  [48,52,55,60].forEach((n,i)=> beep(NOTE(n), t+i*.24, .3,'triangle',.1)); }
+
+/* gentle background loop: melody + bass, 8 bars */
+const MEL=[76,0,79,0, 84,0,79,76, 74,0,76,77, 76,74,72,0,
+           76,0,79,0, 84,0,86,84, 83,0,79,76, 79,0,0,0];
+const BASS=[48,0,55,0, 52,0,55,0, 50,0,53,0, 48,0,55,0,
+            48,0,55,0, 52,0,57,0, 55,0,52,0, 55,0,43,0];
+let musicStep=0, nextNoteTime=0;
+function musicTick(){
+  if(!AC) return;
+  const spb = 60/132/2; // 16ths at 132bpm
+  while(nextNoteTime < AC.currentTime + 0.15){
+    const m = MEL[musicStep%MEL.length], b = BASS[musicStep%BASS.length];
+    if(m) beep(NOTE(m), nextNoteTime, spb*1.6, 'square', .035);
+    if(b) beep(NOTE(b), nextNoteTime, spb*1.9, 'triangle', .05);
+    nextNoteTime += spb;
+    musicStep++;
+  }
+}
+function startMusic(){
+  audioInit();
+  if(AC.state==='suspended') AC.resume();
+  if(musicTimer) return;
+  nextNoteTime = AC.currentTime + 0.1;
+  musicTimer = setInterval(musicTick, 60);
+}
+
+/* ---------- game state ---------- */
+const state = {
+  mode:'title',           // title | play | won
+  eggs:[], found:0,
+  startTime:0, elapsed:0,
+  particles:[], sparkleT:0,
+};
+const player = {
+  x:16, y:16,             // tile coords
+  fx:16*TILE, fy:16*TILE, // pixel coords (top-left of tile)
+  dir:'down', frame:0, animT:0,
+  moving:false, from:null, to:null, t:0,
+  autoDir:null,           // mobile swipe direction
+};
+const SPEED = 5.2; // tiles per second
+
+function shuffled(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function newGame(){
+  state.eggs = shuffled(EGG_SPOTS).slice(0,EGG_TOTAL)
+    .map(([x,y],i)=>({x,y,c:i%EGG_CVS.length,found:false,tw:Math.random()*4}));
+  state.found = 0;
+  state.particles = [];
+  state.startTime = performance.now();
+  player.x=16; player.y=16; player.fx=16*TILE; player.fy=16*TILE;
+  player.dir='down'; player.moving=false; player.autoDir=null;
+  updateHud();
+}
+
+/* ---------- input ---------- */
+const keys = new Set();
+const DIRS = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+               w:'up', s:'down', a:'left', d:'right', W:'up', S:'down', A:'left', D:'right' };
+const DELTA = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+let dirStack = [];
+
+addEventListener('keydown', e=>{
+  if(state.mode==='title' ){ startGame(); return; }
+  if(state.mode==='won' && (e.key==='Enter'||e.key===' ')){ playAgain(); return; }
+  const d = DIRS[e.key];
+  if(d){
+    e.preventDefault();
+    if(!dirStack.includes(d)) dirStack.push(d);
+    keys.add(d);
+    player.autoDir = null;
+  }
+});
+addEventListener('keyup', e=>{
+  const d = DIRS[e.key];
+  if(d){ keys.delete(d); dirStack = dirStack.filter(x=>x!==d); }
+});
+
+/* swipe */
+let touchStart=null;
+addEventListener('touchstart', e=>{
+  const t=e.changedTouches[0];
+  touchStart={x:t.clientX, y:t.clientY, time:performance.now()};
+},{passive:true});
+addEventListener('touchend', e=>{
+  if(state.mode==='title'){ startGame(); touchStart=null; return; }
+  if(!touchStart) return;
+  const t=e.changedTouches[0];
+  const dx=t.clientX-touchStart.x, dy=t.clientY-touchStart.y;
+  touchStart=null;
+  if(state.mode!=='play') return;
+  if(Math.hypot(dx,dy) < 22){ player.autoDir=null; return; }   // tap = stop
+  player.autoDir = Math.abs(dx)>Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up');
+},{passive:true});
+
+const isTouch = matchMedia('(pointer:coarse)').matches;
+document.getElementById('howto').textContent = isTouch
+  ? 'swipe to walk · tap to stop · some eggs hide behind furniture!'
+  : 'arrow keys or WASD to walk · some eggs hide behind furniture!';
+
+function startGame(){
+  startMusic();
+  document.getElementById('title').classList.add('hidden');
+  newGame();
+  state.mode='play';
+}
+function playAgain(){
+  document.getElementById('win').classList.add('hidden');
+  newGame();
+  state.mode='play';
+}
+document.getElementById('again').addEventListener('click', playAgain);
+document.getElementById('title').addEventListener('click', ()=>{ if(state.mode==='title') startGame(); });
+
+document.getElementById('mute').addEventListener('click', e=>{
+  e.stopPropagation();
+  musicOn=!musicOn;
+  if(masterGain) masterGain.gain.value = musicOn?1:0;
+  document.getElementById('mute').textContent = musicOn ? '♪ ON' : '♪ OFF';
+});
+
+/* ---------- update ---------- */
+function wantedDir(){
+  if(dirStack.length) return dirStack[dirStack.length-1];
+  return player.autoDir;
+}
+function tryStep(){
+  const d = wantedDir();
+  if(!d) return;
+  player.dir = d;
+  const [dx,dy] = DELTA[d];
+  const nx=player.x+dx, ny=player.y+dy;
+  if(walkable(nx,ny)){
+    player.moving=true; player.t=0;
+    player.from=[player.x,player.y]; player.to=[nx,ny];
+  } else if(player.autoDir===d){
+    player.autoDir=null; // swipe walk ends at obstacles
+  }
+}
+function collectAt(x,y){
+  for(const egg of state.eggs){
+    if(!egg.found && egg.x===x && egg.y===y){
+      egg.found=true; state.found++;
+      sfxCollect(); updateHud();
+      for(let i=0;i<14;i++){
+        const a=Math.random()*Math.PI*2, s=20+Math.random()*40;
+        state.particles.push({x:x*TILE+8, y:y*TILE+8,
+          vx:Math.cos(a)*s, vy:Math.sin(a)*s-30,
+          life:.6+Math.random()*.4,
+          col:Object.values(EGG_COLORS[egg.c])[Math.random()*2|0]});
+      }
+      if(state.found>=EGG_TOTAL){
+        state.mode='won';
+        state.elapsed = (performance.now()-state.startTime)/1000;
+        sfxWin();
+        setTimeout(showWin, 900);
+      }
+    }
+  }
+}
+function showWin(){
+  const s = state.elapsed|0;
+  document.getElementById('winStats').textContent =
+    `time ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+  document.getElementById('win').classList.remove('hidden');
+}
+
+function update(dt){
+  if(state.mode==='play' || state.mode==='won'){
+    if(player.moving){
+      player.t += dt*SPEED;
+      player.animT += dt;
+      if(player.animT>0.13){ player.animT=0; player.frame^=1; if(state.mode==='play') sfxStep(); }
+      if(player.t>=1){
+        player.x=player.to[0]; player.y=player.to[1];
+        player.fx=player.x*TILE; player.fy=player.y*TILE;
+        player.moving=false;
+        if(state.mode==='play'){ collectAt(player.x,player.y); if(state.mode==='play') tryStep(); }
+      } else {
+        player.fx=(player.from[0]+(player.to[0]-player.from[0])*player.t)*TILE;
+        player.fy=(player.from[1]+(player.to[1]-player.from[1])*player.t)*TILE;
+      }
+    } else if(state.mode==='play'){
+      tryStep();
+      if(!player.moving) player.frame=0;
+    }
+  }
+  // particles
+  for(const p of state.particles){
+    p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=120*dt;
+  }
+  state.particles = state.particles.filter(p=>p.life>0);
+  state.sparkleT += dt;
+  // timer
+  if(state.mode==='play'){
+    const s=(performance.now()-state.startTime)/1000|0;
+    const el=document.getElementById('timer');
+    const txt=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+    if(el.textContent!==txt) el.textContent=txt;
+  }
+}
+
+function updateHud(){
+  document.getElementById('eggCount').textContent = `${state.found}/${EGG_TOTAL}`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  let camX = Math.round(player.fx + 8 - VIEW_W/2);
+  let camY = Math.round(player.fy + 8 - VIEW_H/2);
+  camX = Math.max(0, Math.min(MAP_W*TILE - VIEW_W, camX));
+  camY = Math.max(0, Math.min(MAP_H*TILE - VIEW_H, camY));
+
+  ctx.clearRect(0,0,VIEW_W,VIEW_H);
+  ctx.drawImage(bg, camX, camY, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
+
+  // eggs
+  for(const egg of state.eggs){
+    if(egg.found) continue;
+    const ex=egg.x*TILE-camX+3, ey=egg.y*TILE-camY+2;
+    if(ex<-16||ey<-16||ex>VIEW_W||ey>VIEW_H) continue;
+    ctx.drawImage(EGG_CVS[egg.c], ex, ey);
+    // twinkle
+    const tw=(state.sparkleT+egg.tw)%2.4;
+    if(tw<0.35){
+      const sx=ex+2+((egg.tw*7)%7|0), sy=ey+1+((egg.tw*13)%6|0);
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(sx,sy-1,1,3); ctx.fillRect(sx-1,sy,3,1);
+    }
+  }
+
+  // player (+ soft shadow)
+  const pxl=Math.round(player.fx-camX), pyl=Math.round(player.fy-camY);
+  ctx.fillStyle='rgba(26,22,38,.3)';
+  ctx.fillRect(pxl+4, pyl+14, 8, 2);
+  const hop = player.moving ? (player.frame? -1: 0) : 0;
+  ctx.drawImage(SPRITE_CVS[player.dir][player.frame], pxl, pyl+hop);
+
+  // particles
+  for(const p of state.particles){
+    ctx.globalAlpha = Math.min(1, p.life*2);
+    ctx.fillStyle = p.col;
+    ctx.fillRect(Math.round(p.x-camX), Math.round(p.y-camY), 2, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- boot ---------- */
+renderMap();
+// HUD + overlay decorations
+document.getElementById('hudEgg').getContext('2d').drawImage(bakeEgg(EGG_COLORS[2]),0,0);
+document.getElementById('winEgg').getContext('2d').drawImage(bakeEgg(EGG_COLORS[0]),0,0);
+const pg = document.getElementById('portrait').getContext('2d');
+pg.imageSmoothingEnabled=false;
+pg.drawImage(SPRITE_CVS.down[0],0,0);
+
+window.EGGHUNT = { player, state, startGame }; // debug/testing handle
+
+/* fill the screen: integer pixel scale, viewport sized to the window */
+function resize(){
+  const iw = window.innerWidth, ih = window.innerHeight;
+  const mapPW = MAP_W*TILE, mapPH = MAP_H*TILE;
+  const scale = Math.max(
+    2,
+    Math.round(Math.min(iw/256, ih/176)),  // keep framing close to the 16x11 design
+    Math.ceil(iw/mapPW), Math.ceil(ih/mapPH) // never show past the map edges
+  );
+  VIEW_W = Math.min(mapPW, Math.ceil(iw/scale));
+  VIEW_H = Math.min(mapPH, Math.ceil(ih/scale));
+  cvs.width = VIEW_W; cvs.height = VIEW_H;
+  cvs.style.width = VIEW_W*scale + 'px';
+  cvs.style.height = VIEW_H*scale + 'px';
+  ctx.imageSmoothingEnabled = false;
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', resize);
+resize();
+
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now-last)/1000);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
