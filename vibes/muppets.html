@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>FELT FIGHT NIGHT — a muppet slap-em-up</title>
+<title>SLAP BiYATCH! — a muppet slap-em-up</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Baloo+2:wght@600;800&display=swap" rel="stylesheet">
@@ -162,7 +162,7 @@
   <div id="announce"><span id="announceTxt" class="hidden"></span></div>
 
   <div id="select">
-    <h1>FELT FIGHT <em>NIGHT</em></h1>
+    <h1>SLAP <em>BiYATCH!</em></h1>
     <div class="sub">choose your slapper</div>
     <div class="cards">
       <button class="card" data-char="earl">
@@ -1047,12 +1047,14 @@ cv.addEventListener('mousedown',()=>{ audio(); if(plr&&state==='fight') doSlap(p
 // touch: drag = move, quick tap = slap
 const touches=new Map();
 app.addEventListener('touchstart',e=>{
+  if(e.target.closest('button')) return;   // let card/menu buttons get their native click
   e.preventDefault(); audio();
   for(const t of e.changedTouches){
     touches.set(t.identifier,{x:t.clientX,y:t.clientY,t:performance.now(),moved:0});
   }
 },{passive:false});
 app.addEventListener('touchmove',e=>{
+  if(e.target.closest('button')) return;
   e.preventDefault();
   for(const t of e.changedTouches){
     const rec=touches.get(t.identifier);
@@ -1069,6 +1071,7 @@ app.addEventListener('touchmove',e=>{
   }
 },{passive:false});
 app.addEventListener('touchend',e=>{
+  if(e.target.closest('button')){ audio(); return; }
   e.preventDefault();
   for(const t of e.changedTouches){
     const rec=touches.get(t.identifier);
