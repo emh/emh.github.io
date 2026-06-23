@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Word Orbits Prototype</title>
+  <style>
+    :root{
+      --paper:#f6f2e8;
+      --paper-2:#efe8d8;
+      --ink:#1b1813;
+      --muted:#6f685a;
+      --hair:#cfc5ae;
+      --accent:#8a2018;
+      --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    }
+
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      height:100%;
+      overflow:hidden;
+      background:var(--paper);
+      color:var(--ink);
+      font-family:var(--serif);
+      -webkit-font-smoothing:antialiased;
+    }
+
+    button{font:inherit;color:inherit}
+
+    .app{
+      width:100vw;
+      height:100dvh;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      gap:14px;
+      padding:max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+    }
+
+    header{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      min-height:48px;
+      border-bottom:3px double var(--ink);
+      padding-bottom:9px;
+    }
+
+    h1{
+      margin:0;
+      font-size:clamp(26px, 7.5vw, 46px);
+      line-height:.92;
+      letter-spacing:.005em;
+      font-weight:800;
+      text-transform:uppercase;
+    }
+
+    .pill{
+      flex-shrink:0;
+      border:1px solid var(--ink);
+      border-radius:0;
+      background:transparent;
+      color:var(--ink);
+      padding:6px 10px;
+      font-size:11px;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+
+    .board-wrap{
+      min-height:0;
+      border:1px solid var(--ink);
+      border-radius:0;
+      background:var(--paper);
+      position:relative;
+      overflow:hidden;
+      touch-action:none;
+    }
+
+    svg{
+      display:block;
+      width:100%;
+      height:100%;
+      min-height:430px;
+      user-select:none;
+      -webkit-user-select:none;
+    }
+
+    .ring-circle{
+      fill:none;
+      stroke:rgba(27,24,19,.30);
+      stroke-width:1;
+    }
+
+    .ring-hit{
+      fill:none;
+      stroke:transparent;
+      cursor:grab;
+      pointer-events:stroke;
+    }
+
+    .ring-hit:active{
+      cursor:grabbing;
+    }
+
+    .target-band{
+      fill:none;
+      stroke:rgba(27,24,19,.40);
+      stroke-width:1;
+      stroke-dasharray:5 6;
+      pointer-events:all;
+      cursor:pointer;
+    }
+
+    .target-band.valid{
+      fill:rgba(138,32,24,.06);
+      stroke:var(--accent);
+      stroke-width:1.25;
+      stroke-dasharray:none;
+    }
+
+    .target-line{
+      stroke:rgba(27,24,19,.45);
+      stroke-width:1.5;
+      stroke-linecap:butt;
+      pointer-events:none;
+    }
+
+    .target-line.valid{
+      stroke:var(--accent);
+      stroke-width:2;
+    }
+
+    .center-dot{
+      fill:var(--ink);
+      stroke:none;
+    }
+
+    .letter{
+      fill:var(--ink);
+      font-family:var(--serif);
+      font-weight:700;
+      letter-spacing:.02em;
+      text-anchor:middle;
+      dominant-baseline:central;
+      paint-order:stroke;
+      stroke:var(--paper);
+      stroke-width:4px;
+      stroke-linejoin:round;
+      pointer-events:none;
+    }
+
+    .letter.target{
+      fill:var(--accent);
+      font-weight:800;
+    }
+
+    .letter.collecting{
+      fill:var(--accent);
+      font-weight:800;
+    }
+
+    .controls{
+      border:1px solid var(--ink);
+      border-radius:0;
+      background:var(--paper);
+      padding:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+
+    .found{
+      min-width:0;
+      color:var(--muted);
+      font-size:12px;
+      font-style:italic;
+      overflow:hidden;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+
+    .reset{
+      flex-shrink:0;
+      border:1px solid var(--ink);
+      background:transparent;
+      color:var(--ink);
+      border-radius:0;
+      padding:6px 12px;
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+      cursor:pointer;
+    }
+
+    .reset:hover{
+      background:var(--ink);
+      color:var(--paper);
+    }
+
+    .toast{
+      position:absolute;
+      left:50%;
+      bottom:18px;
+      transform:translateX(-50%) translateY(12px);
+      max-width:86%;
+      border:1px solid var(--ink);
+      background:var(--paper);
+      color:var(--ink);
+      border-radius:0;
+      padding:9px 16px;
+      font-size:13px;
+      font-style:italic;
+      opacity:0;
+      transition:opacity .18s, transform .18s;
+      box-shadow:3px 3px 0 rgba(27,24,19,.18);
+      text-align:center;
+      pointer-events:none;
+    }
+
+    .toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+
+    @media (min-width:760px){
+      .app{
+        max-width:760px;
+        margin:0 auto;
+        padding:22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>WORD ORBITS</h1>
+      <div class="pill" id="score">0 words</div>
+    </header>
+
+    <section class="board-wrap">
+      <svg id="board" viewBox="0 0 390 560" preserveAspectRatio="xMidYMid meet" aria-label="Word Orbits board"></svg>
+      <div class="toast" id="toast"></div>
+    </section>
+
+    <section class="controls">
+      <div class="found" id="found">Found: none</div>
+      <button type="button" class="reset" id="resetBtn">Reset</button>
+    </section>
+  </main>
+
+  <script>
+    const CX = 195;
+    const CY = 280;
+
+    // Inner → outer. More circumference = more letters. Slot counts must stay
+    // even — the left-side target reads from slot count/2. The inner ring drives
+    // both the first and last letter of every word, so it gets extra slots
+    // (and the radii are spread out) to raise word density.
+    const RING_CONFIG = [
+      { radius: 50,  slots: 12 },
+      { radius: 82,  slots: 16 },
+      { radius: 114, slots: 20 },
+      { radius: 146, slots: 24 },
+      { radius: 178, slots: 28 }
+    ];
+
+    // Each target word reads one letter per ring along the horizontal, so the
+    // letters sit at CX ± ring.radius. Derive the band + line geometry from the
+    // inner/outer radii so the dashed frame always lines up with the actual
+    // read positions (and the click hit-test matches it).
+    const R_INNER = RING_CONFIG[0].radius;
+    const R_OUTER = RING_CONFIG[RING_CONFIG.length - 1].radius;
+    const BAND_PAD = 15;      // breathing room past the inner/outer letters
+    const BAND_HALF_H = 14;   // half the band height
+    const BAND_SPAN = (R_OUTER - R_INNER) + BAND_PAD * 2;
+    const BANDS = {
+      right: { x: CX + R_INNER - BAND_PAD, w: BAND_SPAN, lx1: CX + R_INNER, lx2: CX + R_OUTER },
+      left:  { x: CX - R_OUTER - BAND_PAD, w: BAND_SPAN, lx1: CX - R_OUTER, lx2: CX - R_INNER }
+    };
+
+    const SEEDED_RIGHT = ["PLANT", "STONE", "DREAM", "LIGHT"];
+    const SEEDED_LEFT  = ["BRAVE", "CHAIR", "WATER", "SOUND"];
+
+    // Seeded words are always valid so the board is solvable even before the
+    // dictionary finishes loading. The full word list is fetched from
+    // dictionary.txt at startup (run the app via a server, e.g. `wds`).
+    let VALID_WORDS = new Set([...SEEDED_RIGHT, ...SEEDED_LEFT]);
+
+    async function loadDictionary(){
+      try{
+        const res = await fetch("dictionary.txt");
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        const words = text
+          .split(/\r?\n/)
+          .map(w => w.trim().toUpperCase())
+          .filter(w => w.length === 5);
+        VALID_WORDS = new Set([...SEEDED_RIGHT, ...SEEDED_LEFT, ...words]);
+        buildBias(words);
+        // The opening board was generated before the dictionary (and bias)
+        // existed. If the player hasn't touched it yet, regenerate so the
+        // first board is letter-biased toward real words; otherwise just
+        // re-render in case a target is already aligned.
+        if(typeof rings !== "undefined" && rings){
+          if(moveCount === 0 && found.length === 0) reset();
+          else render();
+        }
+      }catch(err){
+        console.error("Could not load dictionary.txt:", err);
+        showToast("Dictionary failed to load — serve over http (wds).");
+      }
+    }
+
+    const LETTER_BAG = "EEEEEEEEEEEEAAAAAAAAAIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ";
+
+    const svg = document.getElementById("board");
+    const toast = document.getElementById("toast");
+
+    let rings;
+    let found;
+    let toastTimer;
+    let rngSeed = 123456789;
+    let moveCount = 0;
+    let autoTimers = { left:null, right:null };
+    let autoWords = { left:null, right:null };
+    let collectingWords = new Set();
+    let drag = null;
+
+    function rnd(){
+      rngSeed = (rngSeed * 1664525 + 1013904223) >>> 0;
+      return rngSeed / 4294967296;
+    }
+
+    function randomLetter(){
+      return LETTER_BAG[Math.floor(rnd() * LETTER_BAG.length)];
+    }
+
+    // Per-ring weighted letter bags, built from the dictionary's positional
+    // letter frequencies. A word on the right radial reads ring 0..4, on the
+    // left radial it reads ring 4..0 — so ring p feeds word position p (right)
+    // and position 4-p (left). Biasing each ring toward the letters that
+    // actually occur in those positions makes far more reachable letter
+    // combinations spell real words. Null until dictionary.txt loads.
+    let ringBias = null;
+
+    function buildBias(words){
+      const counts = Array.from({length:5}, () => Object.create(null));
+      for(const w of words){
+        for(let i = 0; i < 5; i++){
+          const c = w[i];
+          counts[i][c] = (counts[i][c] || 0) + 1;
+        }
+      }
+
+      ringBias = RING_CONFIG.map((_, p) => {
+        const merged = Object.create(null);
+        for(const src of [counts[p], counts[4 - p]]){
+          for(const c in src) merged[c] = (merged[c] || 0) + src[c];
+        }
+        const letters = Object.keys(merged);
+        const cum = [];
+        let total = 0;
+        for(const c of letters){ total += merged[c]; cum.push(total); }
+        return { letters, cum, total };
+      });
+    }
+
+    function biasedLetter(ringIndex){
+      const bag = ringBias && ringBias[ringIndex];
+      if(!bag || !bag.total) return randomLetter();
+
+      const target = rnd() * bag.total;
+      let lo = 0, hi = bag.cum.length - 1;
+      while(lo < hi){
+        const mid = (lo + hi) >> 1;
+        if(target < bag.cum[mid]) hi = mid;
+        else lo = mid + 1;
+      }
+      return bag.letters[lo];
+    }
+
+    function shuffledSlots(count, seed){
+      let s = seed >>> 0;
+      const arr = Array.from({length:count}, (_, i) => i);
+      for(let i = arr.length - 1; i > 0; i--){
+        s = (s * 1664525 + 1013904223) >>> 0;
+        const j = s % (i + 1);
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function makeInitialRings(){
+      rngSeed = 123456789;
+
+      const rings = RING_CONFIG.map((cfg, i) => ({
+        radius: cfg.radius,
+        slots: cfg.slots,
+        offset: 0,
+        letters: Array.from({length:cfg.slots}, () => biasedLetter(i))
+      }));
+
+      const slotPlans = rings.map((ring, i) => shuffledSlots(ring.slots, 9000 + i * 271));
+      let seedIndex = 0;
+
+      SEEDED_RIGHT.forEach(word => {
+        for(let ringIndex = 0; ringIndex < rings.length; ringIndex++){
+          const idx = slotPlans[ringIndex][seedIndex];
+          rings[ringIndex].letters[idx] = word[ringIndex];
+        }
+        seedIndex++;
+      });
+
+      SEEDED_LEFT.forEach(word => {
+        for(let orderIndex = 0; orderIndex < rings.length; orderIndex++){
+          const ringIndex = 4 - orderIndex;
+          const idx = slotPlans[ringIndex][seedIndex];
+          rings[ringIndex].letters[idx] = word[orderIndex];
+        }
+        seedIndex++;
+      });
+
+      // Start scrambled. Do not begin with a pre-solved visible word.
+      const startOffsets = [3, 8, 5, 13, 17];
+      for(let ringIndex = 0; ringIndex < rings.length; ringIndex++){
+        rings[ringIndex].offset = startOffsets[ringIndex] % rings[ringIndex].slots;
+      }
+
+      return rings;
+    }
+
+    function reset(){
+      clearAuto("left");
+      clearAuto("right");
+      collectingWords.clear();
+      moveCount = 0;
+      rings = makeInitialRings();
+      found = [];
+      render();
+      showToast("New orbit board.");
+    }
+
+    function mod(n, m){
+      return ((n % m) + m) % m;
+    }
+
+    function snappedOffset(ring){
+      return mod(Math.round(ring.offset), ring.slots);
+    }
+
+    function dataIndexForVisual(ring, visualSlot){
+      return mod(visualSlot - snappedOffset(ring), ring.slots);
+    }
+
+    function targetVisualSlot(ring, side){
+      return side === "right" ? 0 : ring.slots / 2;
+    }
+
+    function targetInfo(side){
+      const order = side === "right" ? [0,1,2,3,4] : [4,3,2,1,0];
+      const pieces = [];
+
+      order.forEach(ringIndex => {
+        const ring = rings[ringIndex];
+        const visualSlot = targetVisualSlot(ring, side);
+        const idx = dataIndexForVisual(ring, visualSlot);
+        const ch = ring.letters[idx];
+        pieces.push({ ringIndex, idx, ch });
+      });
+
+      const word = pieces.map(p => p.ch).join("");
+      return {
+        side,
+        pieces,
+        word,
+        valid: word.length === 5 && VALID_WORDS.has(word)
+      };
+    }
+
+    function showToast(msg){
+      clearTimeout(toastTimer);
+      toast.textContent = msg;
+      toast.classList.add("show");
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 1400);
+    }
+
+    function spinRing(ringIndex, direction){
+      clearAuto("left");
+      clearAuto("right");
+      collectingWords.clear();
+      moveCount++;
+      rings[ringIndex].offset = mod(rings[ringIndex].offset + direction, rings[ringIndex].slots);
+      render();
+    }
+
+    function clearAuto(side){
+      if(autoTimers[side]){
+        clearTimeout(autoTimers[side]);
+        autoTimers[side] = null;
+      }
+      autoWords[side] = null;
+    }
+
+    function scheduleAutoCollect(side, word){
+      if(autoWords[side] === word) return;
+
+      clearAuto(side);
+      autoWords[side] = word;
+      autoTimers[side] = setTimeout(() => {
+        autoTimers[side] = null;
+        const current = targetInfo(side);
+        if(current.valid && current.word === word){
+          collect(side);
+        } else {
+          clearAuto(side);
+        }
+      }, 520);
+    }
+
+    function collect(side){
+      const info = targetInfo(side);
+      if(!info.valid) return false;
+
+      collectingWords.add(side);
+
+      setTimeout(() => {
+        info.pieces.forEach(p => {
+          rings[p.ringIndex].letters[p.idx] = biasedLetter(p.ringIndex);
+        });
+
+        found.push(info.word);
+        clearAuto(side);
+        collectingWords.delete(side);
+        render();
+        showToast(info.word);
+      }, 120);
+
+      render();
+      return true;
+    }
+
+    function pointerAngle(evt){
+      const p = svgPoint(evt);
+      return Math.atan2(p.y - CY, p.x - CX);
+    }
+
+    function angleDelta(from, to){
+      let d = to - from;
+      while(d > Math.PI) d -= Math.PI * 2;
+      while(d < -Math.PI) d += Math.PI * 2;
+      return d;
+    }
+
+    function svgPoint(evt){
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX;
+      pt.y = evt.clientY;
+      return pt.matrixTransform(svg.getScreenCTM().inverse());
+    }
+
+    function nearestRingIndex(x, y){
+      const d = Math.hypot(x - CX, y - CY);
+      let best = -1;
+      let bestDelta = Infinity;
+
+      rings.forEach((r, i) => {
+        const delta = Math.abs(d - r.radius);
+        if(delta < bestDelta){
+          best = i;
+          bestDelta = delta;
+        }
+      });
+
+      return bestDelta <= 16 ? best : -1;
+    }
+
+    function pointInLeftTarget(x, y){
+      return x >= BANDS.left.x && x <= BANDS.left.x + BANDS.left.w && y >= CY - BAND_HALF_H && y <= CY + BAND_HALF_H;
+    }
+
+    function pointInRightTarget(x, y){
+      return x >= BANDS.right.x && x <= BANDS.right.x + BANDS.right.w && y >= CY - BAND_HALF_H && y <= CY + BAND_HALF_H;
+    }
+
+    function angleForDataIndex(index, ring){
+      return (Math.PI * 2 * (index + ring.offset)) / ring.slots;
+    }
+
+    const LETTER_SIZE = 18;
+
+    function render(){
+      const left = targetInfo("left");
+      const right = targetInfo("right");
+
+      document.getElementById("score").textContent = `${found.length} ${found.length === 1 ? "word" : "words"}`;
+      document.getElementById("found").textContent = found.length ? `Found: ${found.slice(-8).join(", ")}` : "Found: none";
+
+      if(!drag && moveCount > 0 && left.valid) scheduleAutoCollect("left", left.word);
+      else clearAuto("left");
+
+      if(!drag && moveCount > 0 && right.valid) scheduleAutoCollect("right", right.word);
+      else clearAuto("right");
+
+      const parts = [];
+
+      parts.push(`
+        <rect class="target-band ${left.valid ? "valid" : ""}" data-target="left" x="${BANDS.left.x}" y="${CY - BAND_HALF_H}" width="${BANDS.left.w}" height="${BAND_HALF_H * 2}" rx="${BAND_HALF_H}" />
+        <rect class="target-band ${right.valid ? "valid" : ""}" data-target="right" x="${BANDS.right.x}" y="${CY - BAND_HALF_H}" width="${BANDS.right.w}" height="${BAND_HALF_H * 2}" rx="${BAND_HALF_H}" />
+        <line class="target-line ${left.valid ? "valid" : ""}" x1="${BANDS.left.lx1}" y1="${CY}" x2="${BANDS.left.lx2}" y2="${CY}" />
+        <line class="target-line ${right.valid ? "valid" : ""}" x1="${BANDS.right.lx1}" y1="${CY}" x2="${BANDS.right.lx2}" y2="${CY}" />
+      `);
+
+      rings.forEach((ring, ringIndex) => {
+        parts.push(`<circle class="ring-circle" cx="${CX}" cy="${CY}" r="${ring.radius}" />`);
+        parts.push(`<circle class="ring-hit" data-ring="${ringIndex}" cx="${CX}" cy="${CY}" r="${ring.radius}" stroke-width="${Math.max(24, ring.radius * .17)}" />`);
+
+        for(let dataIndex = 0; dataIndex < ring.slots; dataIndex++){
+          const angle = angleForDataIndex(dataIndex, ring);
+          const x = CX + Math.cos(angle) * ring.radius;
+          const y = CY + Math.sin(angle) * ring.radius;
+          const ch = ring.letters[dataIndex];
+
+          const isTarget =
+            (right.pieces.some(p => p.ringIndex === ringIndex && p.idx === dataIndex)) ||
+            (left.pieces.some(p => p.ringIndex === ringIndex && p.idx === dataIndex));
+
+          const isCollecting =
+            (collectingWords.has("right") && right.pieces.some(p => p.ringIndex === ringIndex && p.idx === dataIndex)) ||
+            (collectingWords.has("left") && left.pieces.some(p => p.ringIndex === ringIndex && p.idx === dataIndex));
+
+          parts.push(`<text class="letter ${isTarget ? "target" : ""} ${isCollecting ? "collecting" : ""}" x="${x}" y="${y}" font-size="${LETTER_SIZE}">${ch}</text>`);
+        }
+      });
+
+      parts.push(`<circle class="center-dot" cx="${CX}" cy="${CY}" r="10" />`);
+
+      svg.innerHTML = parts.join("");
+    }
+
+    svg.addEventListener("pointerdown", e => {
+      const p = svgPoint(e);
+
+      if(pointInLeftTarget(p.x, p.y) && collect("left")) return;
+      if(pointInRightTarget(p.x, p.y) && collect("right")) return;
+
+      const ringIndex = nearestRingIndex(p.x, p.y);
+      if(ringIndex === -1) return;
+
+      e.preventDefault();
+      svg.setPointerCapture?.(e.pointerId);
+
+      drag = {
+        pointerId: e.pointerId,
+        ringIndex,
+        startAngle: pointerAngle(e),
+        startOffset: rings[ringIndex].offset,
+        lastOffset: rings[ringIndex].offset,
+        moved: false
+      };
+
+      clearAuto("left");
+      clearAuto("right");
+      collectingWords.clear();
+    });
+
+    svg.addEventListener("pointermove", e => {
+      if(!drag || drag.pointerId !== e.pointerId) return;
+
+      e.preventDefault();
+
+      const ring = rings[drag.ringIndex];
+      const step = (Math.PI * 2) / ring.slots;
+      const delta = angleDelta(drag.startAngle, pointerAngle(e));
+      const slotDelta = delta / step;
+      const nextOffset = drag.startOffset + slotDelta;
+
+      if(Math.abs(nextOffset - drag.lastOffset) > 0.01){
+        drag.moved = true;
+        drag.lastOffset = nextOffset;
+        ring.offset = nextOffset;
+        clearAuto("left");
+        clearAuto("right");
+        collectingWords.clear();
+        render();
+      }
+    });
+
+    function animateSnap(ring, from, to, done){
+      const duration = 120;
+      const start = performance.now();
+
+      function frame(now){
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        ring.offset = from + (to - from) * eased;
+        render();
+
+        if(t < 1){
+          requestAnimationFrame(frame);
+        } else {
+          ring.offset = mod(Math.round(to), ring.slots);
+          done?.();
+          render();
+        }
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    function nearestSnapOffset(ring, value){
+      return Math.round(value);
+    }
+
+    function endDrag(e){
+      if(!drag || drag.pointerId !== e.pointerId) return;
+
+      svg.releasePointerCapture?.(e.pointerId);
+
+      const ring = rings[drag.ringIndex];
+      const from = ring.offset;
+      const to = nearestSnapOffset(ring, from);
+      const didMove = drag.moved;
+
+      drag = null;
+
+      animateSnap(ring, from, to, () => {
+        if(didMove) moveCount++;
+      });
+    }
+
+    svg.addEventListener("pointerup", endDrag);
+    svg.addEventListener("pointercancel", endDrag);
+    svg.addEventListener("lostpointercapture", e => {
+      // pointerup/pointercancel handle snapping; this is intentionally passive.
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", reset);
+    document.addEventListener("dragstart", e => e.preventDefault());
+
+    reset();
+    loadDictionary();
+  </script>
+  <script async data-id="101394794" src="//static.getclicky.com/js"></script>
+</body>
+</html>

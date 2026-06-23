@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Word Circuit Prototype</title>
+  <style>
+    :root{
+      --paper:#f6f2e8;
+      --paper-2:#efe8d8;
+      --ink:#1b1813;
+      --muted:#6f685a;
+      --hair:#cfc5ae;
+      --accent:#8a2018;
+      --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+      --radius:0px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{
+      height:100%;
+      margin:0;
+      overflow:hidden;
+      background:var(--paper);
+      color:var(--ink);
+      font-family:var(--serif);
+      -webkit-font-smoothing:antialiased;
+    }
+    button,input{font:inherit;color:inherit}
+
+    .app{
+      height:100dvh;
+      width:100vw;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:14px;
+      padding: max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+      overflow:hidden;
+    }
+
+    header{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      min-height:52px;
+      border-bottom:3px double var(--ink);
+      padding-bottom:9px;
+    }
+
+    .brand{min-width:0}
+
+    h1{
+      margin:0;
+      font-size:clamp(26px, 7.2vw, 46px);
+      letter-spacing:.005em;
+      font-weight:800;
+      line-height:.92;
+      text-transform:uppercase;
+    }
+
+    .subtitle{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:13px;
+      letter-spacing:.02em;
+      font-style:italic;
+    }
+
+    .status{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-shrink:0;
+    }
+
+    .pill{
+      border:1px solid var(--ink);
+      background:transparent;
+      color:var(--ink);
+      border-radius:0;
+      padding:6px 10px;
+      font-size:11px;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+
+    .complete-bar{
+      position:fixed;
+      right:12px;
+      bottom:calc(152px + env(safe-area-inset-bottom));
+      z-index:60;
+      display:none;
+      align-items:center;
+      gap:12px;
+      border:1px solid var(--ink);
+      background:var(--paper);
+      padding:9px 11px 9px 14px;
+      box-shadow:3px 3px 0 rgba(27,24,19,.18);
+    }
+
+    .complete-bar.show{
+      display:flex;
+      animation:flashIn .35s ease;
+    }
+
+    @keyframes flashIn{
+      from{opacity:0; transform:translateY(8px)}
+      to{opacity:1; transform:none}
+    }
+
+    .complete-msg{
+      font-size:13px;
+      font-style:italic;
+      color:var(--accent);
+      white-space:nowrap;
+    }
+
+    .next-btn{
+      border:1px solid var(--accent);
+      background:var(--accent);
+      color:var(--paper);
+      border-radius:0;
+      padding:7px 13px;
+      font-size:11px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .next-btn:hover{
+      background:var(--paper);
+      color:var(--accent);
+    }
+
+    .main{
+      min-height:0;
+      position:relative;
+      display:grid;
+      grid-template-rows:1fr auto;
+      gap:14px;
+    }
+
+    .board{
+      min-height:0;
+      position:relative;
+      touch-action:pan-y;
+      overflow:auto;
+      -webkit-overflow-scrolling:touch;
+      border:1px solid var(--ink);
+      border-radius:var(--radius);
+      background:var(--paper);
+    }
+
+    .chain{
+      position:relative;
+      z-index:2;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:0;
+      padding:26px 14px 30px;
+      min-height:100%;
+    }
+
+    .node,.slot{
+      width:min(330px, 84vw);
+      touch-action:manipulation;
+      border-radius:var(--radius);
+      min-height:60px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      position:relative;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+
+    .node{
+      border:1px solid var(--ink);
+      background:var(--paper);
+    }
+
+    .node.start{
+      border-left:5px solid var(--ink);
+    }
+
+    .node.target{
+      border-left:5px solid var(--accent);
+    }
+
+    .node.valid{
+      border-color:var(--accent);
+    }
+
+    .fixed-word{
+      display:flex;
+      flex-direction:column;
+      gap:3px;
+    }
+
+    .label{
+      color:var(--muted);
+      font-size:10px;
+      letter-spacing:.22em;
+      font-weight:700;
+      text-transform:uppercase;
+    }
+
+    .word{
+      font-size:28px;
+      letter-spacing:.06em;
+      font-weight:800;
+    }
+
+    .node.valid .word{
+      color:var(--accent);
+    }
+
+    .node input{
+      width:100%;
+      height:100%;
+      min-height:60px;
+      padding:0 18px;
+      border:0;
+      outline:0;
+      background:transparent;
+      color:var(--ink);
+      text-align:center;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-size:26px;
+      font-weight:800;
+      font-family:var(--serif);
+      touch-action:manipulation;
+      -webkit-user-select:text;
+      user-select:text;
+    }
+
+    .node input::placeholder{
+      color:var(--muted);
+      opacity:.55;
+      font-style:italic;
+      font-weight:400;
+      letter-spacing:.04em;
+      text-transform:none;
+    }
+
+    .slot{
+      min-height:56px;
+      border:1px dashed var(--ink);
+      background:transparent;
+      color:var(--muted);
+      font-style:italic;
+      padding:8px;
+    }
+
+    .slot.can-drop{
+      border-style:solid;
+      background:var(--paper-2);
+    }
+
+    .slot.filled{
+      border-style:solid;
+      border-color:var(--ink);
+      color:var(--ink);
+      font-style:normal;
+      background:transparent;
+    }
+
+    .slot.valid{
+      border-color:var(--accent);
+      color:var(--accent);
+    }
+
+    .slot.selected-target{
+      border-style:solid;
+      border-color:var(--accent);
+    }
+
+    .slot .rule-name{
+      font-size:15px;
+      font-weight:700;
+    }
+
+    .slot .rule-desc{
+      font-size:11px;
+      color:var(--muted);
+      margin-top:2px;
+      font-weight:400;
+      font-style:italic;
+    }
+
+    .slot.valid .rule-desc{
+      color:var(--accent);
+    }
+
+    .wire{
+      height:30px;
+      width:1px;
+      margin:0 auto;
+      background:var(--ink);
+      position:relative;
+    }
+
+    .wire::after{
+      content:"";
+      position:absolute;
+      top:50%;
+      left:50%;
+      width:7px;
+      height:7px;
+      transform:translate(-50%,-50%) rotate(45deg);
+      background:var(--paper);
+      border:1px solid var(--ink);
+    }
+
+    .wire.valid{
+      width:2px;
+      background:var(--accent);
+    }
+
+    .wire.valid::after{
+      background:var(--accent);
+      border-color:var(--accent);
+    }
+
+    .wire.pending{
+      background:var(--ink);
+    }
+
+    .tray{
+      border:1px solid var(--ink);
+      border-radius:var(--radius);
+      background:var(--paper);
+      padding:12px;
+      min-height:128px;
+      display:grid;
+      grid-template-rows:1fr;
+    }
+
+    .tray-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border-bottom:1px solid var(--hair);
+      padding-bottom:8px;
+    }
+
+    .tray-title{
+      color:var(--ink);
+      font-weight:700;
+      font-size:11px;
+      letter-spacing:.18em;
+      text-transform:uppercase;
+    }
+
+    .buttons{
+      display:flex;
+      gap:8px;
+    }
+
+    .mini{
+      border:1px solid var(--ink);
+      background:transparent;
+      color:var(--ink);
+      border-radius:0;
+      padding:6px 11px;
+      font-size:11px;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+      cursor:pointer;
+    }
+
+    .mini:hover{
+      background:var(--ink);
+      color:var(--paper);
+    }
+
+    .rules{
+      display:flex;
+      gap:8px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      padding:2px 2px 8px;
+      scrollbar-width:none;
+      touch-action:pan-x;
+    }
+
+    .rules::-webkit-scrollbar{display:none}
+
+    .card{
+      flex:0 0 96px;
+      min-height:78px;
+      border-radius:var(--radius);
+      border:1px solid var(--ink);
+      background:var(--paper);
+      color:var(--ink);
+      padding:8px;
+      user-select:none;
+      -webkit-user-select:none;
+      touch-action:none;
+      cursor:grab;
+    }
+
+    .card.selected{
+      border-color:var(--accent);
+      background:var(--paper-2);
+    }
+
+    .card .icon{
+      width:24px;
+      height:24px;
+      display:grid;
+      place-items:center;
+      border:1px solid var(--ink);
+      margin-bottom:6px;
+      color:var(--ink);
+      font-size:15px;
+      font-weight:700;
+    }
+
+    .card.selected .icon{
+      border-color:var(--accent);
+      color:var(--accent);
+    }
+
+    .card .name{
+      font-weight:700;
+      font-size:12px;
+      line-height:1.1;
+    }
+
+    .card .desc{
+      margin-top:4px;
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.2;
+      font-style:italic;
+    }
+
+    .ghost{
+      position:fixed;
+      z-index:1000;
+      width:104px;
+      max-width:104px;
+      min-width:104px;
+      flex:0 0 104px;
+      pointer-events:none;
+      opacity:.96;
+      background:var(--paper);
+      transform:translate(-50%,-50%);
+      box-shadow:3px 3px 0 rgba(27,24,19,.22);
+    }
+
+    .card.ghost{
+      width:104px;
+      max-width:104px;
+      min-width:104px;
+      flex:0 0 104px;
+    }
+
+    .toast{
+      position:fixed;
+      left:50%;
+      bottom:calc(152px + env(safe-area-inset-bottom));
+      transform:translateX(-50%) translateY(16px);
+      max-width:min(360px, 88vw);
+      border:1px solid var(--ink);
+      background:var(--paper);
+      color:var(--ink);
+      border-radius:0;
+      padding:10px 16px;
+      box-shadow:3px 3px 0 rgba(27,24,19,.18);
+      opacity:0;
+      transition:opacity .18s, transform .18s;
+      z-index:50;
+      text-align:center;
+      font-size:13px;
+      font-style:italic;
+    }
+
+    .toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+
+    @media (min-width: 760px){
+      .app{
+        max-width:1040px;
+        margin:0 auto;
+        padding:22px;
+      }
+      .main{
+        grid-template-columns:1fr 280px;
+        grid-template-rows:1fr;
+      }
+      .tray{
+        min-height:0;
+      }
+      .rules{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        align-content:start;
+        overflow-y:auto;
+        overflow-x:hidden;
+        touch-action:pan-y;
+      }
+      .card{
+        flex:0 0 auto;
+        width:100%;
+      }
+
+      .card.ghost{
+        width:104px;
+        max-width:104px;
+        min-width:104px;
+        flex:0 0 104px;
+      }
+
+      .toast{bottom:30px}
+
+      /* Anchor the completion banner to the bottom-right of the board column
+         (the tray is 280px + 14px gap to the right of it). */
+      .complete-bar{
+        position:absolute;
+        left:auto;
+        right:calc(280px + 14px + 16px);
+        bottom:24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="brand">
+        <h1>WORD CIRCUIT</h1>
+        <div class="subtitle">Drag rules. Type words. Complete the circuit.</div>
+      </div>
+      <div class="status">
+        <div class="pill" id="puzzleCount">Puzzle 1/9</div>
+      </div>
+    </header>
+
+    <section class="main">
+      <section class="board" id="board">
+        <div class="chain" id="chain"></div>
+      </section>
+
+      <aside class="tray">
+        <div class="rules" id="rules"></div>
+      </aside>
+
+      <div class="complete-bar" id="completeBar">
+        <span class="complete-msg" id="completeMsg"></span>
+        <button type="button" class="next-btn" id="nextBtn">Next</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const RULES = {
+      synonym: {
+        name: "Synonym",
+        desc: "Same meaning",
+        icon: "≈"
+      },
+      antonym: {
+        name: "Antonym",
+        desc: "Opposite",
+        icon: "↯"
+      },
+      homonym: {
+        name: "Homonym",
+        desc: "Same sound",
+        icon: "◌"
+      },
+      rhyme: {
+        name: "Rhyme",
+        desc: "Same ending",
+        icon: "☆"
+      },
+      add: {
+        name: "Add Letter",
+        desc: "Insert one",
+        icon: "+"
+      },
+      removeFirst: {
+        name: "Remove First",
+        desc: "Drop front",
+        icon: "⌫"
+      },
+      removeLast: {
+        name: "Remove Last",
+        desc: "Drop end",
+        icon: "−"
+      },
+      changeOne: {
+        name: "Change One",
+        desc: "Replace one",
+        icon: "Δ"
+      },
+      anagram: {
+        name: "Anagram",
+        desc: "Reorder",
+        icon: "⇄"
+      }
+    };
+
+    const SEMANTIC = {
+      synonym: [
+        ["COLD", "CHILL"],
+        ["SMALL", "LITTLE"],
+        ["FAST", "QUICK"],
+        ["BIG", "LARGE"],
+        ["ANGRY", "MAD"],
+        ["STONE", "ROCK"]
+      ],
+      antonym: [
+        ["HOT", "COLD"],
+        ["LIGHT", "DARK"],
+        ["FAST", "SLOW"],
+        ["UP", "DOWN"],
+        ["IN", "OUT"],
+        ["HARD", "SOFT"]
+      ],
+      homonym: [
+        ["NIGHT", "KNIGHT"],
+        ["SEA", "SEE"],
+        ["TO", "TWO"],
+        ["ONE", "WON"],
+        ["RIGHT", "WRITE"],
+        ["TAIL", "TALE"]
+      ]
+    };
+
+    const PUZZLES = [
+      {
+        name: "Starter Loop",
+        start: "COLD",
+        target: "HILLS",
+        slots: 3,
+        words: ["COLD", "CHILL", "HILL", "HILLS", "CHILLS", "SHILL"]
+      },
+      {
+        name: "Small Signal",
+        start: "SMALL",
+        target: "TALL",
+        slots: 2,
+        words: ["SMALL", "MALL", "TALL", "LITTLE"]
+      },
+      {
+        name: "Moon Relay",
+        start: "MOON",
+        target: "SNOOP",
+        slots: 3,
+        words: ["MOON", "SOON", "SPOON", "SNOOP"]
+      },
+      {
+        name: "Stone Filter",
+        start: "STONE",
+        target: "TUNES",
+        slots: 3,
+        words: ["STONE", "TONE", "TUNE", "TUNES"]
+      },
+      {
+        name: "Care Bridge",
+        start: "CARE",
+        target: "SHORE",
+        slots: 3,
+        words: ["CARE", "SCARE", "SHARE", "SHORE"]
+      },
+      {
+        name: "Storm Path",
+        start: "RAIN",
+        target: "TRAIL",
+        slots: 2,
+        words: ["RAIN", "TRAIN", "TRAIL"]
+      },
+      {
+        name: "Silent Swap",
+        start: "LISTEN",
+        target: "TINSEL",
+        slots: 2,
+        words: ["LISTEN", "SILENT", "TINSEL"]
+      },
+      {
+        name: "Knight Circuit",
+        start: "NIGHT",
+        target: "KNIGHTS",
+        slots: 2,
+        words: ["NIGHT", "KNIGHT", "KNIGHTS"]
+      },
+      {
+        name: "Opposite Current",
+        start: "HOT",
+        target: "WORD",
+        slots: 3,
+        words: ["HOT", "COLD", "CORD", "WORD"]
+      }
+    ];
+
+    const $ = sel => document.querySelector(sel);
+    const chainEl = $("#chain");
+    const rulesEl = $("#rules");
+    const boardEl = $("#board");
+    const toastEl = $("#toast");
+
+    let puzzleIndex = 0;
+    let puzzle = PUZZLES[puzzleIndex];
+    let state = blankState(puzzle);
+    let selectedRule = null;
+    let toastTimer = null;
+    let drag = null;
+    let completedAnnounced = false;
+
+    // Some embedded file viewers wrap the document with download/navigation handlers.
+    // Keep all word-cell interaction inside the app.
+    document.addEventListener("pointerdown", e => {
+      if(e.target?.closest?.('input[data-word], .node')){
+        e.stopPropagation();
+      }
+    }, true);
+
+    document.addEventListener("mousedown", e => {
+      if(e.target?.closest?.('input[data-word], .node')){
+        e.stopPropagation();
+      }
+    }, true);
+
+    document.addEventListener("click", e => {
+      if(e.target?.closest?.('input[data-word], .node')){
+        e.stopPropagation();
+      }
+    }, true);
+
+    function blankState(p){
+      return {
+        rules: Array(p.slots).fill(null),
+        words: Array(Math.max(0, p.slots - 1)).fill("")
+      };
+    }
+
+    function norm(s){
+      return String(s || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+    }
+
+    function sortedLetters(s){
+      return norm(s).split("").sort().join("");
+    }
+
+    function differsByOne(a, b){
+      a = norm(a);
+      b = norm(b);
+      if(a.length !== b.length) return false;
+      let diff = 0;
+      for(let i = 0; i < a.length; i++){
+        if(a[i] !== b[i]) diff++;
+      }
+      return diff === 1;
+    }
+
+    function isPair(rule, a, b){
+      const pairs = SEMANTIC[rule] || [];
+      a = norm(a);
+      b = norm(b);
+      return pairs.some(([x,y]) => (a === x && b === y) || (a === y && b === x));
+    }
+
+    function rhymeKey(word){
+      word = norm(word);
+      const vowels = "AEIOUY";
+      for(let i = word.length - 1; i >= 0; i--){
+        if(vowels.includes(word[i])){
+          return word.slice(i);
+        }
+      }
+      return word.slice(-2);
+    }
+
+    function relationValid(input, rule, output){
+      input = norm(input);
+      output = norm(output);
+      if(!input || !output || !rule) return false;
+
+      switch(rule){
+        case "synonym":
+        case "antonym":
+        case "homonym":
+          return isPair(rule, input, output);
+
+        case "add":
+          return output.length === input.length + 1 &&
+            [...output].some((_, i) => output.slice(0, i) + output.slice(i + 1) === input);
+
+        case "removeFirst":
+          return input.length > 1 && input.slice(1) === output;
+
+        case "removeLast":
+          return input.length > 1 && input.slice(0, -1) === output;
+
+        case "changeOne":
+          return differsByOne(input, output);
+
+        case "anagram":
+          return input.length === output.length &&
+            input !== output &&
+            sortedLetters(input) === sortedLetters(output);
+
+        case "rhyme":
+          return input !== output &&
+            input.length > 1 &&
+            output.length > 1 &&
+            rhymeKey(input) === rhymeKey(output);
+
+        default:
+          return false;
+      }
+    }
+
+    function wordAt(index){
+      if(index === 0) return puzzle.start;
+      if(index === puzzle.slots) return puzzle.target;
+      return state.words[index - 1];
+    }
+
+    function puzzleWords(){
+      const base = new Set((puzzle.words || []).map(norm));
+      base.add(norm(puzzle.start));
+      base.add(norm(puzzle.target));
+      return [...base].filter(Boolean);
+    }
+
+    function canReachTarget(fromWord, remainingSlots, memo = new Map()){
+      fromWord = norm(fromWord);
+      const target = norm(puzzle.target);
+      const key = `${fromWord}|${remainingSlots}`;
+      if(memo.has(key)) return memo.get(key);
+
+      if(remainingSlots === 0){
+        const ok = fromWord === target;
+        memo.set(key, ok);
+        return ok;
+      }
+
+      const bank = puzzleWords();
+
+      for(const ruleId of Object.keys(RULES)){
+        for(const next of bank){
+          if(next === fromWord) continue;
+          if(!relationValid(fromWord, ruleId, next)) continue;
+          if(canReachTarget(next, remainingSlots - 1, memo)){
+            memo.set(key, true);
+            return true;
+          }
+        }
+      }
+
+      memo.set(key, false);
+      return false;
+    }
+
+    function usefulSegment(i){
+      const input = wordAt(i);
+      const output = wordAt(i + 1);
+      const localValid = relationValid(input, state.rules[i], output);
+      const previousUseful = i === 0 || usefulSegment(i - 1);
+      const remaining = puzzle.slots - i - 1;
+      return previousUseful && localValid && canReachTarget(output, remaining);
+    }
+
+    function renderRules(){
+      rulesEl.innerHTML = Object.entries(RULES).map(([id, rule]) => `
+        <div class="card ${selectedRule === id ? "selected" : ""}" data-rule="${id}">
+          <div class="icon">${rule.icon}</div>
+          <div class="name">${rule.name}</div>
+          <div class="desc">${rule.desc}</div>
+        </div>
+      `).join("");
+
+      rulesEl.querySelectorAll(".card").forEach(card => {
+        card.addEventListener("pointerdown", startRulePointer);
+      });
+    }
+
+    function segmentValid(i){
+      return usefulSegment(i);
+    }
+
+    function validCount(){
+      let count = 0;
+      for(let i = 0; i < puzzle.slots; i++){
+        if(segmentValid(i)) count++;
+      }
+      return count;
+    }
+
+    function isComplete(){
+      return validCount() === puzzle.slots;
+    }
+
+    function renderChain(){
+      const complete = isComplete();
+
+      const isLast = puzzleIndex >= PUZZLES.length - 1;
+      $("#puzzleCount").textContent = `Puzzle ${puzzleIndex + 1}/${PUZZLES.length}`;
+      $("#completeBar").classList.toggle("show", complete);
+      $("#completeMsg").textContent = complete
+        ? (isLast ? "All circuits complete" : `${puzzle.start} → ${puzzle.target} complete`)
+        : "";
+      $("#nextBtn").style.display = (complete && !isLast) ? "" : "none";
+
+      const html = [];
+
+      html.push(`
+        <div class="node start ${complete ? "valid" : ""}">
+          <div class="fixed-word">
+            <span class="label">START</span>
+            <span class="word">${puzzle.start}</span>
+          </div>
+        </div>
+      `);
+
+      for(let i=0;i<puzzle.slots;i++){
+        const ruleId = state.rules[i];
+        const isValid = segmentValid(i);
+        const isPending = i === 0 || segmentValid(i - 1);
+
+        html.push(`<div class="wire ${isValid ? "valid" : isPending ? "pending" : ""}"></div>`);
+        html.push(`
+          <div class="slot ${ruleId ? "filled" : ""} ${isValid ? "valid" : ""}" data-slot="${i}">
+            ${ruleId ? `
+              <div>
+                <div class="rule-name">${RULES[ruleId].icon} ${RULES[ruleId].name}</div>
+                <div class="rule-desc">${RULES[ruleId].desc}</div>
+              </div>
+            ` : `<span>drop rule here</span>`}
+          </div>
+        `);
+        html.push(`<div class="wire ${isValid ? "valid" : isPending ? "pending" : ""}"></div>`);
+
+        if(i === puzzle.slots - 1){
+          html.push(`
+            <div class="node target ${isValid ? "valid" : ""}">
+              <div class="fixed-word">
+                <span class="label">TARGET</span>
+                <span class="word">${puzzle.target}</span>
+              </div>
+            </div>
+          `);
+        } else {
+          const val = state.words[i] || "";
+          html.push(`
+            <div class="node ${isValid ? "valid" : ""}">
+              <input
+                data-word="${i}"
+                value="${val}"
+                placeholder="word"
+                maxlength="9"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="characters"
+                inputmode="text"
+              />
+            </div>
+          `);
+        }
+      }
+
+      chainEl.innerHTML = html.join("");
+
+      chainEl.querySelectorAll(".slot").forEach(slot => {
+        slot.addEventListener("click", () => {
+          const i = Number(slot.dataset.slot);
+          if(selectedRule){
+            state.rules[i] = selectedRule;
+            selectedRule = null;
+            render();
+            validateCelebrate();
+          } else if(state.rules[i]){
+            state.rules[i] = null;
+            completedAnnounced = false;
+            render();
+          } else {
+            showToast("Tap a rule card, or drag one here.");
+          }
+        });
+      });
+
+      chainEl.querySelectorAll("input[data-word]").forEach(input => {
+        input.addEventListener("pointerdown", e => e.stopPropagation(), true);
+        input.addEventListener("mousedown", e => e.stopPropagation(), true);
+        input.addEventListener("touchstart", e => e.stopPropagation(), { capture:true, passive:true });
+        input.addEventListener("click", e => e.stopPropagation(), true);
+        input.addEventListener("focus", e => e.stopPropagation(), true);
+
+        input.addEventListener("input", e => {
+          const i = Number(e.target.dataset.word);
+          state.words[i] = norm(e.target.value);
+          e.target.value = state.words[i];
+          completedAnnounced = false;
+          renderSoft();
+          validateCelebrate();
+        });
+      });
+    }
+
+    function renderSoft(){
+      // Preserve the focused input while updating validation classes and progress text.
+      const active = document.activeElement;
+      const activeIndex = active?.dataset?.word;
+      const selStart = active?.selectionStart;
+
+      renderChain();
+
+      if(activeIndex !== undefined){
+        const next = document.querySelector(`input[data-word="${activeIndex}"]`);
+        if(next){
+          next.focus();
+          const pos = Math.min(selStart ?? next.value.length, next.value.length);
+          next.setSelectionRange(pos, pos);
+        }
+      }
+    }
+
+    function render(){
+      renderRules();
+      renderChain();
+    }
+
+    function validateCelebrate(){
+      // Completion feedback now lives in the bottom-right banner (rendered in
+      // renderChain); this just tracks that we've announced it once.
+      if(isComplete() && !completedAnnounced){
+        completedAnnounced = true;
+      }
+    }
+
+    function showToast(msg){
+      clearTimeout(toastTimer);
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1900);
+    }
+
+    function reset(){
+      state = blankState(puzzle);
+      selectedRule = null;
+      completedAnnounced = false;
+      render();
+      showToast("Puzzle reset.");
+    }
+
+    function nextPuzzle(){
+      if(puzzleIndex >= PUZZLES.length - 1) return;
+      puzzleIndex += 1;
+      puzzle = PUZZLES[puzzleIndex];
+      state = blankState(puzzle);
+      selectedRule = null;
+      completedAnnounced = false;
+      render();
+      boardEl.scrollTop = 0;
+      showToast(`${puzzle.name}: ${puzzle.start} → ${puzzle.target}`);
+    }
+
+    function startRulePointer(e){
+      e.preventDefault();
+      e.stopPropagation();
+      const card = e.currentTarget;
+      const id = card.dataset.rule;
+      card.setPointerCapture?.(e.pointerId);
+
+      drag = {
+        id,
+        startX:e.clientX,
+        startY:e.clientY,
+        x:e.clientX,
+        y:e.clientY,
+        moved:false,
+        ghost:null
+      };
+
+      window.addEventListener("pointermove", moveRulePointer);
+      window.addEventListener("pointerup", endRulePointer, { once:true });
+    }
+
+    function moveRulePointer(e){
+      if(!drag) return;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      const dx = Math.abs(e.clientX - drag.startX);
+      const dy = Math.abs(e.clientY - drag.startY);
+
+      if(!drag.moved && dx + dy > 8){
+        drag.moved = true;
+        drag.ghost = makeGhost(drag.id);
+        document.body.appendChild(drag.ghost);
+      }
+
+      if(drag.ghost){
+        drag.ghost.style.left = `${e.clientX}px`;
+        drag.ghost.style.top = `${e.clientY}px`;
+        highlightDropSlot(e.clientX, e.clientY);
+      }
+    }
+
+    function endRulePointer(e){
+      window.removeEventListener("pointermove", moveRulePointer);
+
+      if(!drag) return;
+
+      document.querySelectorAll(".slot.can-drop").forEach(el => el.classList.remove("can-drop"));
+
+      if(drag.moved){
+        const slot = slotAt(e.clientX, e.clientY);
+        if(slot){
+          state.rules[Number(slot.dataset.slot)] = drag.id;
+          selectedRule = null;
+          completedAnnounced = false;
+          render();
+          validateCelebrate();
+        }
+      } else {
+        selectedRule = selectedRule === drag.id ? null : drag.id;
+        renderRules();
+        chainEl.querySelectorAll(".slot").forEach(s => s.classList.toggle("selected-target", !!selectedRule));
+      }
+
+      drag.ghost?.remove();
+      drag = null;
+    }
+
+    function makeGhost(id){
+      const rule = RULES[id];
+      const el = document.createElement("div");
+      el.className = "card ghost";
+      el.innerHTML = `
+        <div class="icon">${rule.icon}</div>
+        <div class="name">${rule.name}</div>
+        <div class="desc">${rule.desc}</div>
+      `;
+      return el;
+    }
+
+    function slotAt(x,y){
+      const el = document.elementFromPoint(x,y);
+      return el?.closest?.(".slot");
+    }
+
+    function highlightDropSlot(x,y){
+      const active = slotAt(x,y);
+      document.querySelectorAll(".slot").forEach(slot => {
+        slot.classList.toggle("can-drop", slot === active);
+      });
+    }
+
+    $("#nextBtn").addEventListener("click", nextPuzzle);
+
+    // Prevent accidental browser drag behavior without interfering with text inputs.
+    document.addEventListener("dragstart", e => {
+      if(e.target?.matches?.("input, textarea")) return;
+      e.preventDefault();
+    });
+
+    render();
+    showToast(`${puzzle.name}: ${puzzle.start} → ${puzzle.target}`);
+  </script>
+  <script async data-id="101394794" src="//static.getclicky.com/js"></script>
+</body>
+</html>
