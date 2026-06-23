@@ -86,16 +86,20 @@
     }
 
     .complete-bar{
-      position:fixed;
-      right:12px;
-      bottom:calc(152px + env(safe-area-inset-bottom));
+      /* Mobile: a full-width bar in the bottom row, so it never covers the
+         board content. Desktop overrides this to overlay the board's
+         bottom-right corner (where there is spare room). */
+      grid-column:1 / -1;
+      grid-row:2;
       z-index:60;
       display:none;
+      flex-wrap:wrap;
+      justify-content:space-between;
       align-items:center;
-      gap:12px;
+      gap:8px 10px;
       border:1px solid var(--ink);
       background:var(--paper);
-      padding:9px 11px 9px 14px;
+      padding:8px 12px;
       box-shadow:3px 3px 0 rgba(27,24,19,.18);
     }
 
@@ -110,10 +114,9 @@
     }
 
     .complete-msg{
-      font-size:13px;
+      font-size:12px;
       font-style:italic;
       color:var(--accent);
-      white-space:nowrap;
     }
 
     .next-btn{
@@ -138,11 +141,13 @@
       min-height:0;
       position:relative;
       display:grid;
+      grid-template-columns:1fr clamp(98px, 27vw, 132px);
       grid-template-rows:1fr auto;
-      gap:14px;
+      gap:10px;
     }
 
     .board{
+      grid-area:1 / 1;
       min-height:0;
       position:relative;
       touch-action:pan-y;
@@ -165,7 +170,7 @@
     }
 
     .node,.slot{
-      width:min(330px, 84vw);
+      width:min(330px, 100%);
       touch-action:manipulation;
       border-radius:var(--radius);
       min-height:60px;
@@ -274,9 +279,25 @@
       color:var(--accent);
     }
 
-    .slot.selected-target{
-      border-style:solid;
+    /* Highlight slots that accept the currently-selected item. */
+    .slot.selectable{
       border-color:var(--accent);
+      background:rgba(138,32,24,.04);
+    }
+
+    .slot .placeholder{
+      font-style:italic;
+    }
+
+    .slot .slot-word{
+      font-size:23px;
+      font-weight:800;
+      letter-spacing:.05em;
+      color:var(--ink);
+    }
+
+    .slot.valid .slot-word{
+      color:var(--accent);
     }
 
     .slot .rule-name{
@@ -331,13 +352,41 @@
     }
 
     .tray{
+      grid-area:1 / 2;
       border:1px solid var(--ink);
       border-radius:var(--radius);
       background:var(--paper);
-      padding:12px;
-      min-height:128px;
+      padding:6px;
+      min-height:0;
       display:grid;
-      grid-template-rows:1fr;
+      grid-template-rows:auto 1fr auto;
+      gap:5px;
+    }
+
+    .scroll-btn{
+      display:none;
+      border:1px solid var(--ink);
+      background:var(--paper);
+      color:var(--ink);
+      border-radius:0;
+      padding:3px;
+      font-size:11px;
+      line-height:1;
+      cursor:pointer;
+    }
+
+    .scroll-btn.show{
+      display:block;
+    }
+
+    .scroll-btn:hover:not(:disabled){
+      background:var(--ink);
+      color:var(--paper);
+    }
+
+    .scroll-btn:disabled{
+      opacity:.25;
+      cursor:default;
     }
 
     .tray-head{
@@ -380,29 +429,54 @@
     }
 
     .rules{
-      display:flex;
-      gap:8px;
-      overflow-x:auto;
-      overflow-y:hidden;
-      padding:2px 2px 8px;
+      display:grid;
+      grid-template-columns:1fr;
+      grid-auto-rows:minmax(46px, max-content);
+      align-content:start;
+      gap:5px;
+      overflow-y:auto;
+      overflow-x:hidden;
+      /* Cards are dragged directly onto slots, so touch panning is disabled to
+         avoid conflicts; the list is scrolled via the arrow buttons (and the
+         mouse wheel on desktop). */
+      touch-action:none;
       scrollbar-width:none;
-      touch-action:pan-x;
     }
 
     .rules::-webkit-scrollbar{display:none}
 
     .card{
-      flex:0 0 96px;
-      min-height:78px;
+      min-height:46px;
       border-radius:var(--radius);
       border:1px solid var(--ink);
       background:var(--paper);
       color:var(--ink);
-      padding:8px;
+      padding:4px 5px;
+      display:grid;
+      grid-template-columns:auto 1fr;
+      grid-template-areas:"icon name" "icon desc";
+      column-gap:5px;
+      align-items:center;
+      overflow:hidden;
       user-select:none;
       -webkit-user-select:none;
       touch-action:none;
       cursor:grab;
+    }
+
+    .card.word-card{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:9px 8px;
+    }
+
+    .card .card-word{
+      font-weight:800;
+      font-size:14px;
+      letter-spacing:.05em;
+      overflow-wrap:anywhere;
+      text-align:center;
     }
 
     .card.selected{
@@ -411,14 +485,15 @@
     }
 
     .card .icon{
-      width:24px;
-      height:24px;
+      grid-area:icon;
+      align-self:center;
+      width:20px;
+      height:20px;
       display:grid;
       place-items:center;
       border:1px solid var(--ink);
-      margin-bottom:6px;
       color:var(--ink);
-      font-size:15px;
+      font-size:13px;
       font-weight:700;
     }
 
@@ -428,16 +503,19 @@
     }
 
     .card .name{
+      grid-area:name;
       font-weight:700;
-      font-size:12px;
+      font-size:11px;
       line-height:1.1;
+      overflow-wrap:break-word;
+      hyphens:auto;
     }
 
     .card .desc{
-      margin-top:4px;
+      grid-area:desc;
       color:var(--muted);
-      font-size:10px;
-      line-height:1.2;
+      font-size:9px;
+      line-height:1.15;
       font-style:italic;
     }
 
@@ -495,22 +573,53 @@
       }
       .main{
         grid-template-columns:1fr 280px;
-        grid-template-rows:1fr;
+        gap:14px;
       }
       .tray{
-        min-height:0;
+        padding:12px;
       }
       .rules{
-        display:grid;
         grid-template-columns:1fr 1fr;
+        grid-auto-rows:auto;
         align-content:start;
+        gap:8px;
         overflow-y:auto;
         overflow-x:hidden;
-        touch-action:pan-y;
       }
+      /* Roomier vertical cards on desktop. */
       .card{
-        flex:0 0 auto;
-        width:100%;
+        display:flex;
+        flex-direction:column;
+        padding:8px;
+      }
+      .card .icon{
+        width:24px;
+        height:24px;
+        font-size:15px;
+        margin-bottom:6px;
+      }
+      .card .name{
+        font-size:12px;
+      }
+      .card .desc{
+        font-size:10px;
+        margin-top:4px;
+      }
+      .complete-msg{
+        font-size:13px;
+      }
+
+      /* Desktop has spare room in the board, so overlay the banner at the
+         board's bottom-right instead of taking a full row. */
+      .complete-bar{
+        grid-column:1;
+        grid-row:1;
+        align-self:end;
+        justify-self:end;
+        flex-wrap:nowrap;
+        justify-content:flex-end;
+        margin:0 16px 16px 0;
+        max-width:calc(100% - 32px);
       }
 
       .card.ghost{
@@ -521,15 +630,6 @@
       }
 
       .toast{bottom:30px}
-
-      /* Anchor the completion banner to the bottom-right of the board column
-         (the tray is 280px + 14px gap to the right of it). */
-      .complete-bar{
-        position:absolute;
-        left:auto;
-        right:calc(280px + 14px + 16px);
-        bottom:24px;
-      }
     }
   </style>
 </head>
@@ -538,7 +638,7 @@
     <header>
       <div class="brand">
         <h1>WORD CIRCUIT</h1>
-        <div class="subtitle">Drag rules. Type words. Complete the circuit.</div>
+        <div class="subtitle">Drag words and rules. Complete the circuit.</div>
       </div>
       <div class="status">
         <div class="pill" id="puzzleCount">Puzzle 1/9</div>
@@ -551,7 +651,9 @@
       </section>
 
       <aside class="tray">
+        <button type="button" class="scroll-btn" id="scrollUp" aria-label="Scroll up">▲</button>
         <div class="rules" id="rules"></div>
+        <button type="button" class="scroll-btn" id="scrollDown" aria-label="Scroll down">▼</button>
       </aside>
 
       <div class="complete-bar" id="completeBar">
@@ -639,69 +741,81 @@
       ]
     };
 
+    // `words` are the solution-relevant words (also the look-ahead solver's
+    // bank). `decoys` are red herrings shown in the tray only — real words you
+    // can place, but they never lead to the target.
     const PUZZLES = [
       {
         name: "Starter Loop",
         start: "COLD",
         target: "HILLS",
         slots: 3,
-        words: ["COLD", "CHILL", "HILL", "HILLS", "CHILLS", "SHILL"]
+        words: ["COLD", "CHILL", "HILL", "HILLS"],
+        decoys: ["CHILLS", "SHILL", "SPILL"]
       },
       {
         name: "Small Signal",
         start: "SMALL",
         target: "TALL",
         slots: 2,
-        words: ["SMALL", "MALL", "TALL", "LITTLE"]
+        words: ["SMALL", "MALL", "TALL"],
+        decoys: ["LITTLE", "BALL", "WALL", "STALL"]
       },
       {
         name: "Moon Relay",
         start: "MOON",
         target: "SNOOP",
         slots: 3,
-        words: ["MOON", "SOON", "SPOON", "SNOOP"]
+        words: ["MOON", "SOON", "SPOON", "SNOOP"],
+        decoys: ["NOON", "BOON", "SNOOT"]
       },
       {
         name: "Stone Filter",
         start: "STONE",
         target: "TUNES",
         slots: 3,
-        words: ["STONE", "TONE", "TUNE", "TUNES"]
+        words: ["STONE", "TONE", "TUNE", "TUNES"],
+        decoys: ["BONE", "STORE", "TONES"]
       },
       {
         name: "Care Bridge",
         start: "CARE",
         target: "SHORE",
         slots: 3,
-        words: ["CARE", "SCARE", "SHARE", "SHORE"]
+        words: ["CARE", "SCARE", "SHARE", "SHORE"],
+        decoys: ["STARE", "CHORE", "SPARE"]
       },
       {
         name: "Storm Path",
         start: "RAIN",
         target: "TRAIL",
         slots: 2,
-        words: ["RAIN", "TRAIN", "TRAIL"]
+        words: ["RAIN", "TRAIN", "TRAIL"],
+        decoys: ["BRAIN", "GRAIN", "TRIAL"]
       },
       {
         name: "Silent Swap",
         start: "LISTEN",
         target: "TINSEL",
         slots: 2,
-        words: ["LISTEN", "SILENT", "TINSEL"]
+        words: ["LISTEN", "SILENT", "TINSEL"],
+        decoys: ["ENLIST", "INLETS"]
       },
       {
         name: "Knight Circuit",
         start: "NIGHT",
         target: "KNIGHTS",
         slots: 2,
-        words: ["NIGHT", "KNIGHT", "KNIGHTS"]
+        words: ["NIGHT", "KNIGHT", "KNIGHTS"],
+        decoys: ["RIGHT", "SIGHT", "LIGHT"]
       },
       {
         name: "Opposite Current",
         start: "HOT",
         target: "WORD",
         slots: 3,
-        words: ["HOT", "COLD", "CORD", "WORD"]
+        words: ["HOT", "COLD", "CORD", "WORD"],
+        decoys: ["CARD", "WARD", "COLT"]
       }
     ];
 
@@ -714,35 +828,15 @@
     let puzzleIndex = 0;
     let puzzle = PUZZLES[puzzleIndex];
     let state = blankState(puzzle);
-    let selectedRule = null;
+    let selected = null;   // { type: "rule" | "word", value }
     let toastTimer = null;
     let drag = null;
     let completedAnnounced = false;
 
-    // Some embedded file viewers wrap the document with download/navigation handlers.
-    // Keep all word-cell interaction inside the app.
-    document.addEventListener("pointerdown", e => {
-      if(e.target?.closest?.('input[data-word], .node')){
-        e.stopPropagation();
-      }
-    }, true);
-
-    document.addEventListener("mousedown", e => {
-      if(e.target?.closest?.('input[data-word], .node')){
-        e.stopPropagation();
-      }
-    }, true);
-
-    document.addEventListener("click", e => {
-      if(e.target?.closest?.('input[data-word], .node')){
-        e.stopPropagation();
-      }
-    }, true);
-
     function blankState(p){
       return {
         rules: Array(p.slots).fill(null),
-        words: Array(Math.max(0, p.slots - 1)).fill("")
+        words: Array(Math.max(0, p.slots - 1)).fill(null)
       };
     }
 
@@ -874,20 +968,6 @@
       return previousUseful && localValid && canReachTarget(output, remaining);
     }
 
-    function renderRules(){
-      rulesEl.innerHTML = Object.entries(RULES).map(([id, rule]) => `
-        <div class="card ${selectedRule === id ? "selected" : ""}" data-rule="${id}">
-          <div class="icon">${rule.icon}</div>
-          <div class="name">${rule.name}</div>
-          <div class="desc">${rule.desc}</div>
-        </div>
-      `).join("");
-
-      rulesEl.querySelectorAll(".card").forEach(card => {
-        card.addEventListener("pointerdown", startRulePointer);
-      });
-    }
-
     function segmentValid(i){
       return usefulSegment(i);
     }
@@ -904,6 +984,59 @@
       return validCount() === puzzle.slots;
     }
 
+    function isSelected(type, value){
+      return selected && selected.type === type && selected.value === value;
+    }
+
+    function shuffle(arr, seed){
+      const a = arr.slice();
+      let s = (seed >>> 0) || 1;
+      for(let i = a.length - 1; i > 0; i--){
+        s = (s * 1664525 + 1013904223) >>> 0;
+        const j = s % (i + 1);
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // Draggable word pool = solution words (minus the fixed start/target) plus
+    // the puzzle's decoys, shuffled so red herrings aren't obvious.
+    function wordPool(){
+      const start = norm(puzzle.start);
+      const target = norm(puzzle.target);
+      const seen = new Set();
+      const pool = [];
+      for(const w of [...(puzzle.words || []), ...(puzzle.decoys || [])]){
+        const n = norm(w);
+        if(!n || n === start || n === target || seen.has(n)) continue;
+        seen.add(n);
+        pool.push(n);
+      }
+      return shuffle(pool, puzzleIndex * 101 + 7);
+    }
+
+    function renderTray(){
+      const wordCards = wordPool().map(w => `
+        <div class="card word-card ${isSelected("word", w) ? "selected" : ""}" data-type="word" data-value="${w}">
+          <span class="card-word">${w}</span>
+        </div>
+      `).join("");
+
+      const ruleCards = Object.entries(RULES).map(([id, rule]) => `
+        <div class="card rule-card ${isSelected("rule", id) ? "selected" : ""}" data-type="rule" data-value="${id}">
+          <div class="icon">${rule.icon}</div>
+          <div class="name">${rule.name}</div>
+          <div class="desc">${rule.desc}</div>
+        </div>
+      `).join("");
+
+      rulesEl.innerHTML = wordCards + ruleCards;
+
+      rulesEl.querySelectorAll(".card").forEach(card => {
+        card.addEventListener("pointerdown", onCardPointerDown);
+      });
+    }
+
     function renderChain(){
       const complete = isComplete();
 
@@ -915,6 +1048,8 @@
         : "";
       $("#nextBtn").style.display = (complete && !isLast) ? "" : "none";
 
+      const ruleSelectable = selected && selected.type === "rule";
+      const wordSelectable = selected && selected.type === "word";
       const html = [];
 
       html.push(`
@@ -933,13 +1068,13 @@
 
         html.push(`<div class="wire ${isValid ? "valid" : isPending ? "pending" : ""}"></div>`);
         html.push(`
-          <div class="slot ${ruleId ? "filled" : ""} ${isValid ? "valid" : ""}" data-slot="${i}">
+          <div class="slot rule-slot ${ruleId ? "filled" : ""} ${isValid ? "valid" : ""} ${ruleSelectable ? "selectable" : ""}" data-type="rule" data-index="${i}">
             ${ruleId ? `
               <div>
                 <div class="rule-name">${RULES[ruleId].icon} ${RULES[ruleId].name}</div>
                 <div class="rule-desc">${RULES[ruleId].desc}</div>
               </div>
-            ` : `<span>drop rule here</span>`}
+            ` : `<span class="placeholder">rule</span>`}
           </div>
         `);
         html.push(`<div class="wire ${isValid ? "valid" : isPending ? "pending" : ""}"></div>`);
@@ -954,19 +1089,10 @@
             </div>
           `);
         } else {
-          const val = state.words[i] || "";
+          const w = state.words[i];
           html.push(`
-            <div class="node ${isValid ? "valid" : ""}">
-              <input
-                data-word="${i}"
-                value="${val}"
-                placeholder="word"
-                maxlength="9"
-                spellcheck="false"
-                autocomplete="off"
-                autocapitalize="characters"
-                inputmode="text"
-              />
+            <div class="slot word-slot ${w ? "filled" : ""} ${isValid ? "valid" : ""} ${wordSelectable ? "selectable" : ""}" data-type="word" data-index="${i}">
+              ${w ? `<span class="slot-word">${w}</span>` : `<span class="placeholder">word</span>`}
             </div>
           `);
         }
@@ -976,65 +1102,166 @@
 
       chainEl.querySelectorAll(".slot").forEach(slot => {
         slot.addEventListener("click", () => {
-          const i = Number(slot.dataset.slot);
-          if(selectedRule){
-            state.rules[i] = selectedRule;
-            selectedRule = null;
-            render();
-            validateCelebrate();
-          } else if(state.rules[i]){
-            state.rules[i] = null;
-            completedAnnounced = false;
-            render();
-          } else {
-            showToast("Tap a rule card, or drag one here.");
-          }
+          onSlotTap(slot.dataset.type, Number(slot.dataset.index));
         });
       });
-
-      chainEl.querySelectorAll("input[data-word]").forEach(input => {
-        input.addEventListener("pointerdown", e => e.stopPropagation(), true);
-        input.addEventListener("mousedown", e => e.stopPropagation(), true);
-        input.addEventListener("touchstart", e => e.stopPropagation(), { capture:true, passive:true });
-        input.addEventListener("click", e => e.stopPropagation(), true);
-        input.addEventListener("focus", e => e.stopPropagation(), true);
-
-        input.addEventListener("input", e => {
-          const i = Number(e.target.dataset.word);
-          state.words[i] = norm(e.target.value);
-          e.target.value = state.words[i];
-          completedAnnounced = false;
-          renderSoft();
-          validateCelebrate();
-        });
-      });
-    }
-
-    function renderSoft(){
-      // Preserve the focused input while updating validation classes and progress text.
-      const active = document.activeElement;
-      const activeIndex = active?.dataset?.word;
-      const selStart = active?.selectionStart;
-
-      renderChain();
-
-      if(activeIndex !== undefined){
-        const next = document.querySelector(`input[data-word="${activeIndex}"]`);
-        if(next){
-          next.focus();
-          const pos = Math.min(selStart ?? next.value.length, next.value.length);
-          next.setSelectionRange(pos, pos);
-        }
-      }
     }
 
     function render(){
-      renderRules();
+      renderTray();
       renderChain();
+      updateScrollButtons();
+    }
+
+    function updateScrollButtons(){
+      const up = $("#scrollUp");
+      const down = $("#scrollDown");
+      // Showing the buttons reduces the list height, so toggle then re-measure.
+      const maybe = rulesEl.scrollHeight > rulesEl.clientHeight + 1;
+      up.classList.toggle("show", maybe);
+      down.classList.toggle("show", maybe);
+      const overflow = rulesEl.scrollHeight > rulesEl.clientHeight + 1;
+      up.classList.toggle("show", overflow);
+      down.classList.toggle("show", overflow);
+      if(overflow){
+        up.disabled = rulesEl.scrollTop <= 0;
+        down.disabled = rulesEl.scrollTop + rulesEl.clientHeight >= rulesEl.scrollHeight - 1;
+      }
+    }
+
+    function scrollTray(dir){
+      const target = rulesEl.scrollTop + dir * Math.round(rulesEl.clientHeight * 0.7);
+      rulesEl.scrollTop = Math.max(0, Math.min(target, rulesEl.scrollHeight - rulesEl.clientHeight));
+      updateScrollButtons();
+    }
+
+    function currentSlotValue(type, index){
+      return type === "rule" ? state.rules[index] : state.words[index];
+    }
+
+    function place(type, index, value){
+      if(type === "rule") state.rules[index] = value;
+      else state.words[index] = value;
+      completedAnnounced = false;
+    }
+
+    function onSlotTap(type, index){
+      if(selected){
+        if(selected.type === type){
+          place(type, index, selected.value);
+          selected = null;
+          render();
+          validateCelebrate();
+        } else {
+          showToast(type === "rule" ? "That's a word — pick a rule." : "That's a rule — pick a word.");
+        }
+      } else if(currentSlotValue(type, index)){
+        place(type, index, null);
+        render();
+      } else {
+        showToast("Tap a word or rule, then a slot.");
+      }
+    }
+
+    // Cards: press to start dragging straight onto a slot. A press with no
+    // movement is treated as a tap, which toggles selection (so you can also
+    // tap a card then tap a slot).
+    function onCardPointerDown(e){
+      e.preventDefault();
+      const card = e.currentTarget;
+      card.setPointerCapture?.(e.pointerId);
+      drag = {
+        type: card.dataset.type,
+        value: card.dataset.value,
+        startX: e.clientX,
+        startY: e.clientY,
+        x: e.clientX,
+        y: e.clientY,
+        moved: false,
+        ghost: null
+      };
+      window.addEventListener("pointermove", onDragMove);
+      window.addEventListener("pointerup", onDragEnd, { once:true });
+    }
+
+    function onDragMove(e){
+      if(!drag) return;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+
+      if(!drag.moved && Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) > 8){
+        drag.moved = true;
+        drag.ghost = makeGhost(drag.type, drag.value);
+        document.body.appendChild(drag.ghost);
+      }
+
+      if(drag.ghost){
+        drag.ghost.style.left = `${e.clientX}px`;
+        drag.ghost.style.top = `${e.clientY}px`;
+        highlightDropSlot(e.clientX, e.clientY, drag.type);
+      }
+    }
+
+    function onDragEnd(e){
+      window.removeEventListener("pointermove", onDragMove);
+      if(!drag) return;
+
+      clearDropHighlight();
+
+      if(drag.moved){
+        const slot = slotAt(e.clientX, e.clientY);
+        if(slot && slot.dataset.type === drag.type){
+          place(drag.type, Number(slot.dataset.index), drag.value);
+          selected = null;
+          render();
+          validateCelebrate();
+        }
+        // dropped off a matching slot: keep the selection as-is
+      } else {
+        // tap (no movement) -> toggle selection
+        selected = isSelected(drag.type, drag.value) ? null : { type:drag.type, value:drag.value };
+        render();
+      }
+
+      drag.ghost?.remove();
+      drag = null;
+    }
+
+    function makeGhost(type, value){
+      const el = document.createElement("div");
+      if(type === "rule"){
+        const rule = RULES[value];
+        el.className = "card rule-card ghost";
+        el.innerHTML = `
+          <div class="icon">${rule.icon}</div>
+          <div class="name">${rule.name}</div>
+          <div class="desc">${rule.desc}</div>
+        `;
+      } else {
+        el.className = "card word-card ghost";
+        el.innerHTML = `<span class="card-word">${value}</span>`;
+      }
+      return el;
+    }
+
+    function slotAt(x,y){
+      const el = document.elementFromPoint(x,y);
+      return el?.closest?.(".slot");
+    }
+
+    function highlightDropSlot(x,y,type){
+      const active = slotAt(x,y);
+      chainEl.querySelectorAll(".slot").forEach(slot => {
+        slot.classList.toggle("can-drop", slot === active && slot.dataset.type === type);
+      });
+    }
+
+    function clearDropHighlight(){
+      document.querySelectorAll(".slot.can-drop").forEach(el => el.classList.remove("can-drop"));
     }
 
     function validateCelebrate(){
-      // Completion feedback now lives in the bottom-right banner (rendered in
+      // Completion feedback lives in the bottom-right banner (rendered in
       // renderChain); this just tracks that we've announced it once.
       if(isComplete() && !completedAnnounced){
         completedAnnounced = true;
@@ -1048,124 +1275,27 @@
       toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1900);
     }
 
-    function reset(){
-      state = blankState(puzzle);
-      selectedRule = null;
-      completedAnnounced = false;
-      render();
-      showToast("Puzzle reset.");
-    }
-
     function nextPuzzle(){
       if(puzzleIndex >= PUZZLES.length - 1) return;
       puzzleIndex += 1;
       puzzle = PUZZLES[puzzleIndex];
       state = blankState(puzzle);
-      selectedRule = null;
+      selected = null;
       completedAnnounced = false;
       render();
       boardEl.scrollTop = 0;
+      rulesEl.scrollTop = 0;
       showToast(`${puzzle.name}: ${puzzle.start} → ${puzzle.target}`);
     }
 
-    function startRulePointer(e){
-      e.preventDefault();
-      e.stopPropagation();
-      const card = e.currentTarget;
-      const id = card.dataset.rule;
-      card.setPointerCapture?.(e.pointerId);
-
-      drag = {
-        id,
-        startX:e.clientX,
-        startY:e.clientY,
-        x:e.clientX,
-        y:e.clientY,
-        moved:false,
-        ghost:null
-      };
-
-      window.addEventListener("pointermove", moveRulePointer);
-      window.addEventListener("pointerup", endRulePointer, { once:true });
-    }
-
-    function moveRulePointer(e){
-      if(!drag) return;
-      drag.x = e.clientX;
-      drag.y = e.clientY;
-      const dx = Math.abs(e.clientX - drag.startX);
-      const dy = Math.abs(e.clientY - drag.startY);
-
-      if(!drag.moved && dx + dy > 8){
-        drag.moved = true;
-        drag.ghost = makeGhost(drag.id);
-        document.body.appendChild(drag.ghost);
-      }
-
-      if(drag.ghost){
-        drag.ghost.style.left = `${e.clientX}px`;
-        drag.ghost.style.top = `${e.clientY}px`;
-        highlightDropSlot(e.clientX, e.clientY);
-      }
-    }
-
-    function endRulePointer(e){
-      window.removeEventListener("pointermove", moveRulePointer);
-
-      if(!drag) return;
-
-      document.querySelectorAll(".slot.can-drop").forEach(el => el.classList.remove("can-drop"));
-
-      if(drag.moved){
-        const slot = slotAt(e.clientX, e.clientY);
-        if(slot){
-          state.rules[Number(slot.dataset.slot)] = drag.id;
-          selectedRule = null;
-          completedAnnounced = false;
-          render();
-          validateCelebrate();
-        }
-      } else {
-        selectedRule = selectedRule === drag.id ? null : drag.id;
-        renderRules();
-        chainEl.querySelectorAll(".slot").forEach(s => s.classList.toggle("selected-target", !!selectedRule));
-      }
-
-      drag.ghost?.remove();
-      drag = null;
-    }
-
-    function makeGhost(id){
-      const rule = RULES[id];
-      const el = document.createElement("div");
-      el.className = "card ghost";
-      el.innerHTML = `
-        <div class="icon">${rule.icon}</div>
-        <div class="name">${rule.name}</div>
-        <div class="desc">${rule.desc}</div>
-      `;
-      return el;
-    }
-
-    function slotAt(x,y){
-      const el = document.elementFromPoint(x,y);
-      return el?.closest?.(".slot");
-    }
-
-    function highlightDropSlot(x,y){
-      const active = slotAt(x,y);
-      document.querySelectorAll(".slot").forEach(slot => {
-        slot.classList.toggle("can-drop", slot === active);
-      });
-    }
-
     $("#nextBtn").addEventListener("click", nextPuzzle);
+    $("#scrollUp").addEventListener("click", () => scrollTray(-1));
+    $("#scrollDown").addEventListener("click", () => scrollTray(1));
+    rulesEl.addEventListener("scroll", updateScrollButtons);
+    window.addEventListener("resize", updateScrollButtons);
 
-    // Prevent accidental browser drag behavior without interfering with text inputs.
-    document.addEventListener("dragstart", e => {
-      if(e.target?.matches?.("input, textarea")) return;
-      e.preventDefault();
-    });
+    // Prevent the browser's native drag of text/images.
+    document.addEventListener("dragstart", e => e.preventDefault());
 
     render();
     showToast(`${puzzle.name}: ${puzzle.start} → ${puzzle.target}`);
