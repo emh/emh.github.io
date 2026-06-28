@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Fractal Wave Explorer</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #e8ddc5;
+      overscroll-behavior: none;
+      touch-action: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    canvas:active { cursor: grabbing; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      const TAU = Math.PI * 2;
+      const DPR_LIMIT = 2;
+      const MIN_ZOOM = 2 ** -22;
+      const MAX_ZOOM = 2 ** 28;
+
+      const palette = {
+        paper: '#e8ddc5',
+        paper2: '#d9ccad',
+        ink: '#092a45',
+        navy: '#0a3457',
+        blue: '#1f5473',
+        blue2: '#507a8e',
+        pale: '#8ca4aa',
+        foam: '#f1e8d4',
+        foam2: '#d9ccb1'
+      };
+
+      let W = 0;
+      let H = 0;
+      let dpr = 1;
+
+      let camX = 0;
+      let camY = 0;
+      let zoom = 220; // pixels per world unit
+      let seed = 0x5eaf12;
+      let dirty = true;
+      let raf = 0;
+
+      const pointers = new Map();
+      let lastTouch = null;
+      let lastClickTime = 0;
+      let lastClickX = 0;
+      let lastClickY = 0;
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, DPR_LIMIT);
+        W = Math.max(1, Math.floor(window.innerWidth));
+        H = Math.max(1, Math.floor(window.innerHeight));
+        canvas.width = Math.floor(W * dpr);
+        canvas.height = Math.floor(H * dpr);
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        invalidate();
+      }
+
+      function invalidate() {
+        dirty = true;
+        if (!raf) raf = requestAnimationFrame(frame);
+      }
+
+      function clamp(v, lo, hi) {
+        return Math.max(lo, Math.min(hi, v));
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function smoothstep(a, b, x) {
+        const t = clamp((x - a) / (b - a), 0, 1);
+        return t * t * (3 - 2 * t);
+      }
+
+      function hash32(a, b = 0, c = 0, d = seed) {
+        let h = d | 0;
+        h ^= Math.imul(a | 0, 0x9e3779b1);
+        h ^= Math.imul(b | 0, 0x85ebca6b);
+        h ^= Math.imul(c | 0, 0xc2b2ae35);
+        h ^= h >>> 16;
+        h = Math.imul(h, 0x7feb352d);
+        h ^= h >>> 15;
+        h = Math.imul(h, 0x846ca68b);
+        h ^= h >>> 16;
+        return h >>> 0;
+      }
+
+      function rand01(a, b, c, k = 0) {
+        return hash32(a, b, c, seed + k * 1013904223) / 4294967296;
+      }
+
+      function signedRand(a, b, c, k = 0) {
+        return rand01(a, b, c, k) * 2 - 1;
+      }
+
+      function screenToWorld(sx, sy) {
+        return {
+          x: camX + (sx - W / 2) / zoom,
+          y: camY + (sy - H / 2) / zoom
+        };
+      }
+
+      function zoomAt(sx, sy, factor) {
+        const before = screenToWorld(sx, sy);
+        zoom = clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM);
+        const after = screenToWorld(sx, sy);
+        camX += before.x - after.x;
+        camY += before.y - after.y;
+        invalidate();
+      }
+
+      function setWorldTransform() {
+        ctx.setTransform(dpr, 0, 0, dpr, W / 2 * dpr, H / 2 * dpr);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-camX, -camY);
+      }
+
+      function resetTransform() {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function drawPaper() {
+        resetTransform();
+        ctx.fillStyle = palette.paper;
+        ctx.fillRect(0, 0, W, H);
+
+        // Screen-space paper grain. Kept intentionally subtle so it does not fight the generated geometry.
+        const n = Math.floor((W * H) / 18000);
+        ctx.globalAlpha = 0.12;
+        for (let i = 0; i < n; i++) {
+          const x = (hash32(i, 11, 17) / 4294967296) * W;
+          const y = (hash32(i, 23, 29) / 4294967296) * H;
+          const r = 0.6 + (hash32(i, 31, 37) / 4294967296) * 1.9;
+          ctx.fillStyle = (i & 1) ? palette.foam : palette.paper2;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, TAU);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function spiralPoint(t, band = 0) {
+        // A logarithmic-ish curl with a stretched wave shoulder.
+        const theta = -0.8 + t * 5.35;
+        const r = 0.55 - t * 0.43 + band * 0.032;
+        return {
+          x: -0.03 + Math.cos(theta) * r * 0.94 + t * 0.22,
+          y:  0.05 - Math.sin(theta) * r * 0.78 - t * 0.04
+        };
+      }
+
+      function foamCurl(x, y, r, rot, color, alpha) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rot);
+        ctx.globalAlpha *= alpha;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = r * 0.18;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i <= 18; i++) {
+          const t = i / 18;
+          const th = t * 4.9;
+          const rr = r * (1 - t * 0.72);
+          const px = Math.cos(th) * rr;
+          const py = Math.sin(th) * rr;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawWaveCell(ix, iy, level, cell, cellPx) {
+        const r0 = rand01(ix, iy, level, 0);
+        if (r0 < 0.035 && cellPx < 420) return;
+
+        const jx = signedRand(ix, iy, level, 1) * 0.34;
+        const jy = signedRand(ix, iy, level, 2) * 0.34;
+        const x = (ix + 0.5 + jx) * cell;
+        const y = (iy + 0.5 + jy) * cell;
+        const s = cell * lerp(0.68, 1.16, rand01(ix, iy, level, 3));
+        const rot = signedRand(ix, iy, level, 4) * 1.1 + (rand01(ix, iy, level, 5) > 0.5 ? 0.08 : Math.PI);
+
+        const detail = clamp(cellPx / 190, 0.25, 3.8);
+        const fadeSmall = smoothstep(44, 130, cellPx);
+        const fadeLarge = 1 - smoothstep(1250, 1900, cellPx);
+        const alpha = fadeSmall * fadeLarge * lerp(0.36, 0.86, rand01(ix, iy, level, 6));
+        if (alpha <= 0.01) return;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rot);
+        ctx.scale(s, s);
+        ctx.globalAlpha *= alpha;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Broad underpainting: soft blue wash that makes larger waves read as masses.
+        if (cellPx > 95) {
+          ctx.fillStyle = rand01(ix, iy, level, 7) > 0.45 ? palette.navy : palette.blue;
+          ctx.globalAlpha *= 0.62;
+          ctx.beginPath();
+          ctx.moveTo(-0.56, 0.36);
+          ctx.bezierCurveTo(-0.40, -0.18, 0.10, -0.56, 0.43, -0.26);
+          ctx.bezierCurveTo(0.62, -0.08, 0.25, 0.09, 0.23, -0.10);
+          ctx.bezierCurveTo(0.18, -0.40, -0.26, -0.12, -0.10, 0.24);
+          ctx.bezierCurveTo(0.02, 0.50, -0.35, 0.54, -0.56, 0.36);
+          ctx.fill();
+          ctx.globalAlpha /= 0.62;
+        }
+
+        // Ribbed wave lines.
+        const bands = Math.max(3, Math.min(9, Math.floor(3 + detail * 2.2)));
+        for (let b = 0; b < bands; b++) {
+          const colorRoll = rand01(ix, iy, level, 20 + b);
+          ctx.strokeStyle = colorRoll < 0.55 ? palette.ink : colorRoll < 0.82 ? palette.blue : palette.blue2;
+          ctx.lineWidth = lerp(0.010, 0.026, b / bands) / Math.sqrt(detail);
+          ctx.beginPath();
+          const steps = Math.floor(32 + detail * 14);
+          for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const p = spiralPoint(t, b * 0.34);
+            const wobble = Math.sin((t * 6.0 + b * 1.8 + r0 * 4) * Math.PI) * 0.010;
+            const px = p.x + wobble;
+            const py = p.y + Math.cos(t * 9 + b) * 0.006;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+
+        // Foam ridge along the outside of the curl.
+        if (cellPx > 66) {
+          ctx.fillStyle = palette.foam;
+          ctx.strokeStyle = palette.ink;
+          const foamCount = Math.floor(6 + detail * 13);
+          for (let i = 0; i < foamCount; i++) {
+            const t = (i + rand01(ix, iy, level, 100 + i) * 0.85) / foamCount;
+            const p = spiralPoint(clamp(t * 0.92 + 0.03, 0, 1), -0.25);
+            const rr = lerp(0.014, 0.050, rand01(ix, iy, level, 150 + i)) / Math.sqrt(Math.max(0.7, detail));
+            ctx.globalAlpha *= lerp(0.72, 1, rand01(ix, iy, level, 180 + i));
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, rr, 0, TAU);
+            ctx.fill();
+            if (cellPx > 135) {
+              ctx.lineWidth = rr * 0.18;
+              ctx.stroke();
+            }
+            ctx.globalAlpha /= lerp(0.72, 1, rand01(ix, iy, level, 180 + i));
+          }
+        }
+
+        // Recursive foam curls. These are the “waves inside waves” marks.
+        if (cellPx > 120) {
+          const curls = Math.floor(2 + detail * 7);
+          for (let i = 0; i < curls; i++) {
+            const t = rand01(ix, iy, level, 220 + i) * 0.95;
+            const p = spiralPoint(t, signedRand(ix, iy, level, 240 + i) * 0.25);
+            const cr = lerp(0.020, 0.075, rand01(ix, iy, level, 260 + i)) / Math.sqrt(detail);
+            const a = lerp(0.42, 0.86, rand01(ix, iy, level, 280 + i));
+            foamCurl(p.x, p.y, cr, signedRand(ix, iy, level, 300 + i) * TAU, rand01(ix, iy, level, 320 + i) > 0.5 ? palette.foam : palette.blue2, a);
+          }
+        }
+
+        // Woodblock hatch marks in the trough.
+        if (cellPx > 260) {
+          ctx.strokeStyle = palette.ink;
+          ctx.globalAlpha *= 0.28;
+          ctx.lineWidth = 0.0045;
+          const hatch = Math.floor(9 + detail * 9);
+          for (let i = 0; i < hatch; i++) {
+            const yy = lerp(0.16, 0.38, i / hatch) + signedRand(ix, iy, level, 400 + i) * 0.01;
+            const x0 = lerp(-0.36, 0.08, rand01(ix, iy, level, 420 + i));
+            const len = lerp(0.15, 0.44, rand01(ix, iy, level, 440 + i));
+            ctx.beginPath();
+            ctx.moveTo(x0, yy);
+            ctx.lineTo(x0 + len, yy + signedRand(ix, iy, level, 460 + i) * 0.012);
+            ctx.stroke();
+          }
+          ctx.globalAlpha /= 0.28;
+        }
+
+        ctx.restore();
+      }
+
+      function drawFractalWaves() {
+        setWorldTransform();
+
+        const viewLeft = camX - W / 2 / zoom;
+        const viewRight = camX + W / 2 / zoom;
+        const viewTop = camY - H / 2 / zoom;
+        const viewBottom = camY + H / 2 / zoom;
+
+        // Pick integer powers of two whose cells are useful at the current zoom.
+        const minLevel = Math.floor(Math.log2(46 / zoom));
+        const maxLevel = Math.ceil(Math.log2(1500 / zoom));
+
+        // Large structures first, small structures last.
+        for (let level = maxLevel; level >= minLevel; level--) {
+          const cell = 2 ** level;
+          const cellPx = cell * zoom;
+
+          // Keep complexity bounded. Very small cells become textural; very large cells are clipped out.
+          if (cellPx < 32 || cellPx > 2200) continue;
+
+          const margin = cell * 1.4;
+          const x0 = Math.floor((viewLeft - margin) / cell);
+          const x1 = Math.ceil((viewRight + margin) / cell);
+          const y0 = Math.floor((viewTop - margin) / cell);
+          const y1 = Math.ceil((viewBottom + margin) / cell);
+
+          const areaCount = (x1 - x0 + 1) * (y1 - y0 + 1);
+          const stride = areaCount > 900 ? 2 : 1;
+
+          for (let iy = y0; iy <= y1; iy += stride) {
+            for (let ix = x0; ix <= x1; ix += stride) {
+              drawWaveCell(ix, iy, level, cell, cellPx);
+            }
+          }
+        }
+      }
+
+      function drawMistAndInk() {
+        setWorldTransform();
+        const viewLeft = camX - W / 2 / zoom;
+        const viewRight = camX + W / 2 / zoom;
+        const viewTop = camY - H / 2 / zoom;
+        const viewBottom = camY + H / 2 / zoom;
+
+        // Sparse world-space flecks, deterministic and scale-independent.
+        const targetPx = 42;
+        const level = Math.floor(Math.log2(targetPx / zoom));
+        const cell = 2 ** level;
+        const cellPx = cell * zoom;
+        if (cellPx < 16 || cellPx > 110) return;
+
+        const x0 = Math.floor(viewLeft / cell) - 1;
+        const x1 = Math.ceil(viewRight / cell) + 1;
+        const y0 = Math.floor(viewTop / cell) - 1;
+        const y1 = Math.ceil(viewBottom / cell) + 1;
+
+        ctx.save();
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const r = rand01(x, y, level, 900);
+            if (r < 0.34) continue;
+            const px = (x + rand01(x, y, level, 901)) * cell;
+            const py = (y + rand01(x, y, level, 902)) * cell;
+            const rr = cell * lerp(0.025, 0.095, rand01(x, y, level, 903));
+            ctx.globalAlpha = lerp(0.10, 0.32, rand01(x, y, level, 904));
+            ctx.fillStyle = rand01(x, y, level, 905) > 0.5 ? palette.foam : palette.ink;
+            ctx.beginPath();
+            ctx.arc(px, py, rr, 0, TAU);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      }
+
+      function frame() {
+        raf = 0;
+        if (!dirty) return;
+        dirty = false;
+
+        drawPaper();
+        drawFractalWaves();
+        drawMistAndInk();
+      }
+
+      function pointerDistance(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y);
+      }
+
+      function pointerMid(a, b) {
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
+
+      function updateGesture() {
+        const pts = [...pointers.values()];
+        if (pts.length === 0) {
+          lastTouch = null;
+          return;
+        }
+
+        if (pts.length === 1) {
+          const p = pts[0];
+          if (lastTouch && lastTouch.type === 'pan') {
+            camX -= (p.x - lastTouch.x) / zoom;
+            camY -= (p.y - lastTouch.y) / zoom;
+            invalidate();
+          }
+          lastTouch = { type: 'pan', x: p.x, y: p.y };
+          return;
+        }
+
+        const a = pts[0];
+        const b = pts[1];
+        const mid = pointerMid(a, b);
+        const dist = pointerDistance(a, b);
+
+        if (lastTouch && lastTouch.type === 'pinch') {
+          const before = screenToWorld(lastTouch.mid.x, lastTouch.mid.y);
+          zoom = clamp(zoom * (dist / Math.max(1, lastTouch.dist)), MIN_ZOOM, MAX_ZOOM);
+          const after = screenToWorld(mid.x, mid.y);
+          camX += before.x - after.x;
+          camY += before.y - after.y;
+          invalidate();
+        }
+
+        lastTouch = { type: 'pinch', mid, dist };
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        canvas.setPointerCapture(e.pointerId);
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        lastTouch = null;
+
+        const now = performance.now();
+        const close = Math.hypot(e.clientX - lastClickX, e.clientY - lastClickY) < 28;
+        if (now - lastClickTime < 320 && close) {
+          zoomAt(e.clientX, e.clientY, 2.4);
+          lastClickTime = 0;
+        } else {
+          lastClickTime = now;
+          lastClickX = e.clientX;
+          lastClickY = e.clientY;
+        }
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        updateGesture();
+      });
+
+      function endPointer(e) {
+        pointers.delete(e.pointerId);
+        lastTouch = null;
+      }
+
+      canvas.addEventListener('pointerup', endPointer);
+      canvas.addEventListener('pointercancel', endPointer);
+      canvas.addEventListener('pointerleave', endPointer);
+
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = Math.exp(-e.deltaY * 0.0012);
+        zoomAt(e.clientX, e.clientY, factor);
+      }, { passive: false });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'r' || e.key === 'R') {
+          seed = hash32(seed, Date.now() | 0, 77, 12345);
+          invalidate();
+        } else if (e.key === '+' || e.key === '=') {
+          zoomAt(W / 2, H / 2, 1.35);
+        } else if (e.key === '-' || e.key === '_') {
+          zoomAt(W / 2, H / 2, 1 / 1.35);
+        } else if (e.key === '0') {
+          camX = 0;
+          camY = 0;
+          zoom = 220;
+          invalidate();
+        }
+      });
+
+      window.addEventListener('resize', resize);
+      window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      resize();
+    })();
+  </script>
+<script async data-id="101394794" src="//static.getclicky.com/js"></script>
+</body>
+</html>
