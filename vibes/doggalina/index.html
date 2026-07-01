@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MISSY DOGGALINA — 8-Bit Dance Party</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --magenta:#ff2e88;
+    --cyan:#27e7ff;
+    --yellow:#ffe14d;
+    --grape:#2a0a40;
+    --grape2:#150421;
+    --ink:#0c0118;
+    --mint:#4dffb8;
+    --pix: 'Press Start 2P', 'Courier New', monospace;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{
+    font-family:var(--pix);
+    background:
+      radial-gradient(120% 90% at 50% -10%, #3a0d5c 0%, var(--grape2) 55%, var(--ink) 100%);
+    color:#fff;
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    overflow-x:hidden;
+    -webkit-font-smoothing:none;
+  }
+  /* faint moving star grid behind the cabinet */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background-image:
+      radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,.5), transparent),
+      radial-gradient(2px 2px at 70% 60%, rgba(39,231,255,.6), transparent),
+      radial-gradient(2px 2px at 40% 80%, rgba(255,46,136,.6), transparent),
+      radial-gradient(2px 2px at 85% 20%, rgba(255,225,77,.55), transparent),
+      radial-gradient(2px 2px at 10% 70%, rgba(255,255,255,.4), transparent);
+    background-size: 220px 220px;
+    opacity:.5;
+    animation: drift 14s linear infinite;
+    pointer-events:none;
+  }
+  @keyframes drift{ from{background-position:0 0} to{background-position:220px 220px} }
+
+  .cabinet{
+    position:relative;
+    width:min(96vw, 760px);
+    padding:18px 18px 14px;
+    border-radius:18px;
+    background:linear-gradient(180deg,#1d0734,#120322);
+    border:3px solid var(--magenta);
+    box-shadow:
+      0 0 0 3px #0a0014,
+      0 0 24px rgba(255,46,136,.55),
+      0 0 60px rgba(39,231,255,.25),
+      inset 0 0 40px rgba(0,0,0,.6);
+  }
+  .marquee{
+    text-align:center;
+    font-size:clamp(13px,2.6vw,22px);
+    letter-spacing:2px;
+    padding:8px 6px 12px;
+    color:var(--yellow);
+    text-shadow:0 0 6px var(--magenta), 3px 3px 0 #7a0036;
+    line-height:1.5;
+  }
+  .marquee small{
+    display:block;
+    margin-top:8px;
+    font-size:clamp(7px,1.3vw,10px);
+    color:var(--cyan);
+    text-shadow:0 0 6px rgba(39,231,255,.7);
+  }
+  .screen-wrap{
+    position:relative;
+    border-radius:10px;
+    overflow:hidden;
+    border:3px solid #0a0014;
+    box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 30px rgba(0,0,0,.8);
+    background:#05010d;
+    aspect-ratio: 4 / 3;            /* desktop keeps the classic 4:3 screen */
+  }
+  canvas#game{
+    display:block;
+    width:100%;
+    height:100%;
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+  }
+  /* CRT scanlines + vignette overlay */
+  .screen-wrap::after{
+    content:"";
+    position:absolute; inset:0;
+    pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 4px),
+      radial-gradient(120% 120% at 50% 50%, transparent 60%, rgba(0,0,0,.55) 100%);
+    mix-blend-mode:multiply;
+  }
+
+  /* start overlay */
+  .start{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px;
+    background:radial-gradient(80% 80% at 50% 40%, rgba(42,10,64,.82), rgba(5,1,13,.94));
+    z-index:5; cursor:pointer; text-align:center; padding:20px;
+  }
+  .start h2{ font-size:clamp(12px,2.4vw,18px); color:var(--magenta); text-shadow:0 0 8px var(--magenta); line-height:1.6;}
+  .start p{ font-size:clamp(7px,1.4vw,10px); color:#fff; line-height:1.9; max-width:420px;}
+  .blink{ color:var(--yellow); animation:blink 1s steps(2) infinite; font-size:clamp(9px,1.8vw,13px); text-shadow:0 0 8px var(--yellow);}
+  @keyframes blink{ 50%{opacity:0} }
+  .hidden{ display:none !important; }
+
+  .controls{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; margin-top:16px; padding:0 14px;
+  }
+  /* directional arrow pad */
+  .dpad{ display:flex; gap:10px; }
+  button.arrow{
+    width:56px; height:56px; padding:0; cursor:pointer;
+    font-family:var(--pix); font-size:18px; line-height:1; color:var(--cyan);
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg,#26123c,#150726);
+    border:2px solid #3c1f5e; border-bottom:6px solid #190a2b;
+    border-radius:12px;
+    box-shadow:0 0 12px rgba(39,231,255,.18), inset 0 1px 0 rgba(255,255,255,.06);
+    text-shadow:0 0 8px rgba(39,231,255,.7);
+    transition:transform .05s, border-bottom-width .05s, filter .12s;
+    user-select:none; touch-action:none;
+  }
+  button.arrow:hover{ filter:brightness(1.15); }
+  button.arrow:active{ transform:translateY(4px); border-bottom-width:2px; }
+  /* round arcade action buttons (no text) */
+  .actions{ display:flex; gap:16px; }
+  button.arcade{
+    width:60px; height:60px; padding:0; border:none; cursor:pointer;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at 50% 30%, rgba(255,255,255,.6), rgba(255,255,255,0) 45%),
+      radial-gradient(circle at 50% 118%, rgba(0,0,0,.4), rgba(0,0,0,0) 55%),
+      var(--btn);
+    box-shadow:
+      0 0 0 3px rgba(0,0,0,.5),
+      0 6px 0 var(--btnDark),
+      0 11px 16px rgba(0,0,0,.5),
+      0 0 20px var(--btnGlow);
+    transition:transform .05s, box-shadow .05s, filter .12s;
+    user-select:none; touch-action:none;
+  }
+  button.arcade:hover{ filter:brightness(1.08); }
+  button.arcade:active{
+    transform:translateY(5px);
+    box-shadow:
+      0 0 0 3px rgba(0,0,0,.5),
+      0 1px 0 var(--btnDark),
+      0 3px 8px rgba(0,0,0,.5),
+      0 0 20px var(--btnGlow);
+  }
+  button.arcade.tw{    --btn:#ff2e88; --btnDark:#94073f; --btnGlow:rgba(255,46,136,.55); }
+  button.arcade.roll{  --btn:#ffd21f; --btnDark:#9a7400; --btnGlow:rgba(255,225,77,.55); }
+  button.arcade.scoot{ --btn:#2fd98f; --btnDark:#0b7549; --btnGlow:rgba(47,217,143,.55); }
+  .iconbtn{
+    position:absolute; top:14px; right:16px; z-index:6;
+    width:42px; height:42px; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg,#2a0f44,#180729);
+    border:2px solid var(--cyan); color:var(--cyan);
+    border-radius:10px; cursor:pointer;
+    box-shadow:0 0 12px rgba(39,231,255,.35);
+    transition:transform .05s, color .15s, border-color .15s, box-shadow .15s, filter .15s;
+  }
+  .iconbtn:hover{ filter:brightness(1.18); }
+  .iconbtn:active{ transform:translateY(2px); }
+  .iconbtn .slash{ display:none; }
+  .iconbtn.off{ color:var(--magenta); border-color:var(--magenta); box-shadow:0 0 12px rgba(255,46,136,.4); }
+  .iconbtn.off .waves{ display:none; }
+  .iconbtn.off .slash{ display:block; }
+
+  /* ---- Mobile: fill the whole screen ---- */
+  @media (max-width: 680px), (pointer: coarse) and (max-width: 900px){
+    body{ padding:0; align-items:stretch; }
+    body::before{ opacity:.3; }
+    .cabinet{
+      width:100vw;
+      height:100vh; height:100svh;        /* fill the viewport */
+      border-radius:0;
+      border-width:0;
+      box-shadow:none;
+      padding:6px 8px max(8px, env(safe-area-inset-bottom));
+      display:flex; flex-direction:column;
+    }
+    .marquee{
+      flex:0 0 auto; padding:6px 44px 8px;     /* room for the speaker icon */
+      font-size:clamp(10px,3.4vw,18px); letter-spacing:1px; white-space:nowrap;
+    }
+    .screen-wrap{
+      flex:1 1 auto;
+      aspect-ratio:auto;                   /* let it grow to fill height */
+      min-height:0;
+    }
+    .controls{ flex:0 0 auto; margin-top:10px; padding:0 6px; }
+    .iconbtn{ top:8px; right:10px; width:38px; height:38px; }
+    button.arrow{ width:clamp(48px,15vw,60px); height:clamp(48px,15vw,60px); }
+    button.arcade{ width:clamp(52px,16vw,64px); height:clamp(52px,16vw,64px); }
+  }
+</style>
+</head>
+<body>
+  <div class="cabinet">
+    <button id="btnMusic" class="iconbtn off" aria-label="Toggle music" title="Music on / off">
+      <svg viewBox="0 0 28 24" width="22" height="20" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9 H8 L13 4 V20 L8 15 H4 Z" fill="currentColor" stroke="none"/>
+        <g class="waves">
+          <path d="M17 8.5 a4.5 4.5 0 0 1 0 7"/>
+          <path d="M20 5.5 a8.5 8.5 0 0 1 0 13"/>
+        </g>
+        <line class="slash" x1="3" y1="3.5" x2="25" y2="20.5"/>
+      </svg>
+    </button>
+    <div class="marquee">
+      ★ MISSY DOGGALINA ★
+    </div>
+
+    <div class="screen-wrap">
+      <canvas id="game" width="480" height="360"></canvas>
+      <div class="start" id="start">
+        <h2>MISSY<br>DOGGALINA</h2>
+        <p>Mister Bob Dobalina... Missy Doggalina!<br>
+        Press a move ON the beat to score FRESH combos.</p>
+        <div class="blink">▶ CLICK / PRESS SPACE TO START ◀</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="dpad">
+        <button class="arrow" id="btnLeft"  aria-label="Move left">◀</button>
+        <button class="arrow" id="btnRight" aria-label="Move right">▶</button>
+      </div>
+      <div class="actions">
+        <button class="arcade tw"    id="btnTwirl" aria-label="Twirl"></button>
+        <button class="arcade roll"  id="btnRoll"  aria-label="Roll over"></button>
+        <button class="arcade scoot" id="btnScoot" aria-label="Butt scoot"></button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   MISSY DOGGALINA — 8-bit dance party
+   - Pixel-art Missy (procedural) on a disco arcade stage
+   - Live Web Audio chiptune of the "Missy Doggalina" hook
+   ============================================================ */
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+// W stays fixed; H follows the container's aspect ratio so the stage fills
+// the available space (taller on mobile). MP scales Missy to match.
+let W = canvas.width, H = canvas.height;
+ctx.imageSmoothingEnabled = false;
+
+/* ---------- Missy pixel sprite (procedural, shih-tzu) ---------- */
+const COL = {
+  d:'#7c7264', // dark grey-brown (ear edges)
+  b:'#9d9484', // grizzled grey-tan (hair)
+  g:'#c2bdb1', // soft silver-grey
+  t:'#cdc0a4', // warm cream-tan (grizzle)
+  c:'#e7dcc6', // cream
+  w:'#f7f2e9', // white fur
+  s:'#dcd4c4', // soft shadow on white
+  k:'#2a2521', // slate nose / eyes
+  p:'#d59aa0', // pink tongue
+};
+const FW = 24, FH = 28;     // sprite grid (cols x rows)
+let MP = 6;                 // art-pixel size (recomputed on resize)
+
+// --- tiny pixel-grid drawing helpers ---
+function makeGrid(){ const g=[]; for(let y=0;y<FH;y++) g.push(new Array(FW).fill(' ')); return g; }
+function gpx(g,x,y,ch){ x=Math.round(x); y=Math.round(y); if(y<0||y>=FH||x<0||x>=FW) return; g[y][x]=ch; }
+function grect(g,x,y,w,h,ch){ for(let j=0;j<h;j++) for(let i=0;i<w;i++) gpx(g,x+i,y+j,ch); }
+function gell(g,cx,cy,rx,ry,ch){
+  for(let y=Math.floor(cy-ry);y<=Math.ceil(cy+ry);y++)
+    for(let x=Math.floor(cx-rx);x<=Math.ceil(cx+rx);x++){
+      const dx=(x-cx)/rx, dy=(y-cy)/ry;
+      if(dx*dx+dy*dy<=1) gpx(g,x,y,ch);
+    }
+}
+function gstr(g){ return g.map(r=>r.join('')); }
+
+// scatter a few grizzle pixels of `ch` inside an ellipse for a salt-and-pepper coat
+function grizzle(g,cx,cy,rx,ry,ch,seed){
+  let s=seed||1;
+  for(let y=Math.floor(cy-ry);y<=Math.ceil(cy+ry);y++)
+    for(let x=Math.floor(cx-rx);x<=Math.ceil(cx+rx);x++){
+      const dx=(x-cx)/rx, dy=(y-cy)/ry;
+      if(dx*dx+dy*dy>1) continue;
+      s=(s*1103515245+12345)&0x7fffffff;
+      if((s>>8)%5===0 && g[y]&&g[y][x]!==' ') gpx(g,x,y,ch);
+    }
+}
+
+// FRONT VIEW — white parted face, big eyes, flat muzzle, grey hanging ears
+// legs=false gives a legless, rounded body (for the rolling pose)
+function buildFront(legs){
+  const g=makeGrid();
+  // ears hang at the sides (grey, darker rim; head covers the inner half)
+  gell(g,4.5,16,3.3,7.5,'d');  gell(g,4.7,16,2.5,6.7,'b');  gell(g,4.8,17,1.7,4,'g');
+  gell(g,19.5,16,3.3,7.5,'d'); gell(g,19.3,16,2.5,6.7,'b'); gell(g,19.2,17,1.7,4,'g');
+  // body + chest (white)
+  gell(g,12,23,7.6,5,'w'); grect(g,5,18,14,6,'w');
+  // head (white)
+  gell(g,12,12,8,7.5,'w');
+  // top hair: grey-tan grizzled crown, parted down the middle
+  gell(g,12,6,7.4,3.6,'d'); gell(g,12,6.6,7,3.1,'b'); gell(g,12,6.9,6,2.5,'g');
+  grizzle(g,12,6.6,7,3.2,'t',7);     // warm cream flecks
+  grizzle(g,12,6.6,7,3.2,'d',3);     // darker flecks
+  grect(g,11,3,2,7,'c');             // cream centre part on the forehead
+  gell(g,12,9.5,2.2,2.4,'w');        // white blaze between the eyes
+  // a forelock of grey strands sweeping over one side
+  gell(g,15,9,2.2,3,'g'); grizzle(g,15,9,2.2,3,'b',5);
+  // eyes (big, round, wide-set) with a shine
+  gell(g,8.2,12,1.8,2.2,'k'); gell(g,15.8,12,1.8,2.2,'k');
+  gpx(g,8.6,11,'w'); gpx(g,16.2,11,'w');
+  // nose (big, low — flat muzzle) + tiny highlight
+  gell(g,12,16,2.3,1.9,'k'); gpx(g,11,15,'s');
+  // mouth + tongue
+  grect(g,11,18,2,1,'k'); gell(g,12,19.2,1.6,1.2,'p');
+  // cheek floof + chin shading
+  gell(g,7,16,1.6,2,'w'); gell(g,17,16,1.6,2,'w');
+  gell(g,12,21,3,1.6,'s');
+  if(legs){
+    // legs: carve a gap, then two front paws
+    grect(g,5,24,14,4,' ');
+    grect(g,7,24,3,4,'w');  grect(g,14,24,3,4,'w');
+    grect(g,7,27,3,1,'s');  grect(g,14,27,3,1,'s');
+  } else {
+    // legless rounded belly (rolling pose)
+    gell(g,12,24,7,3.2,'w'); gell(g,12,25,5,2,'s');
+  }
+  return gstr(g);
+}
+
+// BACK VIEW — no face, fluffy grey hair + curled tail (used mid-twirl)
+function buildBack(){
+  const g=makeGrid();
+  gell(g,4.5,16,3.3,7.5,'d');  gell(g,4.7,16,2.5,6.7,'b');  gell(g,4.8,17,1.7,4,'g');
+  gell(g,19.5,16,3.3,7.5,'d'); gell(g,19.3,16,2.5,6.7,'b'); gell(g,19.2,17,1.7,4,'g');
+  gell(g,12,23,7.6,5,'w'); grect(g,5,18,14,6,'w');
+  // back of head — all hair, silver-grey with a cream part
+  gell(g,12,12,8,7.5,'b'); gell(g,12,12,6.8,6.6,'g'); grizzle(g,12,12,7,7,'t',9);
+  gell(g,12,6,7.4,3.6,'d'); gell(g,12,6.6,7,3.1,'b');
+  grect(g,11,3,2,11,'c');
+  // grey saddle across the upper back
+  gell(g,12,19,6.5,3,'d'); gell(g,12,19,5.6,2.4,'b'); gell(g,12,19,4.6,1.8,'g');
+  // curled-up tail flopped over the back
+  gell(g,12,15.5,2.6,2.1,'d'); gell(g,12,15.5,1.8,1.4,'b'); gpx(g,13,14.5,'g');
+  // paws
+  grect(g,5,24,14,4,' ');
+  grect(g,7,24,3,4,'w');  grect(g,14,24,3,4,'w');
+  grect(g,7,27,3,1,'s');  grect(g,14,27,3,1,'s');
+  return gstr(g);
+}
+
+// SIDE PROFILE (facing right) — snout & nose point right; mirrored for the left
+// This is the key twirl frame: seeing her profile swing around reads as a real turn.
+function buildSide(){
+  const g=makeGrid();
+  // tail: fluffy curl at the back (left)
+  gell(g,4,13,2.7,3.3,'d'); gell(g,4,13,2,2.5,'b'); gell(g,4.3,12,1.3,1.5,'g');
+  // body (white), sitting
+  gell(g,10,19,7,5.5,'w'); grect(g,6,16,12,7,'w');
+  // grey saddle over the back
+  gell(g,8.5,15,5.6,3,'d'); gell(g,8.5,15.4,5,2.5,'b'); gell(g,8.5,15.6,4,1.9,'g');
+  grizzle(g,8.5,15.2,5.6,3,'t',4);
+  // legs: clear bottom, then a hind leg + a front leg
+  grect(g,6,23,12,5,' ');
+  grect(g,6,22,3,6,'w');  grect(g,12,22,3,6,'w');
+  grect(g,6,27,3,1,'s');  grect(g,12,27,3,1,'s');
+  // head (white) on the right
+  gell(g,15.5,10.5,6.3,6.4,'w');
+  // grey grizzled crown
+  gell(g,15.5,5.6,5.6,3,'d'); gell(g,15.5,6.1,5.2,2.6,'b'); gell(g,15.5,6.4,4.4,2,'g');
+  grizzle(g,15.5,6,5.4,2.8,'t',6);
+  // forelock sweeping over the brow
+  gell(g,17,8.5,2.2,3,'g'); grizzle(g,17,8.5,2.2,3,'b',2);
+  // ear hanging on the near side of the head
+  gell(g,12.6,12.5,2.5,5.6,'d'); gell(g,12.7,12.5,1.9,4.9,'b'); gell(g,12.7,13,1.4,3.7,'g');
+  // muzzle + nose pointing right
+  gell(g,20,12.6,3.1,2.7,'w'); grect(g,18,11,4,4,'w');
+  gell(g,22,12.6,1.7,1.7,'k');     // nose at the tip
+  // one eye with a shine
+  gell(g,15.5,9.6,1.5,1.9,'k'); gpx(g,16,8.7,'w');
+  // mouth + little tongue under the muzzle
+  grect(g,19,15,2,1,'k'); gell(g,20,15.8,1.2,1,'p');
+  // chest shading
+  gell(g,13,21,3,2,'s');
+  return gstr(g);
+}
+
+const FRONT    = buildFront(true);
+const ROLLBODY = buildFront(false);   // legless front — barrel-rolls to the side
+const BACK     = buildBack();
+const SIDE     = buildSide();
+
+/* ---------- Dried fish treat (combo reward) ---------- */
+const FISHCOL = {
+  f:'#c9a05f',  // body tan
+  b:'#8f6a37',  // shaded tan (tail / belly)
+  h:'#e7c98d',  // highlight along the back
+  k:'#3a2a15',  // eye / mouth
+  s:'#fdf6e3',  // salt speck
+};
+function buildFish(){
+  const fw=18, fh=10;
+  const g=[]; for(let y=0;y<fh;y++) g.push(new Array(fw).fill(' '));
+  const px=(x,y,ch)=>{ x=Math.round(x); y=Math.round(y); if(y>=0&&y<fh&&x>=0&&x<fw) g[y][x]=ch; };
+  const ell=(cx,cy,rx,ry,ch)=>{
+    for(let y=Math.floor(cy-ry);y<=Math.ceil(cy+ry);y++)
+      for(let x=Math.floor(cx-rx);x<=Math.ceil(cx+rx);x++){
+        const dx=(x-cx)/rx, dy=(y-cy)/ry;
+        if(dx*dx+dy*dy<=1) px(x,y,ch);
+      }
+  };
+  // tail fin — a tapering point on the left
+  const tail=[[4,2,8],[3,2.8,7.2],[2,3.6,6.4],[1,4.2,5.8],[0,4.8,5.2]];
+  tail.forEach(([x,y0,y1])=>{ for(let y=Math.round(y0); y<=Math.round(y1); y++) px(x,y,'b'); });
+  // body
+  ell(10,5,6,3,'f');
+  ell(10,6.4,5,1.5,'b');   // belly shade
+  ell(10,3,5,1.2,'h');     // back highlight
+  // dorsal fin bump
+  px(9,1,'b'); px(10,0,'b'); px(11,1,'b');
+  // head taper + mouth at the right tip
+  ell(16,5,1.6,2,'f');
+  px(17,5,'k');
+  // eye
+  px(13,4,'k');
+  // dried "salt" specks + texture flecks
+  [[7,4],[9,6],[11,4],[6,6]].forEach(([x,y])=>px(x,y,'s'));
+  [[8,5],[12,5],[10,4]].forEach(([x,y])=>px(x,y,'b'));
+  return { grid:g.map(r=>r.join('')), w:fw, h:fh };
+}
+const FISH = buildFish();
+
+function drawFish(cx, cy, rot){
+  const fmp = Math.max(4, MP);           // same world-scale as Missy
+  ctx.save();
+  ctx.translate(cx, cy);
+  if(rot) ctx.rotate(rot);
+  const ox=-FISH.w*fmp/2, oy=-FISH.h*fmp/2;
+  ctx.fillStyle='rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(0, FISH.h*fmp/2+3, FISH.w*fmp*0.34, 4, 0, 0, Math.PI*2); ctx.fill();
+  for(let y=0;y<FISH.h;y++){
+    const row=FISH.grid[y];
+    for(let x=0;x<FISH.w;x++){
+      const c=row[x];
+      if(c===' ') continue;
+      ctx.fillStyle=FISHCOL[c];
+      ctx.fillRect(Math.round(ox+x*fmp), Math.round(oy+y*fmp), fmp, fmp);
+    }
+  }
+  ctx.restore();
+}
+
+function drawMissy(grid, cx, cy, tf){
+  // tf: { rot, sx, sy, lift }
+  ctx.save();
+  ctx.translate(cx, cy - (tf.lift||0));
+  if(tf.rot) ctx.rotate(tf.rot);
+  const sx = (tf.sx==null?1:tf.sx), sy = (tf.sy==null?1:tf.sy);
+  ctx.scale(sx, sy);
+  const ox = -FW*MP/2, oy = -FH*MP/2;
+  // soft contact shadow (only when fairly upright)
+  if(!tf.rot || Math.abs(tf.rot) < 0.25){
+    ctx.save(); ctx.scale(1/sx, 1/sy);
+    ctx.fillStyle='rgba(0,0,0,0.30)';
+    ctx.beginPath();
+    ctx.ellipse(0, FH*MP/2 + 2, FW*MP*0.34, 7, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.restore();
+  }
+  for(let y=0;y<FH;y++){
+    const row = grid[y];
+    for(let x=0;x<FW;x++){
+      const c = row[x];
+      if(c===' ') continue;
+      ctx.fillStyle = COL[c];
+      ctx.fillRect(Math.round(ox+x*MP), Math.round(oy+y*MP), MP, MP);
+    }
+  }
+  ctx.restore();
+}
+
+/* ---------- Audio: "Missy Doggalina" song + move SFX ---------- */
+// The looping song clip is ~99.6 BPM; OFFSET is where the first downbeat falls.
+// Tweak these two if Missy's bob/scoring drifts from what you hear.
+const SONG_BPM = 99.6, SONG_OFFSET = 0.23;
+class Chip {
+  constructor(){
+    this.ctx=null; this.playing=false;
+    this.SPB = 60/SONG_BPM;            // seconds per beat
+    this.OFFSET = SONG_OFFSET;
+    this.audio = new Audio('./doggalina/missy-doggalina.mp3');
+    this.audio.loop = true;
+    this.audio.preload = 'auto';
+    this.audio.volume = 0.85;
+  }
+  ensure(){
+    if(this.ctx) return;
+    this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.22;
+    // a touch of bite
+    this.master.connect(this.ctx.destination);
+  }
+  noteFreq(n){
+    const names={C:0,'C#':1,D:2,'D#':3,E:4,'F':5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11};
+    const m=n.match(/^([A-G]#?)(-?\d)$/);
+    const semi = names[m[1]] + (parseInt(m[2])+1)*12;
+    return 440*Math.pow(2,(semi-69)/12);
+  }
+  blip(freq,t,dur,type='square',vol=0.3,glide){
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(glide) o.frequency.exponentialRampToValueAtTime(glide, t+dur*0.9);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t+dur+0.02);
+  }
+  noise(t,dur,vol,hp){
+    const len=Math.max(1,Math.floor(this.ctx.sampleRate*dur));
+    const buf=this.ctx.createBuffer(1,len,this.ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    const s=this.ctx.createBufferSource(); s.buffer=buf;
+    const f=this.ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value=hp||2000;
+    const g=this.ctx.createGain();
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t); s.stop(t+dur);
+  }
+  kick(t){
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.frequency.setValueAtTime(150,t); o.frequency.exponentialRampToValueAtTime(46,t+0.12);
+    g.gain.setValueAtTime(0.7,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.17);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+0.2);
+  }
+  snare(t){
+    this.noise(t,0.16,0.35,1400);
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type='triangle'; o.frequency.value=190;
+    g.gain.setValueAtTime(0.22,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.12);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+0.14);
+  }
+  hat(t,open){ this.noise(t, open?0.11:0.035, 0.14, 8000); }
+
+  buildPatterns(){
+    // 16 sixteenth-steps per bar, 2 bars looped (32 steps total)
+    const N = (s)=> s? this.noteFreq(s):null;
+    // funky triangle bass in A minor
+    this.bass = [
+      'A1',null,'A1',null, 'A2',null,'A1',null, 'G1',null,'G1','A1', 'C2',null,'D2',null,
+      'A1',null,'A1','A1', 'A2',null,'A1',null, 'E2',null,'E2',null, 'F2',null,'G2',null
+    ].map(N);
+    // square-wave lead — the bouncy "Mister Bob Dobalina" hook
+    this.lead = [
+      'E4',null,'E4',null, 'D4',null,'C4',null, 'D4','E4',null,null, 'C4',null,'A3',null,
+      'A4',null,'A4',null, 'G4',null,'E4',null, 'G4','A4',null,null, 'E4',null,'D4',null
+    ].map(N);
+    // sparkly counter-melody (pulse), quieter, off-beats
+    this.harm = [
+      null,null,null,'A4', null,null,null,'C5', null,null,null,'B4', null,null,null,'A4',
+      null,null,null,'C5', null,null,null,'E5', null,null,null,'D5', null,null,null,'C5'
+    ].map(N);
+    // drums
+    this.kickP = [1,0,0,0, 0,0,1,0, 0,0,1,0, 0,0,0,0,  1,0,0,0, 0,0,1,0, 0,0,1,0, 0,0,1,0];
+    this.snP   = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,1,  0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
+    this.hatP  = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1,  1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1];
+  }
+  start(){
+    this.ensure();                       // Web Audio ctx is used for move SFX
+    if(this.ctx.state==='suspended') this.ctx.resume();
+    this.playing=true;
+    const p=this.audio.play();
+    if(p && p.catch) p.catch(()=>{});    // ignore autoplay rejection
+  }
+  stop(){ this.playing=false; this.audio.pause(); }
+  toggle(){ if(this.playing) this.stop(); else this.start(); }
+  sfx(kind){
+    if(!this.ctx) return;
+    const t=this.ctx.currentTime;
+    if(kind==='twirl') this.blip(this.noteFreq('A4'),t,0.22,'square',0.25,this.noteFreq('A5'));
+    else if(kind==='roll') this.blip(this.noteFreq('A4'),t,0.22,'square',0.25,this.noteFreq('A3'));
+    else if(kind==='scoot'){ // squeaky butt-scoot
+      this.blip(this.noteFreq('C4'),t,0.10,'square',0.20,this.noteFreq('G3'));
+      this.blip(this.noteFreq('C4'),t+0.13,0.10,'square',0.20,this.noteFreq('G3'));
+    }
+  }
+  squeak(t){ this.blip(this.noteFreq('C5'),t,0.06,'square',0.12,this.noteFreq('G4')); }
+  crunch(t){ // satisfying crunchy bite for the dried-fish treat
+    this.noise(t,       0.055, 0.55, 4200);
+    this.noise(t+0.05,  0.05,  0.42, 3400);
+    this.noise(t+0.095, 0.05,  0.32, 2600);
+    this.blip(this.noteFreq('G4'), t+0.02, 0.14, 'square', 0.16, this.noteFreq('C4'));
+  }
+  _loop(){
+    if(!this.playing) return;
+    const ahead = this.ctx.currentTime + 0.12;
+    while(this.nextTime < ahead){
+      const s = this.step % 32;
+      if(this.bass[s]) this.blip(this.bass[s], this.nextTime, this.stepDur*1.6, 'triangle', 0.42);
+      if(this.lead[s]) this.blip(this.lead[s], this.nextTime, this.stepDur*1.5, 'square', 0.20);
+      if(this.harm[s]) this.blip(this.harm[s], this.nextTime, this.stepDur*1.1, 'square', 0.09);
+      if(this.kickP[s]) this.kick(this.nextTime);
+      if(this.snP[s]) this.snare(this.nextTime);
+      if(this.hatP[s]) this.hat(this.nextTime, s%8===7);
+      this.nextTime += this.stepDur;
+      this.step++;
+    }
+    this._t = setTimeout(()=>this._loop(), 25);
+  }
+  // visual helpers — beat clock derived from the song's playback position
+  now(){ return this.ctx ? this.ctx.currentTime : 0; }   // ctx time, for SFX
+  beatPhase(){ // 0..1 within a beat
+    if(!this.playing) return 0;
+    const e=(this.audio.currentTime - this.OFFSET)/this.SPB;
+    return e - Math.floor(e);
+  }
+  // distance (sec) from now to the nearest beat
+  beatError(){
+    const e=(this.audio.currentTime - this.OFFSET)/this.SPB;
+    return Math.abs(e-Math.round(e))*this.SPB;
+  }
+}
+const chip = new Chip();
+
+/* ---------- Game state ---------- */
+// stage positions for left/right movement (recomputed in resize)
+let LX = W*0.27, RX = W*0.73, BASEY = H*0.62;
+let missyX = W/2;
+let moveDir = 0;                 // -1 left, +1 right (held)
+const MOVE_SPEED = 165;          // px / sec
+
+// Match the canvas resolution to the on-screen box so the stage fills it.
+// Width is fixed (keeps the layout tuning); height follows the box aspect.
+function resize(){
+  const box = canvas.parentElement;            // .screen-wrap
+  const cw = box.clientWidth, ch = box.clientHeight;
+  if(!cw || !ch) return;
+  W = 480;
+  H = Math.round(W * ch / cw);                  // same aspect as the box → no stretch
+  H = Math.max(320, Math.min(1100, H));
+  canvas.width = W; canvas.height = H;
+  ctx.imageSmoothingEnabled = false;            // reset after a resize
+  MP = Math.max(4, Math.min(Math.round(H/185), Math.round(W/30)));  // Missy's pixel size (only affects her)
+  LX = W*0.24; RX = W*0.76;
+  BASEY = H*0.78 - (FH*MP/2) + 4;      // feet rest on the flat floor line (H*0.78)
+  missyX = Math.max(LX, Math.min(RX, missyX));
+}
+window.addEventListener('resize', resize);
+if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+
+const dance = { name:'idle', t:0, dur:0, x0:0, x1:0, sq:0 };
+function trigger(move){
+  if(dance.name!=='idle') return;             // let the current move finish first
+  if(move==='twirl'){ dance.name='twirl'; dance.t=0; dance.dur=1.0; chip.sfx('twirl'); judge(); }
+  else if(move==='roll') startRoll();
+  else if(move==='scoot') startScoot();
+}
+function startRoll(){
+  // lie down, then roll over — travelling toward the middle of the stage
+  const dir = (missyX > W/2) ? -1 : 1;
+  const dist = (RX-LX)*0.42;
+  const target = Math.max(LX, Math.min(RX, missyX + dir*dist));
+  dance.name='roll'; dance.t=0; dance.dur=1.35;
+  dance.rollDir = dir; dance.x0=missyX; dance.x1=target;
+  chip.sfx('roll'); judge();
+}
+function startScoot(){
+  // scoot on her butt to the opposite edge of the stage
+  const target = (missyX < W/2) ? RX : LX;
+  dance.name='scoot'; dance.t=0; dance.x0=missyX; dance.x1=target; dance.sq=0;
+  dance.dur = 0.55 + Math.abs(target-missyX)/W * 1.2;
+  chip.sfx('scoot'); judge();
+}
+
+let score=0, combo=0, bestCombo=0;
+let rating={text:'', t:0, col:'#fff'};
+function judge(){
+  if(!chip.playing){ rating={text:'PLAY MUSIC!',t:1,col:'#ff2e88'}; return; }
+  const err=chip.beatError();
+  let pts=0;
+  if(err<0.07){ rating={text:'FRESH!!',t:1,col:'#4dffb8'}; pts=100; combo++; }
+  else if(err<0.13){ rating={text:'FUNKY!',t:1,col:'#ffe14d'}; pts=60; combo++; }
+  else if(err<0.22){ rating={text:'OK',t:1,col:'#27e7ff'}; pts=25; combo++; }
+  else { rating={text:'MISS',t:1,col:'#ff2e88'}; combo=0; }
+  score += pts + Math.floor(pts*combo*0.1);
+  bestCombo=Math.max(bestCombo,combo);
+  if(combo>0 && combo%3===0) spawnFish();
+}
+
+/* ---------- Dried fish treat: falls every 3x combo ---------- */
+const fish = { active:false, x:0, y:0, vy:0, caught:false, labelT:0 };
+function spawnFish(){
+  if(fish.active) return;
+  fish.active = true;
+  fish.caught = false;
+  fish.x = LX + Math.random()*(RX-LX);
+  fish.y = 60;
+  fish.catchY = BASEY + 4*MP;      // roughly her mouth height
+  fish.floorY = H*0.78;            // where it lands if she misses it
+  fish.vy = Math.max(60, (fish.catchY - fish.y) / 1.6);
+  fish.labelT = 1;                 // "CRUNCHY FISH!" shown briefly
+}
+function updateFish(dt){
+  if(!fish.active) return;
+  fish.y += fish.vy*dt;
+  if(fish.labelT>0) fish.labelT -= dt*0.9;
+  if(!fish.caught && fish.y>=fish.catchY){
+    if(Math.abs(fish.x-missyX) < FW*MP*0.62){
+      // caught! satisfying crunch + a little bonus
+      fish.caught = true; fish.active = false;
+      score += 75;
+      rating = {text:'CRUNCH!', t:1, col:'#ffb23e'};
+      if(chip.ctx) chip.crunch(chip.now());
+    }
+  }
+  if(fish.y >= fish.floorY) fish.active = false;   // missed — it lands and vanishes
+}
+function drawFishLayer(){
+  if(!fish.active) return;
+  const wobble = Math.sin(fish.y*0.05)*0.18;
+  drawFish(fish.x, fish.y, wobble);
+  if(fish.labelT>0){
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, fish.labelT*1.6);
+    ctx.font='9px "Press Start 2P", monospace';
+    ctx.fillStyle='#ffb23e'; ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText('CRUNCHY FISH!', fish.x, fish.y-16);
+    ctx.restore();
+  }
+}
+
+/* ---------- Stage rendering ---------- */
+let frame=0;
+function ease(p){ return p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2; }
+
+function drawBackdrop(t, kick){
+  // deep stage gradient
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#2a0a40'); g.addColorStop(0.55,'#190530'); g.addColorStop(1,'#0c0118');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  // back wall glow stripes (color cycles with bars)
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<6;i++){
+    const hue=(t*40 + i*42)%360;
+    ctx.fillStyle=`hsla(${hue},90%,55%,0.05)`;
+    ctx.fillRect(0, 20+i*14, W, 7);
+  }
+  ctx.restore();
+
+  // disco ball
+  const bx=W/2, by=42, br=20;
+  ctx.fillStyle='#0a0014';
+  ctx.fillRect(bx-1, 0, 2, by-br); // string
+  for(let yy=-br; yy<br; yy+=5){
+    for(let xx=-br; xx<br; xx+=5){
+      if(xx*xx+yy*yy > br*br) continue;
+      const shimmer = 0.4 + 0.6*Math.abs(Math.sin((xx+yy)*0.4 + t*3));
+      const hue=(t*120 + xx*6 + yy*6)%360;
+      ctx.fillStyle=`hsla(${hue},80%,${40+shimmer*40}%,1)`;
+      ctx.fillRect(bx+xx, by+yy, 4, 4);
+    }
+  }
+
+  // spotlights (additive cones from top corners)
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  const sweep=Math.sin(t*0.9)*60;
+  const cones=[
+    {x:60,  c:'46,231,255'},
+    {x:W-60,c:'255,46,136'},
+  ];
+  cones.forEach((cn,i)=>{
+    const tipx = W/2 + (i?sweep:-sweep);
+    const grd=ctx.createLinearGradient(cn.x,0, tipx,H*0.9);
+    grd.addColorStop(0,`rgba(${cn.c},0.30)`);
+    grd.addColorStop(1,`rgba(${cn.c},0)`);
+    ctx.fillStyle=grd;
+    ctx.beginPath();
+    ctx.moveTo(cn.x,0);
+    ctx.lineTo(tipx-70, H*0.9);
+    ctx.lineTo(tipx+70, H*0.9);
+    ctx.closePath(); ctx.fill();
+  });
+  ctx.restore();
+
+  // side curtains (pixel drapes)
+  drawCurtain(0,1); drawCurtain(W,-1);
+
+  // perspective dance floor
+  drawFloor(t);
+
+  // speakers bottom corners, pulse on kick
+  drawSpeaker(34, H-58, kick);
+  drawSpeaker(W-34, H-58, kick);
+}
+
+function drawCurtain(edge, dir){
+  const wd=54;
+  for(let i=0;i<6;i++){
+    const x = edge + dir*(i*9);
+    const shade = i%2 ? '#6c0027' : '#9c0036';
+    ctx.fillStyle = shade;
+    ctx.fillRect(Math.min(x, x-dir*9), 0, 9, H*0.62);
+  }
+  // scalloped bottom
+  ctx.fillStyle='#46001a';
+  for(let i=0;i<6;i++){
+    const x = edge + dir*(i*9) - (dir<0?9:0);
+    ctx.fillRect(x, H*0.62-1, 9, 6);
+  }
+}
+
+function drawFloor(t){
+  // flat 2D stage floor — a simple checkerboard band, no vanishing point
+  const top = H*0.78;
+  const tile = Math.max(20, Math.round(W/16));
+  const cols = Math.ceil(W/tile)+1, rows = Math.ceil((H-top)/tile)+1;
+  const scroll = Math.floor(t*1.4) % 2;
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const on=(r+c+scroll)%2===0;
+      ctx.fillStyle = on ? 'rgba(255,46,136,0.30)' : 'rgba(39,231,255,0.13)';
+      ctx.fillRect(c*tile, top+r*tile, tile, tile);
+    }
+  }
+  // subtle vertical shading so the floor reads as receding, without perspective lines
+  const shade=ctx.createLinearGradient(0,top,0,H);
+  shade.addColorStop(0,'rgba(5,1,13,0.35)');
+  shade.addColorStop(1,'rgba(5,1,13,0)');
+  ctx.fillStyle=shade; ctx.fillRect(0,top,W,H-top);
+  // bright stage-edge line where the floor meets the back wall
+  ctx.fillStyle='rgba(39,231,255,0.65)';
+  ctx.fillRect(0, top-2, W, 2);
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  ctx.fillRect(0, top-3, W, 1);
+}
+
+function drawSpeaker(cx, cy, kick){
+  const s=1+kick*0.12;
+  ctx.save(); ctx.translate(cx,cy); ctx.scale(s,s);
+  ctx.fillStyle='#1a0a26'; ctx.fillRect(-22,-28,44,56);
+  ctx.fillStyle='#0c0118'; ctx.fillRect(-22,-28,44,4);
+  // cones
+  [[-0,-12,11],[0,12,15]].forEach(([dx,dy,rr])=>{
+    ctx.fillStyle='#2c1340'; ctx.beginPath(); ctx.arc(dx,dy,rr,0,7); ctx.fill();
+    ctx.fillStyle = kick>0.2?'#ffe14d':'#5a2d7a';
+    ctx.beginPath(); ctx.arc(dx,dy,rr*0.45,0,7); ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawHUD(){
+  ctx.fillStyle='#fff';
+  ctx.font='10px "Press Start 2P", monospace';
+  ctx.textBaseline='top';
+  ctx.textAlign='left';
+  ctx.fillStyle='#27e7ff'; ctx.fillText('SCORE', 12, 10);
+  ctx.fillStyle='#fff';    ctx.fillText(String(score).padStart(6,'0'), 12, 24);
+
+  ctx.textAlign='right';
+  ctx.fillStyle='#ffe14d'; ctx.fillText('COMBO', W-12, 10);
+  ctx.fillStyle = combo>=5 ? '#4dffb8' : '#fff';
+  ctx.fillText('x'+combo, W-12, 24);
+
+  // beat indicator pips
+  const ph=chip.beatPhase();
+  const lit = chip.playing && ph<0.16;
+  ctx.textAlign='center';
+  ctx.fillStyle = lit ? '#ff2e88' : '#5a2d7a';
+  ctx.font='12px "Press Start 2P", monospace';
+  ctx.fillText(lit?'● BEAT ●':'· beat ·', W/2, 12);
+
+  // rating flash
+  if(rating.t>0){
+    ctx.save();
+    const a=rating.t;
+    ctx.globalAlpha=Math.min(1,a*1.4);
+    ctx.font='16px "Press Start 2P", monospace';
+    ctx.fillStyle=rating.col;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const pop=1+(1-a)*0.4;
+    ctx.translate(W/2, H*0.30);
+    ctx.scale(pop,pop);
+    ctx.fillText(rating.text,0,0);
+    ctx.restore();
+  }
+}
+
+/* ---------- Main loop ---------- */
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  frame++;
+  const t=now/1000;
+
+  // dance state
+  let tf={ rot:0, sx:1, sy:1, lift:0 };
+  let grid = FRONT;
+  const beat=chip.beatPhase();
+  const kick = chip.playing ? Math.max(0, 1-beat*3) : 0;
+
+  if(dance.name==='twirl'){
+    dance.t+=dt;
+    const p=Math.min(1, dance.t/dance.dur);
+    const turns = 2;
+    const a = ease(p)*Math.PI*2*turns;          // total rotation
+    const phase = ((a/(Math.PI*2))%1+1)%1;      // 0..1 within one turn
+    // 4-frame turn: front -> right profile -> back -> left profile -> front
+    let flip = 1;
+    if(phase<0.125 || phase>=0.875){ grid = FRONT; }
+    else if(phase<0.375){ grid = SIDE; flip = 1; }   // turning away, snout to the right
+    else if(phase<0.625){ grid = BACK; }
+    else { grid = SIDE; flip = -1; }                 // coming back, snout to the left
+    // gentle width "breathing" for depth — never collapses to a flat line
+    const depth = 0.86 + 0.14*Math.abs(Math.cos(a));
+    tf.sx = flip*depth;
+    tf.lift = Math.sin(Math.min(1,p*1.25)*Math.PI)*18;  // up on her hind legs
+    tf.sy = 1 + Math.sin(p*Math.PI)*0.12;       // stretch tall
+    if(p>=1) dance.name='idle';
+  } else if(dance.name==='roll'){
+    dance.t+=dt;
+    const p=Math.min(1, dance.t/dance.dur);
+    const dir = dance.rollDir;
+    grid = ROLLBODY;                            // stays facing forward, legs tucked
+    if(p<0.22){
+      // lie down: drop to the floor and start tipping toward the roll side
+      const li = p/0.22;
+      tf.sy = 1 - 0.16*li;
+      tf.lift = 8*(1-li) - 6;                   // settle onto the floor
+      tf.rot = dir * li * 0.30;                 // begin leaning over
+    } else {
+      // barrel-roll sideways: spin in place while sliding across the floor
+      const sp = (p-0.22)/0.78;
+      tf.rot = dir * (0.30 + ease(sp)*(Math.PI*2 - 0.30)); // continue to a full turn
+      tf.lift = -6;
+      missyX = dance.x0 + (dance.x1-dance.x0)*ease(sp);
+    }
+    if(p>=1) dance.name='idle';
+  } else if(dance.name==='scoot'){
+    dance.t+=dt;
+    const p=Math.min(1, dance.t/dance.dur);
+    const dir = (dance.x1>=dance.x0) ? 1 : -1;   // face the way she's heading
+    grid = SIDE;
+    // Phase 1 (0-20%): turn sideways & sit down on her butt, in place
+    const turnP = Math.min(1, p/0.20);
+    // Phase 2 (20-85%): scoot across the floor
+    const sp = Math.max(0, Math.min(1, (p-0.20)/0.65));
+    missyX = dance.x0 + (dance.x1-dance.x0)*ease(sp);
+    const scooting = sp>0 && sp<1;
+    const bounce = scooting ? Math.abs(Math.sin(sp*Math.PI*7)) : 0;
+    tf.sx = dir * (0.30 + 0.70*turnP);           // pivot from edge-on into full profile
+    tf.sy = 1 - 0.22*turnP + bounce*0.05;        // squash down onto her butt
+    tf.lift = -7*turnP + bounce*4;               // sit low, little inch-worm hops
+    tf.rot = (-0.15*turnP + (scooting?Math.sin(sp*Math.PI*7)*0.05:0)) * dir; // lean back + wiggle
+    // squeak on each hop
+    const hop = Math.floor(sp*7);
+    if(scooting && hop!==dance.sq){ dance.sq=hop; if(chip.ctx) chip.squeak(chip.now()); }
+    if(p>=1) dance.name='idle';
+  } else {
+    // idle: move left/right when held, bob to the beat
+    if(moveDir!==0) missyX += moveDir*MOVE_SPEED*dt;
+    missyX = Math.max(LX, Math.min(RX, missyX));
+    const bob = chip.playing ? Math.sin(beat*Math.PI)*4 : Math.sin(t*2)*2;
+    tf.lift = bob;
+    tf.sy = 1 - (chip.playing?Math.abs(Math.sin(beat*Math.PI))*0.05:0);
+    tf.sx = 1 + Math.sin(t*3)*0.01;
+  }
+
+  if(rating.t>0) rating.t-=dt*1.3;
+  updateFish(dt);
+
+  // RENDER
+  drawBackdrop(t, kick);
+  drawMissy(grid, missyX, BASEY, tf);
+  drawFishLayer();
+  // "BUTT SCOOT!" prompt when she's parked at an edge
+  const atEdge = (missyX<=LX+2)||(missyX>=RX-2);
+  if(started && atEdge && dance.name==='idle' && frame%48<28){
+    ctx.font='7px "Press Start 2P", monospace';
+    ctx.fillStyle='#ffe14d'; ctx.textAlign='center'; ctx.textBaseline='bottom';
+    const dir = missyX<=LX+2 ? 'SCOOT →' : '← SCOOT';
+    ctx.fillText(dir, missyX, BASEY - FH*MP/2 - 6);
+  }
+  drawHUD();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---------- Input ---------- */
+const startEl=document.getElementById('start');
+let started=false;
+function startGame(){
+  if(started) return; started=true;
+  startEl.classList.add('hidden');
+  chip.start();
+  syncMusicIcon();
+}
+startEl.addEventListener('click', startGame);
+
+const $ = id => document.getElementById(id);
+const musicBtn = $('btnMusic');
+function syncMusicIcon(){ musicBtn.classList.toggle('off', !chip.playing); }
+// hold-to-move buttons
+function holdBtn(el, dir){
+  const on  = e=>{ e.preventDefault(); if(!started){startGame();return;} moveDir=dir; };
+  const off = e=>{ e.preventDefault(); if(moveDir===dir) moveDir=0; };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointerleave', off);
+  el.addEventListener('pointercancel', off);
+}
+holdBtn($('btnLeft'), -1);
+holdBtn($('btnRight'), 1);
+$('btnTwirl').addEventListener('click',()=>{ if(started) trigger('twirl'); else startGame(); });
+$('btnRoll').addEventListener('click', ()=>{ if(started) trigger('roll');  else startGame(); });
+$('btnScoot').addEventListener('click',()=>{ if(started) trigger('scoot'); else startGame(); });
+musicBtn.addEventListener('click',()=>{ if(!started){startGame();return;} chip.toggle(); syncMusicIcon(); });
+
+window.addEventListener('keydown',(e)=>{
+  if(e.code==='Space'){
+    e.preventDefault();
+    if(!started){ startGame(); } else { chip.toggle(); syncMusicIcon(); }
+    return;
+  }
+  if(!started){ startGame(); return; }
+  switch(e.code){
+    case 'ArrowLeft': case 'KeyA':  e.preventDefault(); moveDir=-1; break;
+    case 'ArrowRight': case 'KeyD': e.preventDefault(); moveDir= 1; break;
+    case 'ArrowUp': case 'KeyW': case 'KeyZ':   e.preventDefault(); if(!e.repeat) trigger('twirl'); break;
+    case 'ArrowDown': case 'KeyS': case 'KeyX': e.preventDefault(); if(!e.repeat) trigger('roll');  break;
+    case 'KeyC': case 'KeyB':       e.preventDefault(); if(!e.repeat) trigger('scoot'); break;
+  }
+});
+window.addEventListener('keyup',(e)=>{
+  if((e.code==='ArrowLeft'||e.code==='KeyA')  && moveDir<0) moveDir=0;
+  if((e.code==='ArrowRight'||e.code==='KeyD') && moveDir>0) moveDir=0;
+});
+</script>
+</body>
+</html>
