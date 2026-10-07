@@ -44,6 +44,32 @@ const previous = document.getElementById('previous');
 const next = document.getElementById('next');
 let currentIndex = -1;
 
+// Mobile browser toolbars and restored pages can change the visible viewport
+// without updating percentage-based fixed heights. Keep the art and its label
+// in one explicitly sized container, without resizing them during pinch zoom.
+function syncViewportHeight() {
+    const viewport = window.visualViewport;
+    if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+    const height = viewport?.height ?? window.innerHeight;
+    if (height > 0) {
+        document.documentElement.style.setProperty('--gallery-height', `${height}px`);
+    }
+}
+
+let viewportFrame = 0;
+function scheduleViewportSync() {
+    cancelAnimationFrame(viewportFrame);
+    viewportFrame = requestAnimationFrame(syncViewportHeight);
+}
+
+window.visualViewport?.addEventListener('resize', scheduleViewportSync);
+window.addEventListener('resize', scheduleViewportSync);
+window.addEventListener('pageshow', scheduleViewportSync);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleViewportSync();
+});
+syncViewportHeight();
+
 function showFromHash() {
     let id;
     try {

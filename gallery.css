@@ -1,8 +1,15 @@
 :root {
+    --gallery-height: 100vh;
     color-scheme: light;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     color: #242421;
     background: #f8f7f4;
+}
+
+@supports (height: 100dvh) {
+    :root {
+        --gallery-height: 100dvh;
+    }
 }
 
 * {
@@ -17,9 +24,16 @@ body {
     overflow: hidden;
 }
 
-.gallery,
-#artwork {
+.gallery {
     position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--gallery-height);
+}
+
+#artwork {
+    position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
@@ -31,7 +45,7 @@ body {
 }
 
 .art-label {
-    position: fixed;
+    position: absolute;
     right: max(24px, env(safe-area-inset-right));
     bottom: max(24px, env(safe-area-inset-bottom));
     width: 224px;
