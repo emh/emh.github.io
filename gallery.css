@@ -9,7 +9,7 @@
     box-sizing: border-box;
 }
 
-/* Match the standalone artwork pages: a canvas in normal document flow. */
+/* Keep the canvas in normal document flow, outside any fixed-height wrapper. */
 html,
 body {
     margin: 0;
@@ -20,7 +20,9 @@ body {
 #canvas {
     display: block;
     width: 100vw;
+    /* Legacy fallback; dvh follows the visible area as mobile toolbars change. */
     height: 100vh;
+    height: 100dvh;
 }
 
 .art-label {
