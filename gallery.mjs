@@ -23,7 +23,7 @@ const pieces = [
         id: 'lights_onoff',
         title: 'Lights On/Off',
         src: '/genart/genuary2026/06_lights_onoff.html',
-        module: '/genart/genuary2026/06_lights_onoff.mjs',
+        module: '/genart/genuary2026/06_lights_onoff.mjs?v=b9a67c3b5b0f',
     },
     {
         id: 'boolean_algebra',

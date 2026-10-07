@@ -45,7 +45,6 @@ const randomPolygon = (N, cx, cy, rMin, rMax) => {
 const run = () => {
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
-    const pad = 20;
 
     let segments = [];
     let endpoints = [];
@@ -68,7 +67,9 @@ const run = () => {
         endpoints = [...map.values()];
     };
 
-    const x0 = pad, y0 = pad, x1 = w - pad, y1 = h - pad;
+    // Cast rays against walls just outside the canvas so their outlines are
+    // clipped away and the light and shadow extend to every edge.
+    const x0 = -1, y0 = -1, x1 = w + 1, y1 = h + 1;
 
     segments.push({ a: vec(x0, y0), b: vec(x1, y0) });
     segments.push({ a: vec(x1, y0), b: vec(x1, y1) });
@@ -175,23 +176,11 @@ const run = () => {
 
     const render = (poly) => {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = 'darkgrey';
         ctx.fillRect(0, 0, w, h);
 
-        ctx.save();
         ctx.lineWidth = 1;
-        ctx.fillStyle = 'darkgrey';
         ctx.strokeStyle = 'black';
-
-        ctx.beginPath();
-        ctx.moveTo(segments[0].a.x, segments[0].a.y);
-
-        for (let i = 0; i < 4; i++) {
-            ctx.lineTo(segments[i].b.x, segments[i].b.y);
-        }
-
-        ctx.fill();
-        ctx.stroke();
 
         // center poly
         ctx.save();
