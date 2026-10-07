@@ -35,13 +35,13 @@ const pieces = [
         id: 'emerge',
         title: 'Emerge',
         src: '/genart/genesis/viewer.html#emerge',
-        module: '/genart/genesis/viewer.mjs',
+        module: '/genart/genesis/viewer.mjs?v=3f4aae7736c3',
     },
     {
         id: 'glyph',
         title: 'Glyph',
         src: '/genart/genesis/viewer.html#glyph',
-        module: '/genart/genesis/viewer.mjs',
+        module: '/genart/genesis/viewer.mjs?v=3f4aae7736c3',
     },
 ];
 

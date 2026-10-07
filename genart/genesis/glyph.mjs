@@ -33,35 +33,29 @@ const drawStroke = (ctx, startPoint, midPoint, endPoint) => {
 }
 
 const run = (canvas) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    let { height, width } = canvas;
-
-    const rows = Math.floor(height / CELL_HEIGHT);
-    const cols = Math.floor(width / CELL_WIDTH);
-
-    const ox = (width - (cols * CELL_WIDTH)) / 2;
-    const oy = (height - (rows * CELL_HEIGHT)) / 2;
-
-    const init = () => {
-    };
-
-    const clear = (a = 100) => {
-        ctx.fillStyle = `rgba(255, 255, 255, ${a})`;
-        ctx.fillRect(0, 0, width, height);
-    };
+    const ctx = canvas.getContext('2d');
+    let scaleX = 1, scaleY = 1;
 
     const drawGlyph = (x, y) => {
+        // Draw opaque border strips on physical pixel boundaries. A one-CSS-pixel
+        // border stays sharp on Retina displays and at fractional display scales.
+        const left = Math.round((x + MARGIN) * scaleX);
+        const top = Math.round((y + MARGIN) * scaleY);
+        const right = Math.round((x + CELL_WIDTH - MARGIN) * scaleX);
+        const bottom = Math.round((y + CELL_HEIGHT - MARGIN) * scaleY);
+        const borderX = Math.max(1, Math.round(scaleX));
+        const borderY = Math.max(1, Math.round(scaleY));
+
         ctx.save();
-        ctx.strokeStyle = 'black';
-        ctx.globalAlpha = 0.5;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(left, top, right - left, borderY);
+        ctx.fillRect(left, bottom - borderY, right - left, borderY);
+        ctx.fillRect(left, top, borderX, bottom - top);
+        ctx.fillRect(right - borderX, top, borderX, bottom - top);
 
-        ctx.strokeRect(x + MARGIN, y + MARGIN, CELL_WIDTH - 2 * MARGIN, CELL_HEIGHT - 2 * MARGIN);
-
-        ctx.globalAlpha = 1;
+        ctx.setTransform(scaleX, 0, 0, scaleY, x * scaleX, y * scaleY);
         ctx.fillStyle = 'black';
-
-        ctx.translate(x, y);
-
         const n = rnd(4, 2);
 
         for (let i = 0; i < n; i++) {
@@ -72,39 +66,32 @@ const run = (canvas) => {
     };
 
     const render = () => {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, width, height);
-        ctx.translate(ox, oy);
+        const { width, height } = canvas.getBoundingClientRect();
+        if (!width || !height) return;
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.max(1, Math.round(width * dpr));
+        canvas.height = Math.max(1, Math.round(height * dpr));
+        scaleX = canvas.width / width;
+        scaleY = canvas.height / height;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const rows = Math.floor(height / CELL_HEIGHT);
+        const cols = Math.floor(width / CELL_WIDTH);
+        const ox = (width - cols * CELL_WIDTH) / 2;
+        const oy = (height - rows * CELL_HEIGHT) / 2;
 
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-                const x = c * CELL_WIDTH;
-                const y = r * CELL_HEIGHT;
-
-                drawGlyph(x, y);
+                drawGlyph(ox + c * CELL_WIDTH, oy + r * CELL_HEIGHT);
             }
         }
     };
 
-    const tick = () => {
-        if (width !== canvas.width || height !== canvas.height) {
-            width = canvas.width;
-            height = canvas.height;
-
-            init();
-        }
-
-        clear();
-        render();
-    };
-
-    canvas.addEventListener('pointerup', (e) => {
-        init();
-        tick();
-    });
-
-    init();
-    tick();
+    canvas.addEventListener('pointerup', render);
+    window.addEventListener('resize', render);
+    render();
 };
 
 export default run;

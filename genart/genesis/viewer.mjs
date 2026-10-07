@@ -17,7 +17,7 @@ import formula from './formula.mjs';
 import move from './move.mjs';
 import symmetry from './symmetry.mjs';
 import constraint from './constraint.mjs';
-import glyph from './glyph.mjs';
+import glyph from './glyph.mjs?v=332299149ac7';
 
 const renderers = {
     '#scaffold': scaffold,
