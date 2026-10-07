@@ -5,14 +5,14 @@
     <title>emh.io — Generative art</title>
     <meta name="google" content="notranslate">
     <meta name="description" content="A selection of generative art by Evan Haveman. A different piece with every visit.">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f8f7f4">
-    <link rel="stylesheet" href="gallery.css?v=d131aee29c21">
-    <script type="module" src="gallery.mjs?v=e5542049f151"></script>
+    <link rel="stylesheet" href="gallery.css?v=21f1c7a1eed7">
+    <script type="module" src="gallery.mjs?v=c0eb8a6ed94a"></script>
 </head>
 <body>
     <main class="gallery" aria-label="Generative art">
-        <iframe id="artwork" title="Generative artwork"></iframe>
+        <canvas id="canvas" aria-label="Generative artwork"></canvas>
         <aside class="art-label" aria-label="About this artwork">
             <div class="art-label__piece">
                 <button id="previous" type="button" aria-label="Previous artwork" title="Previous artwork" disabled>
@@ -34,6 +34,7 @@
                     </a>
                 </nav>
             </div>
+            <p id="artwork-error" hidden>Unable to load this piece. <a href="/genart/">Open its original page</a>.</p>
             <noscript><p>Enable JavaScript to view the art, or <a href="/genart/">browse the collection</a>.</p></noscript>
         </aside>
     </main>

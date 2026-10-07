@@ -5,70 +5,59 @@ const pieces = [
         id: 'city',
         title: 'City',
         src: '/genart/genuary2026/08_city.html',
+        module: '/genart/genuary2026/08_city.mjs',
     },
     {
         id: 'order_and_disorder',
         title: 'Order and Disorder',
         src: '/genart/genuary2026/16_order_and_disorder.html',
+        module: '/genart/genuary2026/16_order_and_disorder.mjs',
     },
     {
         id: 'crazy_automaton',
         title: 'Crazy Automaton',
         src: '/genart/genuary2026/09_crazy_automaton.html',
+        module: '/genart/genuary2026/09_crazy_automaton.mjs',
     },
     {
         id: 'lights_onoff',
         title: 'Lights On/Off',
         src: '/genart/genuary2026/06_lights_onoff.html',
+        module: '/genart/genuary2026/06_lights_onoff.mjs',
     },
     {
         id: 'boolean_algebra',
         title: 'Boolean Algebra',
         src: '/genart/genuary2026/07_boolean_algebra.html',
+        module: '/genart/genuary2026/07_boolean_algebra.mjs',
     },
     {
         id: 'emerge',
         title: 'Emerge',
         src: '/genart/genesis/viewer.html#emerge',
+        module: '/genart/genesis/viewer.mjs',
     },
     {
         id: 'glyph',
         title: 'Glyph',
         src: '/genart/genesis/viewer.html#glyph',
+        module: '/genart/genesis/viewer.mjs',
     },
 ];
 
-let artwork = document.getElementById('artwork');
+const canvas = document.getElementById('canvas');
+const label = document.querySelector('.art-label');
 const title = document.getElementById('piece-title');
 const previous = document.getElementById('previous');
 const next = document.getElementById('next');
 let currentIndex = -1;
 
-// Mobile browser toolbars and restored pages can change the visible viewport
-// without updating percentage-based fixed heights. Keep the art and its label
-// in one explicitly sized container, without resizing them during pinch zoom.
-function syncViewportHeight() {
-    const viewport = window.visualViewport;
-    if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
-    const height = viewport?.height ?? window.innerHeight;
-    if (height > 0) {
-        document.documentElement.style.setProperty('--gallery-height', `${height}px`);
-    }
+// Artwork modules install animation loops and window listeners on load. A full
+// navigation between pieces gives each one the same lifecycle as its own page.
+// Keep label interactions from reaching artwork listeners on window.
+for (const event of ['pointerdown', 'pointerup', 'click']) {
+    label.addEventListener(event, event => event.stopPropagation());
 }
-
-let viewportFrame = 0;
-function scheduleViewportSync() {
-    cancelAnimationFrame(viewportFrame);
-    viewportFrame = requestAnimationFrame(syncViewportHeight);
-}
-
-window.visualViewport?.addEventListener('resize', scheduleViewportSync);
-window.addEventListener('resize', scheduleViewportSync);
-window.addEventListener('pageshow', scheduleViewportSync);
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') scheduleViewportSync();
-});
-syncViewportHeight();
 
 function showFromHash() {
     let id;
@@ -91,17 +80,20 @@ function showFromHash() {
     }
 
     if (index === currentIndex) return;
+    if (currentIndex !== -1) {
+        window.location.reload();
+        return;
+    }
     currentIndex = index;
     title.textContent = piece.title;
     document.title = `${piece.title} — @emh`;
-    // Start a fresh document even when two pieces only differ by their hash.
-    // Genesis chooses its renderer on load; replacing the frame also disposes
-    // the previous animation and avoids adding iframe-only history entries.
-    const nextArtwork = artwork.cloneNode(false);
-    nextArtwork.title = `${piece.title} — generative art by @emh`;
-    nextArtwork.src = piece.src;
-    artwork.replaceWith(nextArtwork);
-    artwork = nextArtwork;
+    canvas.setAttribute('aria-label', `${piece.title} — generative art by @emh`);
+    import(piece.module).catch(error => {
+        console.error('Could not load artwork:', error);
+        const message = document.getElementById('artwork-error');
+        message.querySelector('a').href = piece.src;
+        message.hidden = false;
+    });
 }
 
 function move(direction) {
@@ -115,8 +107,9 @@ previous.disabled = next.disabled = pieces.length < 2;
 previous.addEventListener('click', () => move(-1));
 next.addEventListener('click', () => move(1));
 window.addEventListener('hashchange', showFromHash);
+window.addEventListener('pageshow', showFromHash);
 showFromHash();
 
 if (new URLSearchParams(location.search).get('debug') === 'viewport') {
-    import('./viewport-debug.mjs?v=1');
+    import('./viewport-debug.mjs?v=2');
 }

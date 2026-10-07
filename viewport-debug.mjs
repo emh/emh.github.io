@@ -14,9 +14,9 @@ const samples = [];
 function measure(reason) {
     const viewport = window.visualViewport;
     const frame = document.getElementById('artwork');
-    let canvas;
+    let canvas = document.getElementById('canvas');
     try {
-        canvas = frame.contentDocument?.querySelector('canvas');
+        canvas ??= frame?.contentDocument?.querySelector('canvas');
     } catch { /* A navigating frame may not have a readable document yet. */ }
     return {
         reason,
@@ -57,7 +57,7 @@ output.style.cssText = 'display:block;width:100%;height:120px;margin-top:10px;fo
 
 function report() {
     return JSON.stringify({
-        build: 'viewport-diagnostic-1',
+        build: 'direct-canvas-2',
         browser: navigator.userAgent,
         piece: location.hash,
         screen: { width: screen.width, height: screen.height, dpr: devicePixelRatio },
@@ -85,4 +85,7 @@ copy.addEventListener('click', async () => {
 samples.push(measure('diagnostics loaded'));
 output.value = report();
 panel.append(instructions, record, copy, output);
+for (const event of ['pointerdown', 'pointerup', 'click']) {
+    panel.addEventListener(event, event => event.stopPropagation());
+}
 document.body.append(panel);

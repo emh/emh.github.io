@@ -1,51 +1,30 @@
 :root {
-    --gallery-height: 100vh;
     color-scheme: light;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     color: #242421;
-    background: #f8f7f4;
-}
-
-@supports (height: 100dvh) {
-    :root {
-        --gallery-height: 100dvh;
-    }
+    background: #fff;
 }
 
 * {
     box-sizing: border-box;
 }
 
+/* Match the standalone artwork pages: a canvas in normal document flow. */
 html,
 body {
-    width: 100%;
-    height: 100%;
     margin: 0;
+    padding: 0;
     overflow: hidden;
 }
 
-.gallery {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: var(--gallery-height);
-}
-
-#artwork {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    border: 0;
-}
-
-#artwork {
+#canvas {
     display: block;
+    width: 100vw;
+    height: 100vh;
 }
 
 .art-label {
-    position: absolute;
+    position: fixed;
     right: max(24px, env(safe-area-inset-right));
     bottom: max(24px, env(safe-area-inset-bottom));
     width: 224px;
@@ -138,11 +117,13 @@ button:disabled {
     margin-right: -8px;
 }
 
+#artwork-error,
 noscript p {
     font-size: 12px;
     line-height: 1.5;
 }
 
+#artwork-error a,
 noscript a {
     display: inline !important;
     padding: 0 !important;
