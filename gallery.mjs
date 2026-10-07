@@ -52,6 +52,23 @@ const previous = document.getElementById('previous');
 const next = document.getElementById('next');
 let currentIndex = -1;
 
+// Keep the label in the visible area without a fixed viewport layer.
+// Canvas sizing stays in CSS; this only positions the label.
+function positionLabel() {
+    const view = window.visualViewport;
+    const bottom = window.scrollY + (view ? view.offsetTop + view.height : window.innerHeight);
+    label.style.setProperty('--gallery-visible-bottom', `${bottom}px`);
+}
+window.addEventListener('resize', positionLabel, { passive: true });
+window.addEventListener('pageshow', positionLabel);
+window.addEventListener('focus', positionLabel);
+window.visualViewport?.addEventListener('resize', positionLabel, { passive: true });
+window.visualViewport?.addEventListener('scroll', positionLabel, { passive: true });
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) positionLabel();
+});
+positionLabel();
+
 // Artwork modules install animation loops and window listeners on load. A full
 // navigation between pieces gives each one the same lifecycle as its own page.
 // Keep label interactions from reaching artwork listeners on window.
@@ -99,14 +116,17 @@ function showFromHash() {
 function move(direction) {
     if (pieces.length < 2) return;
     const index = (currentIndex + direction + pieces.length) % pieces.length;
-    // Hash navigation makes browser Back/Forward work between pieces too.
-    window.location.hash = encodeURIComponent(pieces[index].id);
+    // Update the shareable URL without native fragment navigation. The latter
+    // adds a scroll-restoration step before reload on iPhone Chrome.
+    window.history.pushState(null, '', `#${encodeURIComponent(pieces[index].id)}`);
+    showFromHash();
 }
 
 previous.disabled = next.disabled = pieces.length < 2;
 previous.addEventListener('click', () => move(-1));
 next.addEventListener('click', () => move(1));
 window.addEventListener('hashchange', showFromHash);
+window.addEventListener('popstate', showFromHash);
 window.addEventListener('pageshow', showFromHash);
 showFromHash();
 

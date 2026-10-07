@@ -7,37 +7,40 @@
     <meta name="description" content="A selection of generative art by Evan Haveman. A different piece with every visit.">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f8f7f4">
-    <link rel="stylesheet" href="gallery.css?v=467f727cbaf7">
-    <script type="module" src="gallery.mjs?v=c0eb8a6ed94a"></script>
+    <!-- Establish canvas dimensions before any external files load. -->
+    <style>
+        body, html { overflow: hidden; margin: 0; padding: 0; }
+        canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; }
+    </style>
+    <link rel="stylesheet" href="gallery.css?v=4b23470eb527">
 </head>
 <body>
-    <main class="gallery" aria-label="Generative art">
-        <canvas id="canvas" aria-label="Generative artwork"></canvas>
-        <aside class="art-label" aria-label="About this artwork">
-            <div class="art-label__piece">
-                <button id="previous" type="button" aria-label="Previous artwork" title="Previous artwork" disabled>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 7-5 5 5 5" /></svg>
-                </button>
-                <h1 id="piece-title" aria-live="polite" aria-atomic="true">Generative art</h1>
-                <button id="next" type="button" aria-label="Next artwork" title="Next artwork" disabled>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 5 5-5 5" /></svg>
-                </button>
-            </div>
-            <div class="art-label__artist">
-                <span>@emh</span>
-                <nav aria-label="Social links">
-                    <a href="https://x.com/emh/" target="_blank" rel="noopener noreferrer" aria-label="@emh on X" title="X">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-x"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.3l7.8-8.9L.8 2h6.5l4.5 6.7L18.9 2ZM17.8 20h1.7L6.4 3.9H4.6L17.8 20Z" /></svg>
-                    </a>
-                    <a href="https://www.instagram.com/emh/" target="_blank" rel="noopener noreferrer" aria-label="@emh on Instagram" title="Instagram">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none" /></svg>
-                    </a>
-                </nav>
-            </div>
-            <p id="artwork-error" hidden>Unable to load this piece. <a href="/genart/">Open its original page</a>.</p>
-            <noscript><p>Enable JavaScript to view the art, or <a href="/genart/">browse the collection</a>.</p></noscript>
-        </aside>
-    </main>
+    <canvas id="canvas" aria-label="Generative artwork"></canvas>
+    <aside class="art-label" aria-label="About this artwork">
+        <div class="art-label__piece">
+            <button id="previous" type="button" aria-label="Previous artwork" title="Previous artwork" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 7-5 5 5 5" /></svg>
+            </button>
+            <h1 id="piece-title" aria-live="polite" aria-atomic="true">Generative art</h1>
+            <button id="next" type="button" aria-label="Next artwork" title="Next artwork" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 5 5-5 5" /></svg>
+            </button>
+        </div>
+        <div class="art-label__artist">
+            <span>@emh</span>
+            <nav aria-label="Social links">
+                <a href="https://x.com/emh/" target="_blank" rel="noopener noreferrer" aria-label="@emh on X" title="X">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-x"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.3l7.8-8.9L.8 2h6.5l4.5 6.7L18.9 2ZM17.8 20h1.7L6.4 3.9H4.6L17.8 20Z" /></svg>
+                </a>
+                <a href="https://www.instagram.com/emh/" target="_blank" rel="noopener noreferrer" aria-label="@emh on Instagram" title="Instagram">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none" /></svg>
+                </a>
+            </nav>
+        </div>
+        <p id="artwork-error" hidden>Unable to load this piece. <a href="/genart/">Open its original page</a>.</p>
+        <noscript><p>Enable JavaScript to view the art, or <a href="/genart/">browse the collection</a>.</p></noscript>
+    </aside>
+    <script type="module" src="gallery.mjs?v=ff9b995be7de"></script>
     <script async data-id="101394794" src="//static.getclicky.com/js"></script>
 </body>
 </html>

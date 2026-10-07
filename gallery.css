@@ -9,26 +9,12 @@
     box-sizing: border-box;
 }
 
-/* Keep the canvas in normal document flow, outside any fixed-height wrapper. */
-html,
-body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-}
-
-#canvas {
-    display: block;
-    width: 100vw;
-    /* Legacy fallback; dvh follows the visible area as mobile toolbars change. */
-    height: 100vh;
-    height: 100dvh;
-}
-
+/* Keep the card in the document instead of a fixed viewport layer. */
 .art-label {
-    position: fixed;
+    position: absolute;
+    top: calc(var(--gallery-visible-bottom, 100svh) - max(24px, env(safe-area-inset-bottom)));
+    transform: translateY(-100%);
     right: max(24px, env(safe-area-inset-right));
-    bottom: max(24px, env(safe-area-inset-bottom));
     width: 224px;
     max-width: calc(100% - 32px);
     padding: 10px 12px 12px;
@@ -134,6 +120,6 @@ noscript a {
 @media (max-width: 600px) {
     .art-label {
         right: max(16px, env(safe-area-inset-right));
-        bottom: max(16px, env(safe-area-inset-bottom));
+        top: calc(var(--gallery-visible-bottom, 100svh) - max(16px, env(safe-area-inset-bottom)));
     }
 }
