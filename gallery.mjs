@@ -116,3 +116,7 @@ previous.addEventListener('click', () => move(-1));
 next.addEventListener('click', () => move(1));
 window.addEventListener('hashchange', showFromHash);
 showFromHash();
+
+if (new URLSearchParams(location.search).get('debug') === 'viewport') {
+    import('./viewport-debug.mjs?v=1');
+}
