@@ -1,0 +1,142 @@
+:root {
+    color-scheme: light;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #242421;
+    background: #f8f7f4;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+.gallery,
+#artwork {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+#artwork {
+    display: block;
+}
+
+.art-label {
+    position: fixed;
+    right: max(24px, env(safe-area-inset-right));
+    bottom: max(24px, env(safe-area-inset-bottom));
+    width: 224px;
+    max-width: calc(100% - 32px);
+    padding: 10px 12px 12px;
+    background: #fff;
+    border: 1px solid #000;
+    box-shadow: 0 2px 12px rgb(0 0 0 / 6%);
+}
+
+.art-label__piece {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: 4px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+button,
+.art-label a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 8px;
+    border: 0;
+    border-radius: 2px;
+    color: #696963;
+    background: transparent;
+    cursor: pointer;
+}
+
+.art-label svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.art-label .icon-x {
+    width: 13px;
+    height: 13px;
+    fill: currentColor;
+    stroke: none;
+}
+
+button:enabled:hover,
+.art-label a:hover {
+    color: #242421;
+    background: rgb(36 36 33 / 6%);
+}
+
+button:focus-visible,
+.art-label a:focus-visible {
+    outline: 2px solid #696963;
+    outline-offset: 2px;
+}
+
+button:disabled {
+    opacity: .25;
+    cursor: default;
+}
+
+.art-label__artist {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 8px 0;
+    padding-top: 6px;
+    border-top: 1px solid rgb(36 36 33 / 10%);
+    color: #696963;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.art-label__artist nav {
+    display: flex;
+    margin-right: -8px;
+}
+
+noscript p {
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+noscript a {
+    display: inline !important;
+    padding: 0 !important;
+}
+
+@media (max-width: 600px) {
+    .art-label {
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+    }
+}
